@@ -1,6 +1,6 @@
-# ScanPang Navigation Agent
+# ScanPang Agent
 
-**ScanPang** AR 앱의 백엔드 서버입니다.
+**ScanPang** AR 앱의 백엔드 서버
 Navigation Agent (길안내)와 Place Insight Agent (건물 AR 오버레이 + 도슨트) 두 가지 기능을 제공합니다.
 
 ---
@@ -57,7 +57,7 @@ STORE_API_KEY=         # data.go.kr 소상공인시장진흥공단_상가(상권
 JUSO_API_KEY=          # business.juso.go.kr 도로명주소 검색
 ```
 
-> TourAPI는 **디코딩 키** 사용. 인코딩 키 넣으면 `SERVICE_KEY_IS_NOT_REGISTERED_ERROR` 발생.
+> TourAPI는 **디코딩 키** 사용. 
 
 ---
 
