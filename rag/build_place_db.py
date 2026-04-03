@@ -11,6 +11,7 @@ build_place_db.py
 import asyncio
 import json
 import os
+from typing import Optional
 
 import httpx
 from openai import AsyncOpenAI
@@ -123,9 +124,9 @@ async def fetch_tour_info(place_name: str) -> dict:
         if not content_id:
             return {}
 
-        # detailCommon2: overview + homepage
+        # detailCommon2: overview + homepage (파라미터 없이 호출해야 overview/homepage 포함됨)
         resp = await client.get(f"{base}/detailCommon2", params={
-            **common_params, "contentId": content_id, "overviewYN": "Y", "homepageYN": "Y"
+            **common_params, "contentId": content_id
         })
         detail_raw = resp.json().get("response", {}).get("body", {}).get("items", {})
         detail = detail_raw.get("item", {}) if isinstance(detail_raw, dict) else {}
@@ -212,7 +213,7 @@ async def fetch_floor_info(building_key: str) -> list:
     items = data.get("body", {}).get("items", [])
     floor_map: dict[str, list] = {}
     for item in items:
-        floor = item.get("flrInfo", "").strip() or "기타"
+        floor = item.get("flrNo", "").strip() or "기타"
         store_name = item.get("bizesNm", "").strip()
         biz_type = item.get("indsMclsNm", "").strip()
         if store_name:
@@ -224,7 +225,7 @@ async def fetch_floor_info(building_key: str) -> list:
 
 # ── Step 4: Juso API → building_key 자동 획득 ─────────────────────────────────
 
-async def fetch_building_key(road_addr: str) -> str | None:
+async def fetch_building_key(road_addr: str) -> Optional[str]:
     if not road_addr or not JUSO_API_KEY:
         return None
     url = "https://business.juso.go.kr/addrlink/addrLinkApi.do"
@@ -303,9 +304,10 @@ async def build_all_places() -> list[dict]:
 
 def save_to_chroma(all_places: list[dict]):
     print("\nChroma DB 임베딩 저장 중...")
-    model = SentenceTransformer("BAAI/bge-m3")
+    from chromadb.utils.embedding_functions import DefaultEmbeddingFunction
+    ef = DefaultEmbeddingFunction()
     client = chromadb.PersistentClient(path="./chroma_db")
-    collection = client.get_or_create_collection("place_info")
+    collection = client.get_or_create_collection("place_info", embedding_function=ef)
 
     for place in all_places:
         text = " ".join([
@@ -313,14 +315,11 @@ def save_to_chroma(all_places: list[dict]):
             place["category"],
             place["description_en"],
         ])
-        embedding = model.encode(text).tolist()
-
         # Chroma metadata는 string/int/float/bool만 허용 → floor_info는 JSON 직렬화
         metadata = {k: v for k, v in place.items() if isinstance(v, (str, int, float, bool))}
         metadata["floor_info"] = json.dumps(place.get("floor_info", []), ensure_ascii=False)
 
         collection.upsert(
-            embeddings=[embedding],
             documents=[text],
             metadatas=[metadata],
             ids=[place["place_id"]],
