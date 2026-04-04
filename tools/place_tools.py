@@ -28,9 +28,10 @@ async def check_kakao_open_status(place_name: str, lat: float, lng: float) -> di
         return {}
 
     doc = documents[0]
+    cat_parts = doc.get("category_name", "").split(" > ")
     return {
         "name_ko": doc.get("place_name", ""),
-        "category": doc.get("category_name", "").split(" > ")[0],
+        "category": cat_parts[1] if len(cat_parts) > 1 else cat_parts[0],
         "lat": float(doc.get("y", 0)),
         "lng": float(doc.get("x", 0)),
         "addr": doc.get("road_address_name", ""),
