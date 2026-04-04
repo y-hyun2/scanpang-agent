@@ -26,6 +26,7 @@ TOUR_API_KEY = os.getenv("TOUR_API_KEY", "")
 STORE_API_KEY = os.getenv("STORE_API_KEY", "")
 JUSO_API_KEY = os.getenv("JUSO_API_KEY", "")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
+TMAP_API_KEY = os.getenv("TMAP_API_KEY", "").strip()
 
 openai_client = AsyncOpenAI(api_key=OPENAI_API_KEY)
 
@@ -208,7 +209,49 @@ async def gpt_generate_description(place_name: str) -> str:
     return response.choices[0].message.content.strip()
 
 
-# ── Step 3: 소상공인 API floor_info ───────────────────────────────────────────
+# ── Step 3: TMAP 상세정보 fallback ────────────────────────────────────────────
+
+async def fetch_tmap_info(place_name: str) -> dict:
+    headers = {"appKey": TMAP_API_KEY, "Accept": "application/json"}
+
+    async with httpx.AsyncClient() as client:
+        # POI 검색으로 poiId 획득
+        r = await client.get("https://apis.openapi.sk.com/tmap/pois", headers=headers, params={
+            "version": 1, "searchKeyword": place_name, "count": 1,
+        })
+        pois = r.json().get("searchPoiInfo", {}).get("pois", {}).get("poi", [])
+        if not pois:
+            return {}
+        poi_id = pois[0].get("id", "")
+        if not poi_id:
+            return {}
+
+        # 장소 상세 정보 획득
+        r2 = await client.get(f"https://apis.openapi.sk.com/tmap/pois/{poi_id}", headers=headers, params={
+            "version": 1,
+        })
+        detail = r2.json().get("poiDetailInfo", {})
+
+    add_info = detail.get("additionalInfo", "")
+    open_hours = ""
+    closed_days = ""
+    if add_info:
+        if "[영업시간]" in add_info:
+            open_hours = add_info.replace("[영업시간]", "").strip().rstrip(";")
+        for part in add_info.split(";"):
+            if "휴무" in part:
+                closed_days = part.strip()
+                break
+
+    return {
+        "open_hours":   open_hours,
+        "closed_days":  closed_days,
+        "homepage":     detail.get("homepageURL", ""),
+        "parking_info": "주차 가능" if detail.get("parkFlag") == "1" else "",
+    }
+
+
+# ── Step 5: 소상공인 API floor_info ───────────────────────────────────────────
 
 async def fetch_floor_info(building_key: str) -> list:
     url = "http://apis.data.go.kr/B553077/api/open/sdsc2/storeListInBuilding"
@@ -305,7 +348,16 @@ async def build_all_places() -> list[dict]:
         else:
             place["description_en"] = await gpt_generate_description(name)
 
-        # Step 3: 소상공인 API floor_info (building_key 없으면 Juso로 자동 획득)
+        # Step 3: TMAP fallback — TourAPI에서 비어있는 필드 보완
+        tmap_fallback_fields = ["open_hours", "closed_days", "homepage", "parking_info"]
+        if any(not place.get(f) for f in tmap_fallback_fields):
+            tmap = await fetch_tmap_info(name)
+            for field in tmap_fallback_fields:
+                if not place.get(field) and tmap.get(field):
+                    place[field] = tmap[field]
+            print(f"    TMAP fallback 적용: {[f for f in tmap_fallback_fields if tmap.get(f)]}")
+
+        # Step 5: 소상공인 API floor_info (building_key 없으면 Juso로 자동 획득)
         if not building_key and kakao.get("addr"):
             building_key = await fetch_building_key(kakao["addr"])
 
