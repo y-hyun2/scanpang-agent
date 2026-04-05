@@ -3,7 +3,8 @@ from typing import List, Optional
 
 
 class PlaceRequest(BaseModel):
-    place_id: str
+    place_id: str = ""
+    building_name: Optional[str] = None  # VWorld/Kakao가 반환한 건물명 (프론트에서 사용)
     user_message: str
     user_lat: float
     user_lng: float

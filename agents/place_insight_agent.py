@@ -15,6 +15,30 @@ openai_client = AsyncOpenAI(api_key=OPENAI_API_KEY)
 _chroma_client = None
 _collection = None
 
+# VWorld / Kakao 역지오코딩이 반환하는 건물명 → place_id 매핑
+BUILDING_NAME_MAP = {
+    "명동대성당": "myeongdong_cathedral",
+    "명동성당": "myeongdong_cathedral",
+    "롯데백화점 본점": "lotte_dept_myeongdong",
+    "롯데백화점 명동본점": "lotte_dept_myeongdong",
+    "신세계백화점 본점": "shinsegae_myeongdong",
+    "신세계백화점": "shinsegae_myeongdong",
+    "눈스퀘어": "noon_square_myeongdong",
+    "명동 눈스퀘어": "noon_square_myeongdong",
+    "명동예술극장": "myeongdong_art_theater",
+    "국립극단 명동예술극장": "myeongdong_art_theater",
+    "N서울타워": "n_seoul_tower",
+    "남산서울타워": "n_seoul_tower",
+    "서울타워": "n_seoul_tower",
+    "롯데시티호텔 명동": "lotte_city_hotel_myeongdong",
+    "유네스코회관": "unesco_hall_myeongdong",
+    "유네스코회관빌딩": "unesco_hall_myeongdong",
+    "포스트타워": "post_tower_myeongdong",
+    "서울중앙우체국": "post_tower_myeongdong",
+    "대신파이낸스센터": "daishin_finance_center",
+    "Daishin343": "daishin_finance_center",
+}
+
 
 def _get_collection():
     global _chroma_client, _collection
@@ -82,8 +106,13 @@ def generate_follow_ups(user_message: str, place_data: dict) -> list[str]:
 async def run_place_insight_agent(req: PlaceRequest) -> dict:
     collection = _get_collection()
 
-    # 1. Chroma에서 place_id로 직접 조회
-    result = collection.get(ids=[req.place_id])
+    # 1. place_id 결정: 직접 전달 > building_name 매핑
+    place_id = req.place_id
+    if not place_id and req.building_name:
+        place_id = BUILDING_NAME_MAP.get(req.building_name, "")
+
+    # Chroma에서 place_id로 직접 조회
+    result = collection.get(ids=[place_id]) if place_id else {"metadatas": []}
     if not result["metadatas"]:
         return {
             "ar_overlay": {
