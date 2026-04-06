@@ -145,8 +145,8 @@ async def seoul_restroom_search(lat: float, lng: float, radius: int) -> list[dic
     results = []
     for row in rows:
         try:
-            r_lat = float(row.get("REFINE_WGS84_LAT") or 0)
-            r_lng = float(row.get("REFINE_WGS84_LOGT") or 0)
+            r_lat = float(row.get("Y_WGS84") or 0)
+            r_lng = float(row.get("X_WGS84") or 0)
         except (ValueError, TypeError):
             continue
         if r_lat == 0 or r_lng == 0:
@@ -154,14 +154,14 @@ async def seoul_restroom_search(lat: float, lng: float, radius: int) -> list[dic
         dist = haversine_m(lat, lng, r_lat, r_lng)
         if dist <= radius:
             results.append({
-                "name": row.get("POI_NM", "공중화장실"),
+                "name": row.get("FNAME", "공중화장실"),
                 "distance_m": round(dist, 1),
                 "lat": r_lat,
                 "lng": r_lng,
-                "address": row.get("REFINE_ROADNM_ADDR", ""),
+                "address": row.get("ANAME", ""),
                 "phone": "",
-                "open_hours": row.get("ANAM_OPENTIME", ""),
-                "extra": {"wheelchair": row.get("WHEELCHAIR_YN", "")},
+                "open_hours": "",
+                "extra": {},
             })
 
     return sorted(results, key=lambda x: x["distance_m"])
