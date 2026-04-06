@@ -12,8 +12,10 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -467,19 +469,157 @@ fun GeospatialARScreen() {
 
         if (selectedPlace != null) {
             val currentPlace = dynamicPlaces.find { it.id == selectedPlace!!.id } ?: selectedPlace!!
+            val overlay = currentPlace.arOverlay
 
-            ModalBottomSheet(onDismissRequest = { selectedPlace = null }, containerColor = Color.White) {
-                Column(modifier = Modifier.fillMaxWidth().padding(24.dp)) {
-                    Text(text = "건물 상세 정보", fontWeight = FontWeight.Bold, fontSize = 20.sp)
-                    Spacer(modifier = Modifier.height(16.dp))
-                    Text(text = currentPlace.name, fontWeight = FontWeight.Bold, fontSize = 18.sp)
+            val sheetBg = Color(0xFF1C1C1E)
+            val dividerColor = Color(0xFF3A3A3C)
+            val floorColors = listOf(
+                Color(0xFFFF6B6B), Color(0xFF4ECDC4), Color(0xFFFFBE0B),
+                Color(0xFFFF006E), Color(0xFF8338EC), Color(0xFF3A86FF),
+                Color(0xFF06D6A0), Color(0xFFFF9F1C)
+            )
+
+            ModalBottomSheet(
+                onDismissRequest = { selectedPlace = null },
+                containerColor = sheetBg
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .verticalScroll(rememberScrollState())
+                        .padding(horizontal = 20.dp)
+                        .padding(bottom = 48.dp)
+                ) {
+                    // 건물명 + 거리
+                    Text(
+                        text = currentPlace.name,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 22.sp,
+                        color = Color.White
+                    )
                     Spacer(modifier = Modifier.height(8.dp))
-                    Text(text = "나와의 거리: ${"%.1f".format(currentPlace.distance)} m", color = Color.Black, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
-                    Spacer(modifier = Modifier.height(4.dp))
-                    Text(text = currentPlace.details, color = Color.DarkGray, fontSize = 14.sp)
-                    Spacer(modifier = Modifier.height(48.dp))
+
+                    // 카테고리 뱃지 + 거리
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        if (!overlay?.category.isNullOrEmpty()) {
+                            Box(
+                                modifier = Modifier
+                                    .background(Color(0xFF2C2C2E), RoundedCornerShape(12.dp))
+                                    .padding(horizontal = 10.dp, vertical = 4.dp)
+                            ) {
+                                Text(text = overlay!!.category, color = Color.LightGray, fontSize = 12.sp)
+                            }
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(text = "·", color = Color.Gray, fontSize = 13.sp)
+                            Spacer(modifier = Modifier.width(8.dp))
+                        }
+                        Text(
+                            text = "${"%.0f".format(currentPlace.distance)}m",
+                            color = Color.LightGray,
+                            fontSize = 13.sp
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.height(20.dp))
+                    Box(modifier = Modifier.fillMaxWidth().height(1.dp).background(dividerColor))
+                    Spacer(modifier = Modifier.height(20.dp))
+
+                    // 층별 정보
+                    if (!overlay?.floor_info.isNullOrEmpty()) {
+                        Text(
+                            text = "층별 정보",
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 16.sp,
+                            color = Color.White
+                        )
+                        Spacer(modifier = Modifier.height(12.dp))
+
+                        overlay!!.floor_info.forEachIndexed { index, floorInfo ->
+                            val badgeColor = floorColors[index % floorColors.size]
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(vertical = 5.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(width = 40.dp, height = 32.dp)
+                                        .background(badgeColor, RoundedCornerShape(8.dp)),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text(
+                                        text = floorInfo.floor,
+                                        color = Color.White,
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                }
+                                Spacer(modifier = Modifier.width(12.dp))
+                                Text(
+                                    text = floorInfo.stores.joinToString(", "),
+                                    color = Color.LightGray,
+                                    fontSize = 13.sp,
+                                    modifier = Modifier.weight(1f)
+                                )
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(20.dp))
+                        Box(modifier = Modifier.fillMaxWidth().height(1.dp).background(dividerColor))
+                        Spacer(modifier = Modifier.height(20.dp))
+                    }
+
+                    // 이용 정보
+                    val hasInfo = listOf(
+                        overlay?.open_hours,
+                        overlay?.closed_days,
+                        overlay?.admission_fee,
+                        overlay?.parking_info
+                    ).any { !it.isNullOrEmpty() }
+
+                    if (hasInfo) {
+                        Text(
+                            text = "이용 정보",
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 16.sp,
+                            color = Color.White
+                        )
+                        Spacer(modifier = Modifier.height(12.dp))
+                        if (!overlay?.open_hours.isNullOrEmpty())
+                            PlaceInfoRow(label = "운영 시간", value = overlay!!.open_hours)
+                        if (!overlay?.closed_days.isNullOrEmpty())
+                            PlaceInfoRow(label = "휴무일", value = overlay!!.closed_days)
+                        if (!overlay?.admission_fee.isNullOrEmpty())
+                            PlaceInfoRow(label = "입장료", value = overlay!!.admission_fee)
+                        if (!overlay?.parking_info.isNullOrEmpty())
+                            PlaceInfoRow(label = "주차", value = overlay!!.parking_info)
+                    }
                 }
             }
         }
+    }
+}
+
+@Composable
+fun PlaceInfoRow(label: String, value: String) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 5.dp),
+        verticalAlignment = Alignment.Top
+    ) {
+        Text(
+            text = label,
+            color = Color.Gray,
+            fontSize = 12.sp,
+            modifier = Modifier.width(72.dp)
+        )
+        Text(
+            text = value,
+            color = Color.LightGray,
+            fontSize = 13.sp,
+            modifier = Modifier.weight(1f)
+        )
     }
 }
