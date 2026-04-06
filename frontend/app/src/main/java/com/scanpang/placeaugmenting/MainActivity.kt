@@ -4,6 +4,7 @@ import android.Manifest
 import android.location.Location
 import android.opengl.Matrix
 import android.os.Bundle
+import android.speech.tts.TextToSpeech
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.animation.AnimatedVisibility
@@ -44,6 +45,7 @@ import retrofit2.http.Body
 import retrofit2.http.POST
 import java.net.HttpURLConnection
 import java.net.URL
+import java.util.Locale
 import kotlin.math.roundToInt
 
 // ── ScanPang 백엔드 데이터 클래스 ────────────────────────────────────────────
@@ -219,6 +221,7 @@ fun MainAppScreen() {
 fun GeospatialARScreen() {
     val engine = rememberEngine()
     val coroutineScope = rememberCoroutineScope()
+    val context = androidx.compose.ui.platform.LocalContext.current
 
     var recognitionStatus by remember { mutableStateOf(RecognitionState.IDLE) }
     var trackingMessage by remember { mutableStateOf("ARCore 초기화 중...") }
@@ -229,6 +232,32 @@ fun GeospatialARScreen() {
     var triggerHitTest by remember { mutableStateOf(false) }
 
     val verifiedCache = remember { mutableStateListOf<PlaceData>() }
+
+    // ── TTS 초기화 ──────────────────────────────────────────────────────────────
+    val tts = remember { mutableStateOf<TextToSpeech?>(null) }
+    DisposableEffect(Unit) {
+        var instance: TextToSpeech? = null
+        instance = TextToSpeech(context) { status ->
+            if (status == TextToSpeech.SUCCESS) tts.value = instance
+        }
+        onDispose {
+            instance?.stop()
+            instance?.shutdown()
+        }
+    }
+
+    fun speakDocent(speech: String, language: String = "en") {
+        if (speech.isEmpty()) return
+        val locale = when (language) {
+            "ko" -> Locale.KOREAN
+            "ja" -> Locale.JAPANESE
+            "zh" -> Locale.CHINESE
+            "ar" -> Locale("ar")
+            else -> Locale.ENGLISH
+        }
+        tts.value?.language = locale
+        tts.value?.speak(speech, TextToSpeech.QUEUE_FLUSH, null, "docent")
+    }
 
     Box(modifier = Modifier.fillMaxSize()) {
         val configuration = androidx.compose.ui.platform.LocalConfiguration.current
@@ -346,6 +375,8 @@ fun GeospatialARScreen() {
                                                         dynamicPlaces[index] = finalPlace
                                                         verifiedCache.add(finalPlace)
                                                         recognitionStatus = RecognitionState.SUCCESS
+                                                        // 건물 인식 후 도슨트 자동 재생
+                                                        speakDocent(docentSpeech)
                                                     }
                                                 }
                                             }
@@ -566,6 +597,21 @@ fun GeospatialARScreen() {
                         }
 
                         Spacer(modifier = Modifier.height(20.dp))
+                        Box(modifier = Modifier.fillMaxWidth().height(1.dp).background(dividerColor))
+                        Spacer(modifier = Modifier.height(20.dp))
+                    }
+
+                    // 도슨트 재생 버튼
+                    if (currentPlace.docentSpeech.isNotEmpty()) {
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Button(
+                            onClick = { speakDocent(currentPlace.docentSpeech) },
+                            modifier = Modifier.fillMaxWidth(),
+                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF3A86FF))
+                        ) {
+                            Text("🎙️ 도슨트 해설 듣기", fontWeight = FontWeight.Bold)
+                        }
+                        Spacer(modifier = Modifier.height(16.dp))
                         Box(modifier = Modifier.fillMaxWidth().height(1.dp).background(dividerColor))
                         Spacer(modifier = Modifier.height(20.dp))
                     }
