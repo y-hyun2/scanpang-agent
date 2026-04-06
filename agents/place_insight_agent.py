@@ -101,40 +101,104 @@ def generate_follow_ups(user_message: str, place_data: dict) -> list[str]:
     return suggestions[:3]
 
 
-# ── GPT-4V fallback: ARCore 미인식 건물 처리 ──────────────────────────────────
+# ── GPT-4V: 이미지에서 건물명 추출 ────────────────────────────────────────────
 
-async def gpt4v_analyze_building(image_base64: str, user_message: str, language: str) -> dict:
+async def gpt4v_extract_building_name(image_base64: str) -> str:
     """
-    ARCore가 건물을 인식하지 못했을 때 GPT-4V로 이미지 분석.
-    간판·외관을 읽어 건물 기본 정보와 도슨트 해설을 생성.
-    RAG 데이터가 아닌 LLM 추론이므로 is_estimated=True 플래그 포함.
+    이미지에서 건물명(간판, 외관 텍스트)만 추출.
+    Kakao 검색에 쓸 수 있도록 한국어 건물명 우선 반환.
+    인식 불가 시 빈 문자열 반환.
+    """
+    response = await openai_client.chat.completions.create(
+        model="gpt-4o",
+        messages=[
+            {
+                "role": "user",
+                "content": [
+                    {
+                        "type": "text",
+                        "text": (
+                            "Look at this image and identify the building or location name shown. "
+                            "Read any visible signs or text. "
+                            "Return ONLY the building name in Korean if possible, otherwise in the language shown. "
+                            "If you cannot identify any building name, return an empty string. "
+                            "Return nothing else — just the name."
+                        ),
+                    },
+                    {
+                        "type": "image_url",
+                        "image_url": {"url": f"data:image/jpeg;base64,{image_base64}", "detail": "high"},
+                    },
+                ],
+            }
+        ],
+        max_tokens=50,
+    )
+    return response.choices[0].message.content.strip()
+
+
+# ── Kakao로 건물명 → place_id 매핑 시도 ────────────────────────────────────────
+
+async def resolve_place_id_from_name(building_name: str, user_lat: float, user_lng: float) -> str:
+    """
+    건물명으로 Kakao 키워드 검색 → BUILDING_NAME_MAP 매핑 → place_id 반환.
+    매핑 실패 시 빈 문자열 반환.
+    """
+    import httpx, os
+    KAKAO_REST_API_KEY = os.getenv("KAKAO_REST_API_KEY", "")
+    url = "https://dapi.kakao.com/v2/local/search/keyword.json"
+    headers = {"Authorization": f"KakaoAK {KAKAO_REST_API_KEY}"}
+    params = {
+        "query": building_name,
+        "x": str(user_lng),
+        "y": str(user_lat),
+        "radius": 2000,
+        "size": 5,
+    }
+    async with httpx.AsyncClient() as client:
+        resp = await client.get(url, headers=headers, params=params)
+        docs = resp.json().get("documents", [])
+
+    for doc in docs:
+        kakao_name = doc.get("place_name", "")
+        # Kakao 반환 건물명으로 BUILDING_NAME_MAP 매핑
+        if kakao_name in BUILDING_NAME_MAP:
+            return BUILDING_NAME_MAP[kakao_name]
+        # 부분 문자열 매핑 (예: "롯데백화점 명동본점" → "롯데백화점 본점" 키에 포함)
+        for map_key, pid in BUILDING_NAME_MAP.items():
+            if map_key in kakao_name or kakao_name in map_key:
+                return pid
+
+    return ""
+
+
+# ── GPT-4V 최종 폴백: LLM 지식 기반 응답 ──────────────────────────────────────
+
+async def gpt4v_fallback_response(image_base64: str, user_message: str, language: str) -> dict:
+    """
+    Chroma에도 없고 Kakao 매핑도 안 될 때 최후 수단.
+    GPT-4V 지식 기반 응답. is_estimated=True 표시.
     """
     lang_map = {"ko": "Korean", "en": "English", "ar": "Arabic", "ja": "Japanese", "zh": "Chinese"}
     response_lang = lang_map.get(language, "English")
 
-    system_prompt = (
-        "You are an AR tour guide assistant. "
-        "Analyze the image to identify the building or location shown. "
-        "Read any visible signs, text, or architectural features. "
-        f"Respond in {response_lang}. "
-        "Be honest if you are uncertain — say 'This appears to be...' rather than stating facts definitively. "
-        "Keep the response concise (2-3 sentences) for text-to-speech."
-    )
-
-    user_prompt = (
-        f"User's question: {user_message}\n\n"
-        "Please: 1) Identify the building/location, 2) Briefly describe what it is and what visitors can do there, "
-        "3) Mention any practically useful info visible (floor numbers, entrances, facilities)."
-    )
-
     response = await openai_client.chat.completions.create(
         model="gpt-4o",
         messages=[
-            {"role": "system", "content": system_prompt},
+            {
+                "role": "system",
+                "content": (
+                    "You are an AR tour guide assistant. "
+                    "Analyze the image to identify the building or location. "
+                    f"Respond in {response_lang}. "
+                    "Be honest if uncertain — use 'This appears to be...' phrasing. "
+                    "2-3 sentences for TTS. Include any practically useful info visible."
+                ),
+            },
             {
                 "role": "user",
                 "content": [
-                    {"type": "text", "text": user_prompt},
+                    {"type": "text", "text": f"User's question: {user_message}"},
                     {
                         "type": "image_url",
                         "image_url": {"url": f"data:image/jpeg;base64,{image_base64}", "detail": "high"},
@@ -145,24 +209,15 @@ async def gpt4v_analyze_building(image_base64: str, user_message: str, language:
         max_tokens=300,
     )
 
-    speech = response.choices[0].message.content.strip()
-
     return {
         "ar_overlay": {
-            "name":          "",
-            "category":      "",
-            "floor_info":    [],
-            "halal_info":    "",
-            "image_url":     "",
-            "homepage":      "",
-            "open_hours":    "",
-            "closed_days":   "",
-            "parking_info":  "",
-            "admission_fee": "",
-            "is_estimated":  True,   # RAG 아닌 GPT-4V 추론임을 프론트에 알림
+            "name": "", "category": "", "floor_info": [],
+            "halal_info": "", "image_url": "", "homepage": "",
+            "open_hours": "", "closed_days": "", "parking_info": "", "admission_fee": "",
+            "is_estimated": True,
         },
         "docent": {
-            "speech": speech,
+            "speech": response.choices[0].message.content.strip(),
             "follow_up_suggestions": [],
         },
     }
@@ -181,28 +236,41 @@ async def run_place_insight_agent(req: PlaceRequest) -> dict:
     # Chroma에서 place_id로 직접 조회
     result = collection.get(ids=[place_id]) if place_id else {"metadatas": []}
     if not result["metadatas"]:
-        # GPT-4V fallback: 이미지가 있으면 분석, 없으면 기본 메시지
+        # GPT-4V fallback: 이미지 → 건물명 추출 → Kakao 매핑 → Chroma 재조회 → 최후 LLM 폴백
         if req.image_base64:
-            return await gpt4v_analyze_building(req.image_base64, req.user_message, req.language)
-        return {
-            "ar_overlay": {
-                "name":          req.place_id,
-                "category":      "",
-                "floor_info":    [],
-                "halal_info":    "",
-                "image_url":     "",
-                "homepage":      "",
-                "open_hours":    "",
-                "closed_days":   "",
-                "parking_info":  "",
-                "admission_fee": "",
-                "is_estimated":  False,
-            },
-            "docent": {
-                "speech": "Sorry, I don't have information about this place yet.",
-                "follow_up_suggestions": [],
-            },
-        }
+            building_name = await gpt4v_extract_building_name(req.image_base64)
+            if building_name:
+                resolved_id = await resolve_place_id_from_name(building_name, req.user_lat, req.user_lng)
+                if resolved_id:
+                    place_id = resolved_id
+                    result = collection.get(ids=[place_id])
+                    if not result["metadatas"]:
+                        return await gpt4v_fallback_response(req.image_base64, req.user_message, req.language)
+                    # result["metadatas"] 있음 → 아래 RAG 플로우로 계속
+                else:
+                    return await gpt4v_fallback_response(req.image_base64, req.user_message, req.language)
+            else:
+                return await gpt4v_fallback_response(req.image_base64, req.user_message, req.language)
+        else:
+            return {
+                "ar_overlay": {
+                    "name":          req.place_id,
+                    "category":      "",
+                    "floor_info":    [],
+                    "halal_info":    "",
+                    "image_url":     "",
+                    "homepage":      "",
+                    "open_hours":    "",
+                    "closed_days":   "",
+                    "parking_info":  "",
+                    "admission_fee": "",
+                    "is_estimated":  False,
+                },
+                "docent": {
+                    "speech": "Sorry, I don't have information about this place yet.",
+                    "follow_up_suggestions": [],
+                },
+            }
 
     place_data = result["metadatas"][0]
 

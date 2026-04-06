@@ -5,6 +5,8 @@ from schemas.place import PlaceRequest
 from agents.place_insight_agent import run_place_insight_agent
 from schemas.store import StoreRequest
 from tools.store_tools import get_store_detail
+from schemas.convenience import ConvenienceRequest
+from agents.convenience_agent import run_convenience_agent
 
 app = FastAPI(title="ScanPang Navigation API")
 
@@ -39,4 +41,13 @@ async def place_store(req: StoreRequest):
     """
     사용자가 층별 매장 탭 → 매장 상세 정보 반환 (Kakao on-demand + Chroma 캐싱)
     """
-    return await get_store_detail(req.place_id, req.store_name, req.user_lat, req.user_lng)
+    return await get_store_detail(req.place_id, req.store_name)
+
+
+@app.post("/convenience/query")
+async def convenience_query(req: ConvenienceRequest):
+    """
+    카테고리 탭 or 텍스트 검색 → 주변 편의시설 목록 반환
+    category 있으면 LLM 없이 바로 검색, message만 있으면 LLM으로 카테고리 추출
+    """
+    return await run_convenience_agent(req)

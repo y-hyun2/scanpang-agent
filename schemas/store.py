@@ -4,8 +4,6 @@ from pydantic import BaseModel
 class StoreRequest(BaseModel):
     place_id: str       # 어느 건물 소속인지
     store_name: str     # 매장명 (소상공인 API의 bizesNm)
-    user_lat: float
-    user_lng: float
 
 
 class StoreDetail(BaseModel):
