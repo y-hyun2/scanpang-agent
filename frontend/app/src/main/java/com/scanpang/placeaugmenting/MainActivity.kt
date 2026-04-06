@@ -355,7 +355,8 @@ fun GeospatialARScreen() {
                                                             PlaceQueryRequest(
                                                                 building_name = finalName,
                                                                 user_lat = targetLat,
-                                                                user_lng = targetLng
+                                                                user_lng = targetLng,
+                                                                language = "ko"
                                                             )
                                                         )
                                                         arOverlay = response.ar_overlay
@@ -375,8 +376,6 @@ fun GeospatialARScreen() {
                                                         dynamicPlaces[index] = finalPlace
                                                         verifiedCache.add(finalPlace)
                                                         recognitionStatus = RecognitionState.SUCCESS
-                                                        // 건물 인식 후 도슨트 자동 재생
-                                                        speakDocent(docentSpeech)
                                                     }
                                                 }
                                             }
@@ -601,8 +600,10 @@ fun GeospatialARScreen() {
                         Spacer(modifier = Modifier.height(20.dp))
                     }
 
-                    // 도슨트 재생 버튼
-                    if (currentPlace.docentSpeech.isNotEmpty()) {
+                    // 도슨트 재생 버튼 — 관광지/문화시설 카테고리만 표시
+                    val touristCategories = listOf("관광", "문화", "공연", "극장", "성당", "교회", "박물관", "미술관", "기념관", "사찰")
+                    val isTouristPlace = touristCategories.any { overlay?.category?.contains(it) == true }
+                    if (currentPlace.docentSpeech.isNotEmpty() && isTouristPlace) {
                         Spacer(modifier = Modifier.height(4.dp))
                         Button(
                             onClick = { speakDocent(currentPlace.docentSpeech) },
