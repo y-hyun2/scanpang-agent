@@ -1,344 +1,166 @@
-# ScanPang Agent
+# ScanPang — 무슬림 관광객을 위한 AR 관광 플랫폼
 
-**ScanPang** AR 앱의 백엔드 서버
-Navigation Agent (길안내)와 Place Insight Agent (건물 AR 오버레이 + 도슨트) 두 가지 기능을 제공합니다.
-
----
-
-## 기술 스택
-
-| 항목 | 내용 |
-|---|---|
-| 프레임워크 | FastAPI |
-| LLM | OpenAI gpt-4o |
-| 지도 API | TMAP (SK Telecom) |
-| 장소 정보 | Kakao Local API, TourAPI, 소상공인 API, Juso API |
-| 벡터 DB | ChromaDB + BAAI/bge-m3 임베딩 |
-| 언어 | Python 3.10+ |
+서울(명동)을 방문하는 무슬림 관광객을 위한 AR 기반 관광 안내 서비스.
+건물 인식, AR 길찾기, 할랄 식당/기도실 검색, 기도 시간/키블라 방향 안내를 하나의 백엔드에서 제공합니다.
 
 ---
 
 ## 프로젝트 구조
 
 ```
-scanpang-navigation-agent/
-├── main.py                        # FastAPI 진입점 (엔드포인트 4개)
-├── agents/
-│   ├── navigation_agent.py        # 길안내 LLM 오케스트레이션
-│   └── place_insight_agent.py     # 건물 AR 오버레이 + 도슨트 생성
-├── tools/
-│   ├── navigation_tools.py        # TMAP API 래퍼
-│   ├── place_tools.py             # Kakao Local API 래퍼
-│   └── store_tools.py             # 개별 매장 상세 조회 + Chroma 캐싱
-├── schemas/
-│   ├── navigation.py              # 길안내 요청/응답 모델
-│   ├── place.py                   # 건물 조회 요청/응답 모델
-│   └── store.py                   # 매장 상세 요청/응답 모델
-├── rag/
-│   ├── build_place_db.py          # DB 구축 스크립트 (서버 실행 전 1회)
+Scanpang_agent/
+├── main.py                            # FastAPI 진입점 (6개 엔드포인트)
+├── agents/                            # AI 에이전트
+│   ├── place_insight_agent.py         # 건물 인식 + AR 오버레이 + 도슨트
+│   ├── navigation_agent.py            # AR 길찾기 (검색 + 경로)
+│   ├── convenience_agent.py           # 주변 편의시설
+│   └── halal_agent.py                 # 할랄 식당 / 기도실 / 기도시간 / 키블라
+├── tools/                             # 외부 API 래퍼 + 데이터 도구
+│   ├── building_raycast.py            # VWorld 3D 폴리곤 레이캐스팅
+│   ├── halal_tools.py                 # Aladhan API + 할랄 JSON 검색
+│   ├── navigation_tools.py            # TMAP 보행자 경로
+│   ├── convenience_tools.py           # Kakao/서울시 편의시설
+│   ├── place_tools.py                 # Kakao Local
+│   └── store_tools.py                 # 매장 상세 + Chroma 캐싱
+├── schemas/                           # Pydantic 요청/응답 모델
+│   ├── place.py / navigation.py / convenience.py / halal.py / store.py
+├── rag/                               # 데이터 구축 + 정적 데이터
+│   ├── build_place_db.py              # 명동 10개 건물 Chroma 구축
+│   ├── build_vworld_buildings.py      # VWorld 건물 폴리곤 사전 적재
 │   └── data/
-│       └── places_manual.json     # 수동 보완 데이터
-├── chroma_db/                     # ChromaDB 저장소 (build 후 생성)
-└── .env                           # API 키
+│       ├── vworld_buildings.json      # 명동 2km 건물 29,831건 (12.6MB)
+│       ├── myeongdong_restaurants.json # 할랄 식당 20개
+│       ├── prayer_rooms.json          # 기도실 10개
+│       └── places_manual.json         # 건물 수동 보완 데이터
+├── frontend/                          # PlaceAugmenting (건물 인식 AR, Android Kotlin)
+├── ar-navigation/                     # AR Navigation (길찾기 AR, Android Kotlin)
+├── .env                               # API 키 (.gitignore)
+└── requirements.txt
 ```
 
 ---
 
-## 환경변수 설정
+## 기술 스택
 
-`.env` 파일을 프로젝트 루트에 생성하세요.
-
-```
-OPENAI_API_KEY=        # OpenAI
-TMAP_API_KEY=          # SK TMAP
-KAKAO_REST_API_KEY=    # Kakao Developers
-TOUR_API_KEY=          # data.go.kr 한국관광공사_국문 관광정보 서비스_GW (디코딩 키)
-STORE_API_KEY=         # data.go.kr 소상공인시장진흥공단_상가(상권)정보
-JUSO_API_KEY=          # business.juso.go.kr 도로명주소 검색
-```
-
-> TourAPI는 **디코딩 키** 사용. 
+| 구분 | 기술 |
+|---|---|
+| 백엔드 | FastAPI, Python 3.11 |
+| LLM | OpenAI GPT-4o |
+| 건물 인식 | VWorld WFS 건물 폴리곤 + Shapely STRtree 레이캐스팅 |
+| 길찾기 | TMAP 보행자 경로 + LLM 턴별 TTS |
+| 장소 정보 | Kakao Local, TourAPI, 소상공인 API, Juso API |
+| 기도 시간/키블라 | Aladhan API (API key 불필요) |
+| 벡터 DB | ChromaDB |
+| AR 프론트 | ARCore Geospatial + SceneView (Android Kotlin) |
 
 ---
 
 ## 실행 방법
 
 ```bash
-# 패키지 설치
-pip install fastapi uvicorn langchain langchain-openai httpx pydantic python-dotenv chromadb sentence-transformers
+# 1. 가상환경 + 패키지
+python -m venv venv && source venv/bin/activate
+pip install -r requirements.txt
 
-# Place Insight DB 구축 (최초 1회)
+# 2. DB 구축 (최초 1회)
 python -m rag.build_place_db
+python -m rag.build_vworld_buildings    # ~2분
 
-# 서버 실행
-uvicorn main:app --reload --port 8000
+# 3. 서버 실행
+python -m uvicorn main:app --host 0.0.0.0 --port 8000 --timeout-keep-alive 120
 ```
 
 Swagger UI: http://localhost:8000/docs
 
+### 실기기 연결 (USB)
+```bash
+adb reverse tcp:8000 tcp:8000
+# Android 앱의 SERVER_URL = http://localhost:8000/
+```
+
 ---
 
-## ChromaDB 구조
+## 환경변수 (.env)
 
-Place Insight Agent는 `./chroma_db` 폴더에 두 개의 컬렉션을 유지합니다.
-
+```env
+OPENAI_API_KEY=           # OpenAI GPT-4o
+TMAP_API_KEY=             # SK TMAP
+KAKAO_REST_API_KEY=       # Kakao Developers
+TOUR_API_KEY=             # data.go.kr 한국관광공사 (디코딩 키)
+STORE_API_KEY=            # data.go.kr 소상공인
+JUSO_API_KEY=             # business.juso.go.kr
+VWORLD_API_KEY=           # VWorld WFS
+VWORLD_DOMAIN=http://localhost
+SEOUL_LOCKER_API_KEY=     # 서울시 물품보관함
+SEOUL_RESTROOM_API_KEY=   # 서울시 공중화장실
 ```
-chroma_db/
-├── place_info     ← 건물 정보 (build_place_db.py 실행 시 생성)
-└── store_detail   ← 개별 매장 상세 캐시 (on-demand 생성)
-```
-
-### `place_info` 컬렉션
-
-| 구성 요소 | 내용 |
-|---|---|
-| `document` | `name_ko + category + description_en` — 시맨틱 검색용 텍스트 |
-| `id` | `place_id` (예: `myeongdong_cathedral`) |
-| `metadata` | 아래 표 참고 |
-
-**metadata 컬럼:**
-
-| 컬럼 | 출처 |
-|---|---|
-| `place_id`, `name_ko`, `category` | Kakao Local |
-| `lat`, `lng`, `addr`, `phone` | Kakao Local |
-| `description_en` | TourAPI overview → GPT 번역 (없으면 GPT 직접 생성) |
-| `image_url`, `homepage` | TourAPI |
-| `open_hours`, `closed_days` | TourAPI detailIntro2 |
-| `parking_info`, `admission_fee` | TourAPI detailIntro2 |
-| `floor_info` | 소상공인 API → JSON 직렬화 문자열 |
-
-> `floor_info`는 Chroma가 list를 지원하지 않아 `json.dumps()`로 직렬화. 조회 시 `json.loads()`로 역직렬화.
-
-### `store_detail` 컬렉션
-
-사용자가 층별 매장을 탭할 때 on-demand로 Kakao API를 호출하고, 결과를 캐싱.
-두 번째 요청부터는 Kakao 호출 없이 캐시에서 바로 반환.
-
-| 구성 요소 | 내용 |
-|---|---|
-| `id` | `{place_id}__{store_name}` |
-| `metadata` | Kakao Local 응답 (name_ko, category, addr, phone 등) |
 
 ---
 
 ## API 엔드포인트
 
-### POST /navigation/search
+| 엔드포인트 | 에이전트 | 설명 |
+|---|---|---|
+| `POST /place/query` | Place Insight | 건물 인식 → AR 오버레이 + 도슨트 TTS |
+| `POST /place/store` | Store Detail | 층별 매장 상세 (Kakao + Chroma 캐싱) |
+| `POST /navigation/search` | Navigation | 자연어 → POI 후보 (LLM 의도 파악) |
+| `POST /navigation/route` | Navigation | 확정 목적지 → 보행자 경로 + 턴별 TTS |
+| `POST /convenience/query` | Convenience | 주변 편의시설 (약국, ATM, 카페 등) |
+| `POST /halal/query` | Halal | 기도시간 / 키블라 / 할랄식당 / 기도실 |
 
-자연어 메시지 → POI 후보 목록 반환
+---
 
-**Request**
-```json
-{ "message": "캄풍쿠 어떻게 가?", "lat": 37.5636, "lng": 126.9822 }
+## Halal Agent
+
+무슬림 관광객 전용 4가지 카테고리:
+
+| category | 데이터 소스 | 설명 |
+|---|---|---|
+| `prayer_time` | Aladhan API | 5회 기도 시간 + Hijri 날짜 + 다음 기도 안내 |
+| `qibla` | Aladhan API | 메카 방향 나침반 각도 |
+| `restaurant` | JSON (20개) | 할랄 식당 (HALAL_MEAT/SEAFOOD/VEGGIE 필터) |
+| `prayer_room` | JSON (10개) | 기도실 (시설/이용 상태) |
+
+---
+
+## Place Insight Agent
+
+VWorld 건물 폴리곤(29,831건) + Shapely STRtree 레이캐스팅으로 건물 인식.
+
+```
+사용자 GPS + heading → STRtree 레이캐스팅 (3ms) → 건물 매칭 → GPT-4o 도슨트
 ```
 
-**Response**
-```json
-{
-  "speech": "'캄풍쿠' 찾았어요. 서울 중구 남산동2가. 이 곳으로 안내할까요?",
-  "candidates": [
-    { "poi_id": "374469", "name": "캄풍쿠", "address": "서울 중구 남산동2가 16-4",
-      "pns_lat": 37.55820, "pns_lon": 126.98490, "recommended": true }
-  ],
-  "intent": "specific_place",
-  "language": "ko"
-}
+지원 건물 (상세 정보): 롯데백화점, 신세계백화점, 명동성당, 눈스퀘어, 명동예술극장, N서울타워, 롯데시티호텔, 유네스코회관, 포스트타워, 대신파이낸스센터
+
+---
+
+## Navigation Agent
+
+```
+1단계: 자연어 → LLM 의도 파악 → TMAP POI 검색 → 후보 반환
+2단계: 확정 목적지 → TMAP 보행자 경로 → LLM 턴별 TTS (한/영/아랍어)
 ```
 
 ---
 
-### POST /navigation/route
+## 프론트엔드
 
-확정된 목적지 → 보행자 경로 + 턴별 TTS 안내
+| 프로젝트 | 역할 | API |
+|---|---|---|
+| `frontend/` | 건물 인식 AR | `/place/query` |
+| `ar-navigation/` | AR 길찾기 | `/navigation/search`, `/navigation/route` |
 
-**Request**
-```json
-{
-  "lat": 37.5636, "lng": 126.9822,
-  "destination": { "poi_id": "374469", "pns_lat": 37.55820, "pns_lon": 126.98490, "name": "캄풍쿠" },
-  "language": "ko"
-}
-```
-
-**Response**
-```json
-{
-  "speech": "출발합니다. 캄풍쿠까지 350m, 약 7분 소요됩니다.",
-  "ar_command": {
-    "type": "start_navigation",
-    "route_line": [{ "lat": 37.563, "lng": 126.982 }],
-    "turn_points": [
-      { "lat": 37.563, "lng": 126.982, "pointType": "SP", "turnType": 200,
-        "speech": "출발합니다. 캄풍쿠까지 350m, 약 7분 소요됩니다.", "segment_distance_m": 0,
-        "description": "출발", "nearPoiName": "", "intersectionName": "", "facilityType": "" },
-      { "lat": 37.561, "lng": 126.983, "pointType": "GP", "turnType": 13,
-        "speech": "GS25 명동점에서 우회전하세요.", "segment_distance_m": 150,
-        "description": "우회전", "nearPoiName": "GS25 명동점", "intersectionName": "명동사거리", "facilityType": "" },
-      { "lat": 37.558, "lng": 126.985, "pointType": "EP", "turnType": 201,
-        "speech": "목적지 캄풍쿠에 도착했습니다.", "segment_distance_m": 200,
-        "description": "도착", "nearPoiName": "", "intersectionName": "", "facilityType": "" }
-    ],
-    "destination": { "lat": 37.5582, "lng": 126.9849, "name": "캄풍쿠" },
-    "total_distance_m": 350,
-    "total_time_min": 7
-  }
-}
-```
-
----
-
-### POST /place/query
-
-ARCore가 인식한 건물 → AR 오버레이 데이터 + TTS 도슨트 반환
-
-**Request**
-```json
-{
-  "place_id": "myeongdong_cathedral",
-  "user_message": "What is this building?",
-  "user_lat": 37.5628,
-  "user_lng": 126.9875,
-  "language": "en"
-}
-```
-
-**Response**
-```json
-{
-  "ar_overlay": {
-    "name": "명동성당",
-    "category": "여행",
-    "floor_info": [
-      { "floor": "1F", "stores": ["Main cathedral hall"] },
-      { "floor": "B1", "stores": ["Café", "Gift shop"] }
-    ],
-    "halal_info": "",
-    "image_url": "https://...",
-    "homepage": "https://www.mdsd.or.kr",
-    "open_hours": "06:00~21:00",
-    "closed_days": "",
-    "parking_info": "",
-    "admission_fee": "무료"
-  },
-  "docent": {
-    "speech": "This is Myeongdong Cathedral, completed in 1898. Korea's first Gothic-style Catholic cathedral and one of Seoul's most iconic landmarks.",
-    "follow_up_suggestions": [
-      "What's on each floor?",
-      "What's nearby to eat?",
-      "Is there a prayer room nearby?"
-    ]
-  }
-}
-```
-
----
-
-### POST /place/store
-
-층별 매장 탭 → 매장 상세 정보 반환 (Kakao on-demand + Chroma 캐싱)
-
-**Request**
-```json
-{
-  "place_id": "lotte_dept_myeongdong",
-  "store_name": "스타벅스",
-  "user_lat": 37.5631,
-  "user_lng": 126.9879
-}
-```
-
-**Response**
-```json
-{
-  "store_name": "스타벅스",
-  "place_id": "lotte_dept_myeongdong",
-  "name_ko": "스타벅스 롯데백화점 명동본점",
-  "category": "음식점",
-  "addr": "서울 중구 남대문로 81",
-  "phone": "02-000-0000",
-  "place_url": "https://place.map.kakao.com/..."
-}
-```
-
----
-
-## Navigation Agent 동작 흐름
-
-```
-[1단계] POST /navigation/search
-  사용자: "캄풍쿠 어떻게 가?"
-        ↓
-  Step 0: LLM → 키워드 추출 + 의도 분류 + 언어 감지
-          { "keyword": "캄풍쿠", "intent": "specific_place", "language": "ko" }
-        ↓
-  Step 1: TMAP POI 검색 (5km 반경 → 없으면 전국 fallback)
-        ↓
-  Step 2: LLM → 최적 POI 선택 (specific_place만)
-        ↓
-  응답: speech + candidates[] → 앱에서 사용자 확인
-
-[2단계] POST /navigation/route
-  확정된 목적지 전달
-        ↓
-  Step 3: TMAP 보행자 경로 계산
-        ↓
-  Step 4: LLM → 턴포인트별 TTS 문구 일괄 생성
-        ↓
-  응답: ar_command { route_line, turn_points }
-```
-
----
-
-## Place Insight Agent 동작 흐름
-
-```
-[ARCore: 건물 인식 → place_id 결정]
-        ↓
-POST /place/query
-        ↓
-  Chroma place_info 컬렉션에서 place_id로 직접 조회
-        ↓
-  ar_overlay: RAG 데이터 그대로 반환 (LLM 없음)
-  docent:     gpt-4o로 자연어 해설 생성 (language 파라미터 언어로)
-        ↓
-  응답: ar_overlay + docent
-
-[사용자가 층별 매장 탭]
-        ↓
-POST /place/store
-        ↓
-  Chroma store_detail 캐시 확인
-    hit  → 바로 반환
-    miss → Kakao API 호출 → 캐시 저장 → 반환
-```
+API 키는 각 프로젝트의 `local.properties`에서 관리 (Git 추적 안 됨).
 
 ---
 
 ## 다국어 지원
 
-`language` 파라미터 기준으로 입력 언어와 동일하게 응답합니다.
-
-| language | 입력 예시 | 응답 언어 |
-|---|---|---|
-| `ko` | "이 건물 뭐야?" | 한국어 |
-| `en` | "What is this building?" | English |
-| `ar` | "ما هذا المبنى؟" | اللغة العربية |
-
----
-
-## turnType 코드표
-
-| turnType | 의미 |
+| language | 응답 언어 |
 |---|---|
-| 11 | 직진 |
-| 12 | 좌회전 |
-| 13 | 우회전 |
-| 14 | 유턴 |
-| 16 | 8시 방향 (좌측 사선) |
-| 17 | 10시 방향 (우측 사선) |
-| 125 | 육교 |
-| 126 | 지하보도 |
-| 127 | 계단 |
-| 200 | 출발 (SP) |
-| 201 | 도착 (EP) |
+| `ko` | 한국어 |
+| `en` | English |
+| `ar` | العربية |
+| `ja` | 日本語 |
+| `zh` | 中文 |
