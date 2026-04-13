@@ -23,6 +23,8 @@ import com.scanpang.app.screens.ar.ArExploreScreen
 import com.scanpang.app.screens.common.PlaceholderScreen
 import com.scanpang.app.screens.detail.PrayerRoomDetailScreen
 import com.scanpang.app.screens.detail.RestaurantDetailScreen
+import com.scanpang.app.screens.halal.NearbyHalalRestaurantsScreen
+import com.scanpang.app.screens.halal.NearbyPrayerRoomsScreen
 import com.scanpang.app.screens.home.HomeScreen
 import com.scanpang.app.screens.profile.ProfileScreen
 import com.scanpang.app.screens.saved.SavedPlacesScreen
@@ -96,14 +98,14 @@ fun ScanPangNavHost(
                 )
             }
             composable(HomeRoutes.NEARBY_HALAL) {
-                PlaceholderScreen(
-                    title = "주변 할랄 식당",
+                NearbyHalalRestaurantsScreen(
+                    navController = navController,
                     onBack = { navController.popBackStack() },
                 )
             }
             composable(HomeRoutes.NEARBY_PRAYER) {
-                PlaceholderScreen(
-                    title = "주변 기도실",
+                NearbyPrayerRoomsScreen(
+                    navController = navController,
                     onBack = { navController.popBackStack() },
                 )
             }
