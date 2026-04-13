@@ -188,7 +188,7 @@ def halal_restaurant_search(
         })
 
     results.sort(key=lambda x: x["distance_m"])
-    return results[:10]
+    return results[:20]
 
 
 def _dict_to_today_str(val) -> str:
