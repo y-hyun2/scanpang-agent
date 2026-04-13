@@ -7,6 +7,8 @@ from schemas.store import StoreRequest
 from tools.store_tools import get_store_detail
 from schemas.convenience import ConvenienceRequest
 from agents.convenience_agent import run_convenience_agent
+from schemas.halal import HalalRequest
+from agents.halal_agent import run_halal_agent
 
 app = FastAPI(title="ScanPang Navigation API")
 
@@ -51,3 +53,12 @@ async def convenience_query(req: ConvenienceRequest):
     category 있으면 LLM 없이 바로 검색, message만 있으면 LLM으로 카테고리 추출
     """
     return await run_convenience_agent(req)
+
+
+@app.post("/halal/query")
+async def halal_query(req: HalalRequest):
+    """
+    Halal Agent: 기도 시간, 키블라 방향, 할랄 식당, 기도실
+    category: prayer_time | qibla | restaurant | prayer_room
+    """
+    return await run_halal_agent(req)

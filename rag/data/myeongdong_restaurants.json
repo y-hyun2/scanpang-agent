@@ -1,0 +1,449 @@
+[
+  {
+    "restaurant_id": "00001",
+    "name_ko": "대복",
+    "name_en": "Daebok",
+    "area_major": "명동",
+    "halal_type": "SEAFOOD SALAM SEOUL",
+    "muslim_cooks_available": null,
+    "no_alcohol_sales": null,
+    "cuisine_type": [
+      "기타"
+    ],
+    "food_keywords": [
+      "Seasoned with Soybean Paste",
+      "활복탕+회",
+      "Live Blowfish Soup+Sliced Raw Fish"
+    ],
+    "menu_examples": [
+      {
+        "name_ko": "복매운탕",
+        "name_en": "Spicy Blowfish Soup",
+        "price_krw": 27000
+      },
+      {
+        "name_ko": "참복지리",
+        "name_en": "Tiger Puffer Fish Soup",
+        "price_krw": 27000
+      },
+      {
+        "name_ko": "된장지리",
+        "name_en": "Fish Soup Seasoned with Soybean Paste",
+        "price_krw": 27000
+      },
+      {
+        "name_ko": "활복탕+회",
+        "name_en": "Live Blowfish Soup+Sliced Raw Fish",
+        "price_krw": 65000
+      }
+    ],
+    "short_description_ko": "1970년대부터 복지리의 진수를 전해온 전통 복어요리 전문점",
+    "address": "서울 중구 세종대로14길 22 1층",
+    "phone": "(+82) 02-755-0189",
+    "opening_hours": {
+      "mon": "11:30-22:00",
+      "tue": "11:30-22:00",
+      "wed": "11:30-22:00",
+      "thu": "11:30-22:00",
+      "fri": "11:30-22:00",
+      "sat": "10:00-22:00",
+      "sun": "closed"
+    },
+    "break_time": {
+      "mon": "15:00-17:00",
+      "tue": "15:00-17:00",
+      "wed": "15:00-17:00",
+      "thu": "15:00-17:00",
+      "fri": "15:00-17:00",
+      "sat": "15:00-17:00",
+      "sun": null
+    },
+    "last_order": {
+      "mon": null,
+      "tue": null,
+      "wed": null,
+      "thu": null,
+      "fri": null,
+      "sat": null,
+      "sun": null
+    },
+    "latitude": 37.5627998606316,
+    "longitude": 126.977930950651
+  },
+  {
+    "restaurant_id": "00002",
+    "name_ko": "희락갈치",
+    "name_en": "Huirak Galchi",
+    "area_major": "명동",
+    "halal_type": "SEAFOOD SALAM SEOUL",
+    "address": "서울 중구 남대문시장길 22-6",
+    "phone": "(+82) 02-755-3449",
+    "opening_hours": {
+      "mon": "07:00-21:00",
+      "tue": "07:00-21:00",
+      "wed": "07:00-21:00",
+      "thu": "07:00-21:00",
+      "fri": "07:00-21:00",
+      "sat": "07:00-21:00",
+      "sun": "closed"
+    },
+    "latitude": 37.559902542991,
+    "longitude": 126.977077182341
+  },
+  {
+    "restaurant_id": "00003",
+    "name_ko": "중앙갈치식당",
+    "name_en": "Jungang Galchi Restaurant",
+    "area_major": "명동",
+    "halal_type": "SEAFOOD SALAM SEOUL",
+    "address": "서울 중구 남대문시장길 22-12",
+    "opening_hours": {
+      "mon": "08:30-21:00",
+      "tue": "08:30-21:00",
+      "wed": "08:30-21:00",
+      "thu": "08:30-21:00",
+      "fri": "08:30-21:00",
+      "sat": "08:30-21:00",
+      "sun": "08:30-21:00"
+    },
+    "latitude": 37.5597882067481,
+    "longitude": 126.977078575528
+  },
+  {
+    "restaurant_id": "00004",
+    "name_ko": "넥타이맨갈치동태",
+    "name_en": "Necktie Man Galchi Dongtae",
+    "area_major": "명동",
+    "halal_type": "SEAFOOD SALAM SEOUL",
+    "address": "서울 중구 남대문시장길 18-9",
+    "opening_hours": {
+      "mon": "07:30-20:00",
+      "tue": "07:30-20:00",
+      "wed": "07:30-20:00",
+      "thu": "07:30-20:00",
+      "fri": "07:30-20:00",
+      "sat": "07:30-20:00",
+      "sun": "closed every other week"
+    },
+    "latitude": 37.5596682721994,
+    "longitude": 126.977017608388
+  },
+  {
+    "restaurant_id": "00005",
+    "name_ko": "봉추찜닭 명동중앙우체국점",
+    "name_en": "Bongchu Jjimdak",
+    "area_major": "명동",
+    "halal_type": "SALAM SEOUL",
+    "address": "서울 중구 명동8나길 47",
+    "opening_hours": {
+      "mon": "11:00-21:30",
+      "tue": "11:00-21:30",
+      "wed": "11:00-21:30",
+      "thu": "11:00-21:30",
+      "fri": "11:00-21:30",
+      "sat": "11:00-21:30",
+      "sun": "11:00-21:30"
+    },
+    "latitude": 37.5610635616056,
+    "longitude": 126.982277079998
+  },
+  {
+    "restaurant_id": "00006",
+    "name_ko": "부산집 후라이드치킨",
+    "name_en": "Busanjib Fried Chicken",
+    "area_major": "명동",
+    "halal_type": "HALAL MEAT SALAM SEOUL",
+    "muslim_cooks_available": true,
+    "no_alcohol_sales": true,
+    "address": "서울 중구 명동8길 11-4",
+    "opening_hours": {
+      "mon": "11:00-22:00",
+      "tue": "11:00-22:00",
+      "wed": "11:00-22:00",
+      "thu": "11:00-22:00",
+      "fri": "11:00-22:00",
+      "sat": "11:00-22:00",
+      "sun": "11:00-22:00"
+    },
+    "latitude": 37.56314071724,
+    "longitude": 126.984851886132
+  },
+  {
+    "restaurant_id": "00007",
+    "name_ko": "명동부산집",
+    "name_en": "Myeongdong Busanjib",
+    "area_major": "명동",
+    "halal_type": "HALAL MEAT SALAM SEOUL",
+    "muslim_cooks_available": true,
+    "no_alcohol_sales": true,
+    "address": "서울 중구 명동8길 11-6",
+    "opening_hours": {
+      "mon": "11:00-22:00",
+      "tue": "11:00-22:00",
+      "wed": "11:00-22:00",
+      "thu": "11:00-22:00",
+      "fri": "11:00-22:00",
+      "sat": "11:00-22:00",
+      "sun": "11:00-22:00"
+    },
+    "latitude": 37.563160464697,
+    "longitude": 126.984974235146
+  },
+  {
+    "restaurant_id": "00008",
+    "name_ko": "명동충무김밥",
+    "name_en": "Myeongdong Chungmu Gimbap",
+    "area_major": "명동",
+    "halal_type": "SALAM SEOUL",
+    "address": "서울 중구 명동10길 16",
+    "opening_hours": {
+      "mon": "09:30-22:00",
+      "tue": "09:30-22:00",
+      "wed": "09:30-22:00",
+      "thu": "09:30-22:00",
+      "fri": "09:30-22:00",
+      "sat": "09:00-22:00",
+      "sun": "09:00-22:00"
+    },
+    "latitude": 37.5631380580384,
+    "longitude": 126.985197100893
+  },
+  {
+    "restaurant_id": "00009",
+    "name_ko": "구르카 인도레스토랑",
+    "name_en": "Gurkha India Restaurant",
+    "area_major": "명동",
+    "halal_type": "HALAL MEAT SALAM SEOUL",
+    "address": "서울 중구 명동10길 16-1 지상 5층 구르카",
+    "opening_hours": {
+      "mon": "11:00-23:00",
+      "tue": "11:00-23:00",
+      "wed": "11:00-23:00",
+      "thu": "11:00-23:00",
+      "fri": "11:00-23:00",
+      "sat": "11:00-23:00",
+      "sun": "11:00-23:00"
+    },
+    "latitude": 37.5630678689105,
+    "longitude": 126.985185117182
+  },
+  {
+    "restaurant_id": "00010",
+    "name_ko": "함초간장게장",
+    "name_en": "Hamcho Ganjang Gejang",
+    "area_major": "명동",
+    "halal_type": "SEAFOOD SALAM SEOUL",
+    "address": "서울 중구 명동8가길 27 지하 1",
+    "opening_hours": {
+      "mon": "11:30-22:00",
+      "tue": "11:30-22:00",
+      "wed": "11:30-22:00",
+      "thu": "11:30-22:00",
+      "fri": "11:30-22:00",
+      "sat": "11:30-22:00",
+      "sun": "11:30-22:00"
+    },
+    "latitude": 37.5620005331406,
+    "longitude": 126.986563787577
+  },
+  {
+    "restaurant_id": "00011",
+    "name_ko": "레팍라식당",
+    "name_en": "Lepak Laa",
+    "area_major": "명동",
+    "halal_type": "HALAL MEAT SALAM SEOUL",
+    "muslim_cooks_available": true,
+    "no_alcohol_sales": true,
+    "address": "서울 중구 퇴계로24길 2",
+    "opening_hours": {
+      "mon": "10:30-22:00",
+      "tue": "10:30-22:00",
+      "wed": "10:30-22:00",
+      "thu": "10:30-22:00",
+      "fri": "10:30-22:00",
+      "sat": "10:30-22:00",
+      "sun": "10:30-22:00"
+    },
+    "latitude": 37.5607597227316,
+    "longitude": 126.986940678078
+  },
+  {
+    "restaurant_id": "00012",
+    "name_ko": "명동채움 한정식",
+    "name_en": "Myeongdong Chaeum Hanjongshik",
+    "area_major": "명동",
+    "halal_type": "HALAL MEAT SALAM SEOUL",
+    "muslim_cooks_available": true,
+    "no_alcohol_sales": true,
+    "address": "서울 중구 퇴계로18길 7 지하2층",
+    "opening_hours": {
+      "mon": "11:00-22:00",
+      "tue": "11:00-22:00",
+      "wed": "11:00-22:00",
+      "thu": "11:00-22:00",
+      "fri": "11:00-22:00",
+      "sat": "11:00-22:00",
+      "sun": "11:00-22:00"
+    },
+    "latitude": 37.5603587467134,
+    "longitude": 126.985876395948
+  },
+  {
+    "restaurant_id": "00013",
+    "name_ko": "발리홀리데이",
+    "name_en": "Bali Holiday",
+    "area_major": "명동",
+    "halal_type": "HALAL MEAT SALAM SEOUL",
+    "muslim_cooks_available": true,
+    "no_alcohol_sales": true,
+    "address": "서울 중구 퇴계로20길 15, 2층",
+    "opening_hours": {
+      "mon": "10:00-22:00",
+      "tue": "10:00-22:00",
+      "wed": "10:00-22:00",
+      "thu": "10:00-22:00",
+      "fri": "10:00-22:00",
+      "sat": "10:00-22:00",
+      "sun": "10:00-22:00"
+    },
+    "latitude": 37.5594977545052,
+    "longitude": 126.98588040657
+  },
+  {
+    "restaurant_id": "00014",
+    "name_ko": "매화양꼬치 명동점",
+    "name_en": "MaeHwa Lamb Skewers Myeongdong",
+    "area_major": "명동",
+    "halal_type": "HALAL MEAT SALAM SEOUL",
+    "address": "서울 중구 퇴계로20길 15 1층",
+    "opening_hours": {
+      "mon": "11:00-22:20",
+      "tue": "11:00-22:20",
+      "wed": "11:00-22:20",
+      "thu": "11:00-22:20",
+      "fri": "11:00-22:20",
+      "sat": "11:00-22:20",
+      "sun": "11:00-22:20"
+    },
+    "latitude": 37.5594977545052,
+    "longitude": 126.98588040657
+  },
+  {
+    "restaurant_id": "00015",
+    "name_ko": "비건키친",
+    "name_en": "Vegan Kitchen",
+    "area_major": "명동",
+    "halal_type": "VEGGIE SALAM SEOUL",
+    "address": "서울 중구 퇴계로20길 21 1층",
+    "opening_hours": {
+      "mon": "10:30-22:00",
+      "tue": "10:30-22:00",
+      "wed": "10:30-22:00",
+      "thu": "10:30-22:00",
+      "fri": "10:30-22:00",
+      "sat": "10:30-22:00",
+      "sun": "10:30-22:00"
+    },
+    "latitude": 37.559260082877,
+    "longitude": 126.9859759746
+  },
+  {
+    "restaurant_id": "00016",
+    "name_ko": "캄풍쿠",
+    "name_en": "KAMPUNGKU",
+    "area_major": "명동",
+    "halal_type": "HALAL MEAT SALAM SEOUL",
+    "muslim_cooks_available": true,
+    "no_alcohol_sales": true,
+    "address": "서울 중구 퇴계로20길 25 1,2층",
+    "opening_hours": {
+      "mon": "11:00-22:00",
+      "tue": "11:00-22:00",
+      "wed": "11:00-22:00",
+      "thu": "11:00-22:00",
+      "fri": "11:00-22:00",
+      "sat": "11:00-22:00",
+      "sun": "11:00-22:00"
+    },
+    "latitude": 37.5590605188786,
+    "longitude": 126.986033733202
+  },
+  {
+    "restaurant_id": "00017",
+    "name_ko": "램캠프",
+    "name_en": "Lamb Camp",
+    "area_major": "명동",
+    "halal_type": "SALAM SEOUL",
+    "address": "서울 중구 퇴계로20길 46",
+    "opening_hours": {
+      "mon": "11:00-22:00",
+      "tue": "11:00-22:00",
+      "wed": "11:00-22:00",
+      "thu": "11:00-22:00",
+      "fri": "11:00-22:00",
+      "sat": "11:00-22:00",
+      "sun": "closed"
+    },
+    "latitude": 37.5582620938997,
+    "longitude": 126.986364813572
+  },
+  {
+    "restaurant_id": "00018",
+    "name_ko": "부산집 KBBQ",
+    "name_en": "Busanjib KBBQ",
+    "area_major": "명동",
+    "halal_type": "HALAL MEAT SALAM SEOUL",
+    "muslim_cooks_available": true,
+    "no_alcohol_sales": true,
+    "address": "서울 중구 퇴계로20길 46",
+    "opening_hours": {
+      "mon": "12:00-22:30",
+      "tue": "12:00-22:30",
+      "wed": "12:00-22:30",
+      "thu": "12:00-22:30",
+      "fri": "12:00-22:30",
+      "sat": "12:00-22:30",
+      "sun": "12:00-22:30"
+    },
+    "latitude": 37.5582620938997,
+    "longitude": 126.986364813572
+  },
+  {
+    "restaurant_id": "00019",
+    "name_ko": "명동정",
+    "name_en": "Myeongdongjeong",
+    "area_major": "명동",
+    "halal_type": "HALAL MEAT SALAM SEOUL",
+    "address": "서울 중구 퇴계로20길 46",
+    "opening_hours": {
+      "mon": "11:00-21:30",
+      "tue": "11:00-21:30",
+      "wed": "11:00-21:30",
+      "thu": "11:00-21:30",
+      "fri": "11:00-21:30",
+      "sat": "11:00-21:30",
+      "sun": "11:00-21:30"
+    },
+    "latitude": 37.5582620938997,
+    "longitude": 126.986364813572
+  },
+  {
+    "restaurant_id": "00020",
+    "name_ko": "유숙단부자낙지",
+    "name_en": "Yusukdan Buja Nakji",
+    "area_major": "명동",
+    "halal_type": "SEAFOOD SALAM SEOUL",
+    "address": "서울 중구 퇴계로20길 46",
+    "opening_hours": {
+      "mon": "11:00-23:00",
+      "tue": "11:00-23:00",
+      "wed": "11:00-23:00",
+      "thu": "11:00-23:00",
+      "fri": "11:00-23:00",
+      "sat": "closed",
+      "sun": "closed"
+    },
+    "latitude": 37.5582620938997,
+    "longitude": 126.986364813572
+  }
+]

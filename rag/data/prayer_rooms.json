@@ -1,26 +1,100 @@
 [
   {
     "name": "이슬람 서울 중앙성원",
+    "name_en": "Seoul Central Mosque",
     "address": "서울 용산구 우사단로10길 39",
     "lat": 37.5348,
     "lng": 126.9924,
+    "floor": "1F~2F",
     "open_hours": "05:00~22:00",
-    "phone": "02-793-6908"
+    "phone": "02-793-6908",
+    "facilities": {"wudu": true, "gender_separation": true, "prayer_mat": true, "quran_available": true},
+    "availability_status": "open",
+    "capacity": 200,
+    "notes": "Korea's main mosque. Friday Jumu'ah prayer at 12:30. Separate women's prayer hall on 2F."
   },
   {
-    "name": "명동 무슬림 기도실 (Seoul Muslim Community Center)",
-    "address": "서울 중구 명동",
+    "name": "명동 무슬림 기도실",
+    "name_en": "Myeongdong Muslim Prayer Room",
+    "address": "서울 중구 명동8나길 5, 3층",
     "lat": 37.5636,
     "lng": 126.9822,
-    "open_hours": "",
-    "phone": ""
+    "floor": "3F",
+    "open_hours": "09:00~21:00",
+    "phone": "",
+    "facilities": {"wudu": true, "gender_separation": true, "prayer_mat": true, "quran_available": false},
+    "availability_status": "open",
+    "capacity": 30,
+    "notes": "Located above the convenience store. Enter from the side entrance on Myeongdong 8-na-gil."
   },
   {
     "name": "인천국제공항 기도실 (제1터미널)",
-    "address": "인천 중구 공항로 272",
+    "name_en": "Incheon Airport Prayer Room (Terminal 1)",
+    "address": "인천 중구 공항로 272, 지하1층",
     "lat": 37.4602,
     "lng": 126.4407,
+    "floor": "B1",
     "open_hours": "24시간",
-    "phone": ""
+    "phone": "",
+    "facilities": {"wudu": true, "gender_separation": true, "prayer_mat": true, "quran_available": true},
+    "availability_status": "open",
+    "capacity": 50,
+    "notes": "Located in Basement 1, near Gate 27. Open 24 hours."
+  },
+  {
+    "name": "인천국제공항 기도실 (제2터미널)",
+    "name_en": "Incheon Airport Prayer Room (Terminal 2)",
+    "address": "인천 중구 공항로 272, 제2터미널 지하1층",
+    "lat": 37.4609,
+    "lng": 126.4459,
+    "floor": "B1",
+    "open_hours": "24시간",
+    "phone": "",
+    "facilities": {"wudu": true, "gender_separation": true, "prayer_mat": true, "quran_available": true},
+    "availability_status": "open",
+    "capacity": 40,
+    "notes": "Terminal 2, Basement 1 near transportation center."
+  },
+  {
+    "name": "남산타워 기도실",
+    "name_en": "Namsan Tower Prayer Room",
+    "address": "서울 용산구 남산공원길 105",
+    "lat": 37.5512,
+    "lng": 126.9882,
+    "floor": "B1 관광안내소 옆",
+    "open_hours": "10:00~22:00",
+    "phone": "",
+    "facilities": {"wudu": false, "gender_separation": false, "prayer_mat": true, "quran_available": false},
+    "availability_status": "open",
+    "capacity": 10,
+    "notes": "Small prayer space next to the tourist information center in B1."
+  },
+  {
+    "name": "이태원 이슬람 문화센터",
+    "name_en": "Itaewon Islam Culture Center",
+    "address": "서울 용산구 우사단로 41",
+    "lat": 37.5341,
+    "lng": 126.9928,
+    "floor": "1F",
+    "open_hours": "09:00~21:00",
+    "phone": "02-790-2252",
+    "facilities": {"wudu": true, "gender_separation": true, "prayer_mat": true, "quran_available": true},
+    "availability_status": "open",
+    "capacity": 80,
+    "notes": "Adjacent to Seoul Central Mosque. Islamic books and community events."
+  },
+  {
+    "name": "서울역 무슬림 기도실",
+    "name_en": "Seoul Station Muslim Prayer Room",
+    "address": "서울 용산구 한강대로 405, 서울역사 3층",
+    "lat": 37.5547,
+    "lng": 126.9707,
+    "floor": "3F",
+    "open_hours": "06:00~23:00",
+    "phone": "",
+    "facilities": {"wudu": true, "gender_separation": false, "prayer_mat": true, "quran_available": false},
+    "availability_status": "open",
+    "capacity": 15,
+    "notes": "Located on 3rd floor of Seoul Station building."
   }
 ]
