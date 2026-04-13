@@ -226,6 +226,7 @@ fun HomeScreen(
                 QuickAction(
                     icon = { Icon(Icons.Filled.Translate, null, tint = c.iconMuted, modifier = Modifier.size(24.dp)) },
                     label = "실시간 번역",
+                    onClick = { },
                     enabled = false,
                     modifier = Modifier.weight(1f),
                 )
