@@ -3,24 +3,35 @@ package com.hufs.arnavigation_com.util;
 import android.view.Choreographer;
 
 /**
- * Java로 작성한 FrameCallback.
- * Kotlin 2.0 K2 컴파일러의 Choreographer.FrameCallback SAM 변환 버그를 우회.
+ * Choreographer.FrameCallback을 Java에서 관리.
+ * Kotlin에서는 start()/stop()만 호출.
  */
-public class ArFrameCallback implements Choreographer.FrameCallback {
+public class ArFrameCallback {
 
-    public interface FrameAction {
-        void onFrame();
-    }
+    private final Runnable action;
+    private boolean running = false;
 
-    private final FrameAction action;
+    private final Choreographer.FrameCallback internalCallback = new Choreographer.FrameCallback() {
+        @Override
+        public void doFrame(long frameTimeNanos) {
+            if (running) {
+                action.run();
+                Choreographer.getInstance().postFrameCallback(this);
+            }
+        }
+    };
 
-    public ArFrameCallback(FrameAction action) {
+    public ArFrameCallback(Runnable action) {
         this.action = action;
     }
 
-    @Override
-    public void doFrame(long frameTimeNanos) {
-        action.onFrame();
-        Choreographer.getInstance().postFrameCallback(this);
+    public void start() {
+        running = true;
+        Choreographer.getInstance().postFrameCallback(internalCallback);
+    }
+
+    public void stop() {
+        running = false;
+        Choreographer.getInstance().removeFrameCallback(internalCallback);
     }
 }

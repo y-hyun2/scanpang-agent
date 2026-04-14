@@ -6,7 +6,6 @@ import android.content.pm.PackageManager
 import android.graphics.Color
 import android.location.Location
 import android.os.Bundle
-import android.view.Choreographer
 import android.view.Gravity
 import android.view.inputmethod.InputMethodManager
 import android.widget.FrameLayout
@@ -21,6 +20,7 @@ import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
 import com.google.ar.core.Config
 import com.google.ar.core.TrackingState
+import com.scanpang.app.R
 import com.scanpang.app.databinding.ActivityArNavigationBinding
 import com.scanpang.arnavigation.data.remote.dto.NavRouteResponse
 import com.scanpang.arnavigation.data.remote.dto.TmapRouteResponse
@@ -84,9 +84,9 @@ class ArNavigationActivity : AppCompatActivity() {
     private var targetDotAngle = 0f
     private var dotAnimator: android.animation.ValueAnimator? = null
 
-    private val frameCallback = com.hufs.arnavigation_com.util.ArFrameCallback {
-        updateGeospatialAndChunk()
-    }
+    private val frameCallback = com.hufs.arnavigation_com.util.ArFrameCallback(
+        Runnable { updateGeospatialAndChunk() }
+    )
 
     private val requestPermissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
@@ -116,7 +116,7 @@ class ArNavigationActivity : AppCompatActivity() {
 
     override fun onDestroy() {
         super.onDestroy()
-        Choreographer.getInstance().removeFrameCallback(frameCallback)
+        frameCallback.stop()
         activeArNodes.values.forEach { it.destroy() }
     }
 
@@ -170,7 +170,7 @@ class ArNavigationActivity : AppCompatActivity() {
         sceneView.scene.addEntity(lightEntity)
 
         sceneView.onSessionUpdated = { _, frame -> latestFrame = frame }
-        Choreographer.getInstance().postFrameCallback(frameCallback)
+        frameCallback.start()
     }
 
     private fun setupOverlayUI() {
