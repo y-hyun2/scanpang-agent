@@ -1,5 +1,7 @@
 package com.scanpang.app.screens
 
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -55,7 +57,27 @@ import com.scanpang.app.ui.theme.ScanPangType
 fun HomeScreen(
     navController: NavController,
     modifier: Modifier = Modifier,
+    vm: com.scanpang.app.data.HalalViewModel = androidx.lifecycle.viewmodel.compose.viewModel(),
 ) {
+    val prayerTimes by vm.prayerTimes.collectAsState()
+    val qibla by vm.qibla.collectAsState()
+
+    val qiblaDir = qibla?.direction?.toInt() ?: 232
+    val qiblaCompass = when {
+        qiblaDir >= 292 -> "북서"; qiblaDir >= 247 -> "서"; qiblaDir >= 202 -> "남서"
+        qiblaDir >= 157 -> "남"; qiblaDir >= 112 -> "남동"; qiblaDir >= 67 -> "동"
+        qiblaDir >= 22 -> "북동"; else -> "북"
+    }
+    val qiblaText = "키블라 방향: $qiblaCompass ${qiblaDir}°"
+
+    val nextPrayerText = run {
+        val pt = prayerTimes ?: return@run "다음 기도: 로딩 중..."
+        val now = java.util.Calendar.getInstance()
+        val hhmm = "%02d:%02d".format(now.get(java.util.Calendar.HOUR_OF_DAY), now.get(java.util.Calendar.MINUTE))
+        val prayers = listOf("Fajr" to pt.fajr, "Dhuhr" to pt.dhuhr, "Asr" to pt.asr, "Maghrib" to pt.maghrib, "Isha" to pt.isha)
+        val next = prayers.firstOrNull { it.second > hhmm }
+        if (next != null) "다음 기도: ${next.first} ${next.second}" else "다음 기도: Fajr ${pt.fajr} (내일)"
+    }
     Scaffold(
         modifier = modifier.fillMaxSize(),
         containerColor = ScanPangColors.Surface,
@@ -190,13 +212,13 @@ private fun HomeTopSection(navController: NavController) {
                             tint = ScanPangColors.Primary,
                         )
                         Text(
-                            text = "키블라 방향: 남서 232°",
+                            text = qiblaText,
                             style = ScanPangType.title14,
                             color = ScanPangColors.OnSurfaceStrong,
                         )
                     }
                     Text(
-                        text = "다음 기도: Dhuhr 12:15",
+                        text = nextPrayerText,
                         style = ScanPangType.caption12Medium,
                         color = ScanPangColors.OnSurfaceMuted,
                     )

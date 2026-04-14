@@ -1,5 +1,7 @@
 package com.scanpang.app.screens
 
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -37,7 +39,24 @@ import com.scanpang.app.ui.theme.ScanPangType
 fun QiblaDirectionScreen(
     navController: NavController,
     modifier: Modifier = Modifier,
+    vm: com.scanpang.app.data.HalalViewModel = androidx.lifecycle.viewmodel.compose.viewModel(),
 ) {
+    val prayerTimes by vm.prayerTimes.collectAsState()
+    val qibla by vm.qibla.collectAsState()
+    val qiblaDir = qibla?.direction?.toInt() ?: 232
+    val qiblaCompass = when {
+        qiblaDir >= 292 -> "북서"; qiblaDir >= 247 -> "서"; qiblaDir >= 202 -> "남서"
+        qiblaDir >= 157 -> "남"; qiblaDir >= 112 -> "남동"; qiblaDir >= 67 -> "동"
+        qiblaDir >= 22 -> "북동"; else -> "북"
+    }
+    val nextPrayerText = run {
+        val pt = prayerTimes ?: return@run "Dhuhr 12:15"
+        val now = java.util.Calendar.getInstance()
+        val hhmm = "%02d:%02d".format(now.get(java.util.Calendar.HOUR_OF_DAY), now.get(java.util.Calendar.MINUTE))
+        val prayers = listOf("Fajr" to pt.fajr, "Dhuhr" to pt.dhuhr, "Asr" to pt.asr, "Maghrib" to pt.maghrib, "Isha" to pt.isha)
+        val next = prayers.firstOrNull { it.second > hhmm }
+        if (next != null) "${next.first} ${next.second}" else "Fajr ${pt.fajr}"
+    }
     Scaffold(
         modifier = modifier.fillMaxSize(),
         containerColor = ScanPangColors.Surface,
@@ -75,9 +94,9 @@ fun QiblaDirectionScreen(
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.spacedBy(ScanPangDimens.qiblaCompassSectionGap),
             ) {
-                QiblaCompass(bearingDegrees = 232f)
+                QiblaCompass(bearingDegrees = qiblaDir.toFloat())
                 Text(
-                    text = "남서 232°",
+                    text = "$qiblaCompass ${qiblaDir}°",
                     style = ScanPangType.directionDegree,
                     color = ScanPangColors.Primary,
                 )
@@ -126,7 +145,7 @@ fun QiblaDirectionScreen(
                 }
                 PrayerTimeCard(
                     subtitle = "다음 기도 시간",
-                    prayerNameTime = "Dhuhr 12:15",
+                    prayerNameTime = nextPrayerText,
                     remainingLabel = "2시간 34분 남음",
                 )
             }
