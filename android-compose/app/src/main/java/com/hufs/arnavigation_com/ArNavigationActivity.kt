@@ -84,10 +84,12 @@ class ArNavigationActivity : AppCompatActivity() {
     private var targetDotAngle = 0f
     private var dotAnimator: android.animation.ValueAnimator? = null
 
-    private val frameCallback = object : Choreographer.FrameCallback {
-        override fun doFrame(frameTimeNanos: Long) {
+    private lateinit var frameCallback: Choreographer.FrameCallback
+
+    private fun initFrameCallback() {
+        frameCallback = Choreographer.FrameCallback {
             updateGeospatialAndChunk()
-            Choreographer.getInstance().postFrameCallback(this)
+            Choreographer.getInstance().postFrameCallback(frameCallback)
         }
     }
 
@@ -109,6 +111,7 @@ class ArNavigationActivity : AppCompatActivity() {
         val factory = MainViewModelFactory(repository)
         viewModel = ViewModelProvider(this, factory)[MainViewModel::class.java]
 
+        initFrameCallback()
         setupSearchUI()
         setupOverlayUI()
 
