@@ -128,14 +128,14 @@ fun SearchScreen(
                             label = "할랄 식당",
                             icon = Icons.Rounded.Restaurant,
                             iconTint = ScanPangColors.CategoryRestaurant,
-                            onClick = { },
+                            onClick = { navController.navigate(AppRoutes.DetailNearbyHalal) },
                             modifier = Modifier.weight(1f),
                         )
                         ScanPangCategoryTile(
                             label = "기도실",
                             icon = Icons.Rounded.Mosque,
                             iconTint = ScanPangColors.Primary,
-                            onClick = { },
+                            onClick = { navController.navigate(AppRoutes.DetailNearbyPrayer) },
                             modifier = Modifier.weight(1f),
                         )
                         ScanPangCategoryTile(
@@ -195,8 +195,8 @@ fun SearchScreen(
                     color = ScanPangColors.OnSurfaceStrong,
                 )
                 Column(verticalArrangement = Arrangement.spacedBy(ScanPangSpacing.sm)) {
-                    ScanPangSuggestionRow(title = "주변 할랄 식당 보기", onClick = { })
-                    ScanPangSuggestionRow(title = "주변 기도실 보기", onClick = { })
+                    ScanPangSuggestionRow(title = "주변 할랄 식당 보기", onClick = { navController.navigate(AppRoutes.DetailNearbyHalal) })
+                    ScanPangSuggestionRow(title = "주변 기도실 보기", onClick = { navController.navigate(AppRoutes.DetailNearbyPrayer) })
                     ScanPangSuggestionRow(title = "명동 인기 쇼핑몰", onClick = { })
                     ScanPangSuggestionRow(title = "외국인 인기 관광지", onClick = { })
                 }
