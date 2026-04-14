@@ -84,13 +84,8 @@ class ArNavigationActivity : AppCompatActivity() {
     private var targetDotAngle = 0f
     private var dotAnimator: android.animation.ValueAnimator? = null
 
-    private val frameCallback: Choreographer.FrameCallback = FrameCallbackImpl()
-
-    private inner class FrameCallbackImpl : Choreographer.FrameCallback {
-        override fun doFrame(frameTimeNanos: Long) {
-            updateGeospatialAndChunk()
-            Choreographer.getInstance().postFrameCallback(this)
-        }
+    private val frameCallback = com.hufs.arnavigation_com.util.ArFrameCallback {
+        updateGeospatialAndChunk()
     }
 
     private val requestPermissionLauncher = registerForActivityResult(
