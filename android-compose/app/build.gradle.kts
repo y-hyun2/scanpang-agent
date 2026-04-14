@@ -1,7 +1,16 @@
+import java.util.Properties
+import java.io.FileInputStream
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
     id("org.jetbrains.kotlin.plugin.compose")
+}
+
+val localProperties = Properties()
+val localPropertiesFile = rootProject.file("local.properties")
+if (localPropertiesFile.exists()) {
+    localProperties.load(FileInputStream(localPropertiesFile))
 }
 
 android {
@@ -14,6 +23,16 @@ android {
         targetSdk = 35
         versionCode = 1
         versionName = "1.0"
+
+        val arcoreKey = localProperties.getProperty("ARCORE_API_KEY") ?: ""
+        val geoKey = localProperties.getProperty("GEO_API_KEY") ?: arcoreKey
+        val kakaoKey = localProperties.getProperty("KAKAO_REST_API_KEY") ?: ""
+        val tmapKey = localProperties.getProperty("TMAP_APP_KEY") ?: ""
+
+        manifestPlaceholders["arcoreApiKey"] = arcoreKey
+        manifestPlaceholders["geoApiKey"] = geoKey
+        buildConfigField("String", "KAKAO_REST_API_KEY", "\"$kakaoKey\"")
+        buildConfigField("String", "TMAP_APP_KEY", "\"$tmapKey\"")
     }
 
     buildTypes {
@@ -34,6 +53,8 @@ android {
     }
     buildFeatures {
         compose = true
+        viewBinding = true
+        buildConfig = true
     }
     packaging {
         resources {
@@ -66,7 +87,19 @@ dependencies {
     implementation("com.squareup.retrofit2:retrofit:2.11.0")
     implementation("com.squareup.retrofit2:converter-gson:2.11.0")
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
+    implementation("com.squareup.okhttp3:logging-interceptor:4.12.0")
     implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.8.7")
+
+    // ARCore + SceneView (AR Navigation)
+    implementation("io.github.sceneview:arsceneview:2.3.3")
+    implementation("com.google.ar:core:1.53.0")
+    implementation("com.google.android.gms:play-services-location:21.3.0")
+    implementation("com.google.android.gms:play-services-maps:19.0.0")
+
+    // AR Navigation 추가 의존성
+    implementation("androidx.appcompat:appcompat:1.7.0")
+    implementation("androidx.constraintlayout:constraintlayout:2.1.4")
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3")
 
     val camerax = "1.4.1"
     implementation("androidx.camera:camera-core:$camerax")

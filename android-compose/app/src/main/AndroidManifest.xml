@@ -1,11 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
-    <uses-feature
-        android:name="android.hardware.camera"
-        android:required="false" />
+    <uses-feature android:name="android.hardware.camera" android:required="true" />
+    <uses-feature android:name="android.hardware.camera.ar" android:required="false" />
     <uses-permission android:name="android.permission.CAMERA" />
     <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
 
     <application
         android:allowBackup="true"
@@ -15,6 +16,12 @@
         android:supportsRtl="true"
         android:usesCleartextTraffic="true"
         android:theme="@style/Theme.ScanPang">
+        <!-- ARCore 메타데이터 -->
+        <meta-data android:name="com.google.ar.core" android:value="optional" />
+        <meta-data android:name="com.google.android.ar.API_KEY" android:value="${arcoreApiKey}" />
+        <meta-data android:name="com.google.android.geo.API_KEY" android:value="${geoApiKey}" />
+
+        <!-- 메인 Compose Activity -->
         <activity
             android:name=".MainActivity"
             android:exported="true"
@@ -24,5 +31,12 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <!-- AR Navigation Activity (같은 앱 안에서 Intent로 실행) -->
+        <activity
+            android:name="com.hufs.arnavigation_com.ArNavigationActivity"
+            android:exported="false"
+            android:screenOrientation="portrait"
+            android:theme="@style/Theme.AppCompat.NoActionBar" />
     </application>
 </manifest>

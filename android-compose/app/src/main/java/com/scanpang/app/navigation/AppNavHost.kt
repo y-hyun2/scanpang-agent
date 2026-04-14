@@ -1,8 +1,12 @@
 package com.scanpang.app.navigation
 
+import android.content.Intent
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.navigation.NavHostController
+import com.hufs.arnavigation_com.ArNavigationActivity
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import com.scanpang.app.screens.HomeScreen
@@ -105,6 +109,12 @@ fun AppNavHost(
             ArExploreFreezeScreen(navController = navController)
         }
         composable(AppRoutes.ArNavMap) {
+            // AR Navigation Activity 실행 (같은 앱 내)
+            val context = LocalContext.current
+            LaunchedEffect(Unit) {
+                context.startActivity(Intent(context, ArNavigationActivity::class.java))
+            }
+            // 돌아왔을 때 이전 화면으로
             ArNavigationMapScreen(navController = navController)
         }
         composable(AppRoutes.ArNavAgent) {
