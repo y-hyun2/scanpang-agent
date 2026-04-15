@@ -48,6 +48,11 @@ object AppRoutes {
     const val NearbyHalal = "nearby_halal"
     const val NearbyPrayer = "nearby_prayer"
     const val RestaurantDetail = "restaurant_detail"
+    fun restaurantDetailRoute(name: String, address: String = ""): String {
+        val encodedName = URLEncoder.encode(name, StandardCharsets.UTF_8.name())
+        val encodedAddr = URLEncoder.encode(address, StandardCharsets.UTF_8.name())
+        return "$RestaurantDetail/$encodedName/$encodedAddr"
+    }
     const val PrayerRoomDetail = "prayer_room_detail"
     const val ArExplore = "ar_explore"
     const val ArNavMap = "ar_nav_map"
@@ -116,7 +121,18 @@ fun AppNavHost(
             NearbyPrayerRoomsScreen(navController = navController)
         }
         composable(AppRoutes.RestaurantDetail) {
-            RestaurantDetailScreen(navController = navController)
+            RestaurantDetailScreen(navController = navController, placeName = "", placeAddress = "")
+        }
+        composable(
+            route = "${AppRoutes.RestaurantDetail}/{name}/{address}",
+            arguments = listOf(
+                navArgument("name") { type = NavType.StringType; defaultValue = "" },
+                navArgument("address") { type = NavType.StringType; defaultValue = "" },
+            ),
+        ) { entry ->
+            val name = runCatching { URLDecoder.decode(entry.arguments?.getString("name").orEmpty(), StandardCharsets.UTF_8.name()) }.getOrDefault("")
+            val address = runCatching { URLDecoder.decode(entry.arguments?.getString("address").orEmpty(), StandardCharsets.UTF_8.name()) }.getOrDefault("")
+            RestaurantDetailScreen(navController = navController, placeName = name, placeAddress = address)
         }
         composable(AppRoutes.PrayerRoomDetail) {
             PrayerRoomDetailScreen(navController = navController)

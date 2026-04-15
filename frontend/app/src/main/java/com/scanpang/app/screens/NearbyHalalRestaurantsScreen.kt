@@ -206,7 +206,9 @@ fun NearbyHalalRestaurantsScreen(
                         if (restaurant.no_alcohol_sales) add(SearchResultTrustTag("주류 미판매", Icons.Rounded.NoDrinks))
                     },
                     onClick = {
-                        navController.navigate(AppRoutes.RestaurantDetail) { launchSingleTop = true }
+                        navController.navigate(
+                            AppRoutes.restaurantDetailRoute(restaurant.name_ko, restaurant.address)
+                        ) { launchSingleTop = true }
                     },
                 )
             }

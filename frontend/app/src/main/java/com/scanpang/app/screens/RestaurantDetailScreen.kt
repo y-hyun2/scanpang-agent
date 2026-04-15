@@ -93,6 +93,8 @@ fun RestaurantDetailScreen(
     navController: NavController,
     modifier: Modifier = Modifier,
     viewModel: ScanPangViewModel = viewModel(),
+    placeName: String = "",
+    placeAddress: String = "",
 ) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -102,12 +104,17 @@ fun RestaurantDetailScreen(
     val savedStore = remember { SavedPlacesStore(context) }
 
     val restaurants by viewModel.restaurants.collectAsState()
-    val restaurant = restaurants.firstOrNull()
+    val restaurant = if (placeName.isNotEmpty()) {
+        restaurants.find { it.name_ko == placeName }
+    } else {
+        restaurants.firstOrNull()
+    }
 
-    val DetailPlaceId = restaurant?.restaurant_id ?: DefaultPlaceId
-    val DetailPlaceName = restaurant?.name_ko ?: DefaultPlaceName
+    val DetailPlaceId = restaurant?.restaurant_id ?: placeName.ifEmpty { DefaultPlaceId }
+    val DetailPlaceName = placeName.ifEmpty { restaurant?.name_ko ?: DefaultPlaceName }
     val DetailPlaceCategory = restaurant?.cuisine?.ifEmpty { DefaultPlaceCategory } ?: DefaultPlaceCategory
-    val DetailPlaceDistanceLine = restaurant?.let { "${it.cuisine} · ${it.distance_m}m" } ?: DefaultPlaceDistanceLine
+    val DetailPlaceDistanceLine = if (placeAddress.isNotEmpty()) placeAddress
+        else restaurant?.let { "${it.cuisine} · ${it.distance_m}m" } ?: DefaultPlaceDistanceLine
     val DetailPlaceTags = DefaultPlaceTags
 
     var bookmarked by remember { mutableStateOf(savedStore.isSaved(DetailPlaceId)) }

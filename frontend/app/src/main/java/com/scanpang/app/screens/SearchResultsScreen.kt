@@ -95,7 +95,9 @@ fun SearchResultsScreen(
                     isOpen = true,
                     trustTags = emptyList(),
                     onClick = {
-                        navController.navigate(AppRoutes.RestaurantDetail) { launchSingleTop = true }
+                        navController.navigate(
+                            AppRoutes.restaurantDetailRoute(candidate.name, candidate.address)
+                        ) { launchSingleTop = true }
                     },
                 )
             }
