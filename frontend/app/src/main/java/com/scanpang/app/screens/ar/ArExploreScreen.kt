@@ -2,7 +2,10 @@ package com.scanpang.app.screens.ar
 
 import android.Manifest
 import android.content.pm.PackageManager
+import android.location.Location
+import android.opengl.Matrix
 import android.speech.SpeechRecognizer
+import android.util.Log
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
@@ -12,6 +15,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -53,28 +57,40 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.mutableStateListOf
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.foundation.layout.offset
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import androidx.navigation.NavController
+import com.google.ar.core.Anchor
+import com.google.ar.core.Config
+import com.google.ar.core.Earth
+import com.google.ar.core.TrackingState
 import com.scanpang.app.ar.ArExploreTtsController
 import com.scanpang.app.ar.ArSpeechRecognizerHelper
-import android.content.Intent
 import com.scanpang.app.ar.ScanPangAgentService
 import com.scanpang.app.ar.sendVoiceMessage
-import com.scanpang.app.ar.explore.PlaceAugmentingActivity
+import com.scanpang.app.data.remote.ArOverlay
+import com.scanpang.app.data.remote.Docent
+import com.scanpang.app.data.remote.PlaceQueryRequest
+import com.scanpang.app.data.remote.RetrofitClient
 import com.scanpang.app.data.remote.ScanPangViewModel
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.compose.runtime.collectAsState
 import com.scanpang.app.components.ar.ArAgentChatMessage
-import com.scanpang.app.components.ar.ArCameraBackdrop
 import com.scanpang.app.components.ar.ArCircleIconButton
 import com.scanpang.app.components.ar.ArExploreInteractiveChatSection
 import com.scanpang.app.components.ar.ArFloorStoreGuideOverlay
@@ -83,14 +99,21 @@ import com.scanpang.app.components.ar.ArPoiTabBuilding
 import com.scanpang.app.components.ar.ArExploreFilterPanelFigma
 import com.scanpang.app.components.ar.ArExploreSideColumn
 import com.scanpang.app.components.ar.arExploreCategoryChipSpecs
-import com.scanpang.app.components.ar.ArPoiPinsLayer
+import com.scanpang.app.components.ar.ArPoiCard
 import com.scanpang.app.navigation.AppRoutes
 import com.scanpang.app.ui.theme.ScanPangColors
 import com.scanpang.app.ui.theme.ScanPangDimens
 import com.scanpang.app.ui.theme.ScanPangShapes
 import com.scanpang.app.ui.theme.ScanPangSpacing
 import com.scanpang.app.ui.theme.ScanPangType
+import io.github.sceneview.ar.ARScene
+import io.github.sceneview.rememberEngine
 import kotlinx.coroutines.launch
+import kotlin.math.roundToInt
+import kotlin.math.sqrt
+import kotlin.math.atan2
+import kotlin.math.cos
+import kotlin.math.sin
 
 private data class ArSearchHit(
     val title: String,
@@ -98,8 +121,21 @@ private data class ArSearchHit(
     val distance: String,
 )
 
+private data class DynamicPoi(
+    val id: String,
+    val name: String,
+    val category: String = "",
+    val distance: Float = 0f,
+    val latitude: Double = 0.0,
+    val longitude: Double = 0.0,
+    val arOverlay: ArOverlay? = null,
+    val docent: Docent? = null,
+    val isPending: Boolean = false,
+)
+
 /**
- * AR 탐색 단일 화면 — 필터·검색·고정·POI 시트·TTS 등 상태로 처리.
+ * AR 탐색 단일 화면 — ARCore Geospatial 엔진 통합.
+ * CameraX 프리뷰 대신 ARScene을 사용하고, 주변 건물을 자동 탐지하여 동적 마커 배치.
  */
 @Composable
 fun ArExploreScreen(
@@ -110,10 +146,6 @@ fun ArExploreScreen(
     val placeResult by viewModel.placeResult.collectAsState()
     val context = LocalContext.current
 
-    // AR 탐색 Activity 실행 (ARCore VPS + building_raycast + place/query)
-    LaunchedEffect(Unit) {
-        context.startActivity(Intent(context, PlaceAugmentingActivity::class.java))
-    }
     val appContext = context.applicationContext
     val snackbarHostState = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
@@ -218,6 +250,8 @@ fun ArExploreScreen(
     }
 
     var selectedPoi by remember { mutableStateOf<String?>(null) }
+    var selectedPoiOverlay by remember { mutableStateOf<ArOverlay?>(null) }
+    var selectedPoiDocent by remember { mutableStateOf<Docent?>(null) }
     var activeDetailTab by remember { mutableStateOf(ArPoiTabBuilding) }
     var selectedStore by remember { mutableStateOf<String?>(null) }
 
@@ -236,6 +270,35 @@ fun ArExploreScreen(
         )
     }
 
+    // ── ARCore Geospatial 상태 ──
+    val engine = rememberEngine()
+    val api = remember { RetrofitClient.api }
+    var hasAchievedHighAccuracy by remember { mutableStateOf(false) }
+    var trackingMessage by remember { mutableStateOf("ARCore 초기화 중...") }
+    var currentHeading by remember { mutableStateOf(0.0) }
+    var currentAltitude by remember { mutableStateOf(0.0) }
+    var currentPitch by remember { mutableStateOf(0.0) }
+    var currentLat by remember { mutableStateOf(0.0) }
+    var currentLng by remember { mutableStateOf(0.0) }
+    var lastQueryTime by remember { mutableStateOf(0L) }
+
+    val geospatialAnchors = remember { mutableStateMapOf<String, Anchor>() }
+    var anchorScreenPositions by remember { mutableStateOf<Map<String, Offset>>(emptyMap()) }
+    val dynamicPois = remember { mutableStateListOf<DynamicPoi>() }
+
+    // 화면 크기 (앵커 → 화면 좌표 투영용)
+    val configuration = LocalConfiguration.current
+    val density = LocalDensity.current
+    val screenWidthPx = with(density) { configuration.screenWidthDp.dp.toPx() }.toInt()
+    val screenHeightPx = with(density) { configuration.screenHeightDp.dp.toPx() }.toInt()
+
+    DisposableEffect(Unit) {
+        onDispose {
+            geospatialAnchors.values.forEach { it.detach() }
+            geospatialAnchors.clear()
+        }
+    }
+
     Scaffold(
         modifier = modifier.fillMaxSize(),
         containerColor = Color.Transparent,
@@ -243,11 +306,152 @@ fun ArExploreScreen(
         snackbarHost = { SnackbarHost(snackbarHostState) },
     ) { _ ->
         Box(modifier = Modifier.fillMaxSize()) {
-            ArCameraBackdrop(
-                showFreezeTint = isFrozen,
+            // ── ARScene 배경 (CameraX 대체) ──
+            ARScene(
                 modifier = Modifier.fillMaxSize(),
+                engine = engine,
+                planeRenderer = false,
+                sessionConfiguration = { _, config ->
+                    config.geospatialMode = Config.GeospatialMode.ENABLED
+                    config.depthMode = Config.DepthMode.AUTOMATIC
+                },
+                onSessionUpdated = { session, frame ->
+                    val earth = session.earth ?: return@ARScene
+                    val camera = frame.camera
+                    if (earth.earthState != Earth.EarthState.ENABLED ||
+                        earth.trackingState != TrackingState.TRACKING
+                    ) return@ARScene
+
+                    val pose = earth.cameraGeospatialPose
+                    currentLat = pose.latitude
+                    currentLng = pose.longitude
+                    currentHeading = pose.heading
+                    currentAltitude = pose.altitude
+
+                    // pitch 계산
+                    val q = pose.eastUpSouthQuaternion
+                    val fx = 2f * (q[0] * q[2] + q[3] * q[1])
+                    val fy = 2f * (q[1] * q[2] - q[3] * q[0])
+                    val fz = 1f - 2f * (q[0] * q[0] + q[1] * q[1])
+                    val horiz = sqrt(fx * fx + fz * fz)
+                    currentPitch = Math.toDegrees(atan2(-fy.toDouble(), horiz.toDouble()))
+
+                    if (pose.horizontalAccuracy < 1.5) hasAchievedHighAccuracy = true
+
+                    if (hasAchievedHighAccuracy) {
+                        trackingMessage = "위치 파악 완료 (오차: ${"%.1f".format(pose.horizontalAccuracy)}m)"
+
+                        // 거리 업데이트
+                        val results = FloatArray(1)
+                        for (i in dynamicPois.indices) {
+                            Location.distanceBetween(
+                                currentLat, currentLng,
+                                dynamicPois[i].latitude, dynamicPois[i].longitude,
+                                results,
+                            )
+                            dynamicPois[i] = dynamicPois[i].copy(distance = results[0])
+                        }
+
+                        // 5초 간격 자동 쿼리
+                        val now = System.currentTimeMillis()
+                        if (now - lastQueryTime > 5000 && !isFrozen) {
+                            lastQueryTime = now
+                            scope.launch {
+                                try {
+                                    val response = api.queryPlace(
+                                        PlaceQueryRequest(
+                                            heading = currentHeading,
+                                            user_lat = currentLat,
+                                            user_lng = currentLng,
+                                            user_alt = currentAltitude,
+                                            pitch = currentPitch,
+                                        ),
+                                    )
+                                    val overlay = response.ar_overlay ?: return@launch
+                                    if (overlay.name.isEmpty()) return@launch
+
+                                    // 중복 체크
+                                    val alreadyExists = dynamicPois.any { it.name == overlay.name }
+                                    if (alreadyExists) return@launch
+
+                                    // 앵커 생성 — 사용자 바라보는 방향 ~50m 앞
+                                    val headingRad = Math.toRadians(currentHeading)
+                                    val offsetDist = 0.00045 // ~50m in degrees
+                                    val anchorLat = currentLat + offsetDist * cos(headingRad)
+                                    val anchorLng = currentLng + offsetDist * sin(headingRad)
+
+                                    val newId = "poi_${System.currentTimeMillis()}"
+                                    val anchor = earth.createAnchor(
+                                        anchorLat, anchorLng, currentAltitude,
+                                        0f, 0f, 0f, 1f,
+                                    )
+                                    geospatialAnchors[newId] = anchor
+
+                                    Location.distanceBetween(
+                                        currentLat, currentLng, anchorLat, anchorLng, results,
+                                    )
+                                    dynamicPois.add(
+                                        DynamicPoi(
+                                            id = newId,
+                                            name = overlay.name,
+                                            category = overlay.category,
+                                            distance = results[0],
+                                            latitude = anchorLat,
+                                            longitude = anchorLng,
+                                            arOverlay = overlay,
+                                            docent = response.docent,
+                                        ),
+                                    )
+                                } catch (e: Exception) {
+                                    Log.e("ArExplore", "자동 쿼리 실패: ${e.message}")
+                                }
+                            }
+                        }
+                    } else {
+                        trackingMessage =
+                            "VPS 정밀 탐색 중... (오차: ${"%.1f".format(pose.horizontalAccuracy)}m / 1.5m 미만 필요)"
+                    }
+
+                    // 앵커 → 화면 좌표 투영
+                    val newPositions = mutableMapOf<String, Offset>()
+                    val viewMatrix = FloatArray(16)
+                    camera.getViewMatrix(viewMatrix, 0)
+                    val projMatrix = FloatArray(16)
+                    camera.getProjectionMatrix(projMatrix, 0, 0.1f, 100.0f)
+
+                    geospatialAnchors.forEach { (id, anchor) ->
+                        if (anchor.trackingState == TrackingState.TRACKING) {
+                            val anchorPose = anchor.pose
+                            val anchorTranslation = floatArrayOf(
+                                anchorPose.tx(), anchorPose.ty(), anchorPose.tz(), 1f,
+                            )
+                            val viewCoords = FloatArray(4)
+                            Matrix.multiplyMV(viewCoords, 0, viewMatrix, 0, anchorTranslation, 0)
+                            if (viewCoords[2] <= 0) {
+                                val clipCoords = FloatArray(4)
+                                Matrix.multiplyMV(clipCoords, 0, projMatrix, 0, viewCoords, 0)
+                                if (clipCoords[3] != 0f) {
+                                    val x = ((clipCoords[0] / clipCoords[3] + 1.0f) / 2.0f) * screenWidthPx
+                                    val y = ((1.0f - clipCoords[1] / clipCoords[3]) / 2.0f) * screenHeightPx
+                                    newPositions[id] = Offset(x, y)
+                                }
+                            }
+                        }
+                    }
+                    anchorScreenPositions = newPositions
+                },
             )
 
+            // 화면 고정 시 반투명 오버레이
+            if (isFrozen) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(ScanPangColors.ArFreezeTint),
+                )
+            }
+
+            // ── 상단 바 ──
             Column(
                 modifier = Modifier
                     .align(Alignment.TopStart)
@@ -290,6 +494,7 @@ fun ArExploreScreen(
                         ArExploreStatusPill(
                             isFrozen = isFrozen,
                             selectedFilters = categorySelection,
+                            hasHighAccuracy = hasAchievedHighAccuracy,
                             onClick = {
                                 if (isFrozen) {
                                     isFrozen = false
@@ -308,19 +513,17 @@ fun ArExploreScreen(
                 }
             }
 
+            // ── 동적 마커 + 사이드 컬럼 ──
             Box(modifier = Modifier.fillMaxSize()) {
-                ArPoiPinsLayer(
-                    onPoiOneClick = {
-                        selectedPoi = placeResult?.ar_overlay?.name ?: "눈스퀘어"
+                ArDynamicPoiMarkers(
+                    dynamicPois = dynamicPois,
+                    anchorScreenPositions = anchorScreenPositions,
+                    onPoiClick = { poi ->
+                        selectedPoi = poi.name
+                        selectedPoiOverlay = poi.arOverlay
+                        selectedPoiDocent = poi.docent
                         activeDetailTab = ArPoiTabBuilding
                         selectedStore = null
-                        viewModel.queryPlace(heading = 0.0, lat = 37.5636, lng = 126.9822)
-                    },
-                    onPoiTwoClick = {
-                        selectedPoi = "명동빌딩"
-                        activeDetailTab = ArPoiTabBuilding
-                        selectedStore = null
-                        viewModel.queryPlace(heading = 90.0, lat = 37.5636, lng = 126.9822)
                     },
                 )
                 ArExploreSideColumn(
@@ -336,6 +539,7 @@ fun ArExploreScreen(
                 )
             }
 
+            // ── 하단 채팅 섹션 ──
             Column(
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
@@ -393,6 +597,7 @@ fun ArExploreScreen(
                 )
             }
 
+            // ── 필터 패널 ──
             AnimatedVisibility(
                 visible = isFilterOpen,
                 enter = slideInVertically { it },
@@ -439,6 +644,7 @@ fun ArExploreScreen(
                 }
             }
 
+            // ── 검색 패널 ──
             AnimatedVisibility(
                 visible = isSearchOpen,
                 enter = slideInVertically { it },
@@ -588,6 +794,8 @@ fun ArExploreScreen(
                                             TextButton(
                                                 onClick = {
                                                     selectedPoi = hit.title
+                                                    selectedPoiOverlay = null
+                                                    selectedPoiDocent = null
                                                     activeDetailTab = ArPoiTabBuilding
                                                     isSearchOpen = false
                                                     showArSearchResults = false
@@ -624,6 +832,7 @@ fun ArExploreScreen(
                 }
             }
 
+            // ── POI 상세 패널 ──
             selectedPoi?.let { poi ->
                 ArPoiFloatingDetailOverlay(
                     poiName = poi,
@@ -631,6 +840,8 @@ fun ArExploreScreen(
                     onActiveDetailTabChange = { activeDetailTab = it },
                     onDismiss = {
                         selectedPoi = null
+                        selectedPoiOverlay = null
+                        selectedPoiDocent = null
                         selectedStore = null
                         activeDetailTab = ArPoiTabBuilding
                     },
@@ -639,8 +850,8 @@ fun ArExploreScreen(
                         scope.launch { snackbarHostState.showSnackbar("저장되었습니다") }
                     },
                     modifier = Modifier.fillMaxSize(),
-                    arOverlay = placeResult?.ar_overlay,
-                    docent = placeResult?.docent,
+                    arOverlay = selectedPoiOverlay ?: placeResult?.ar_overlay,
+                    docent = selectedPoiDocent ?: placeResult?.docent,
                 )
             }
 
@@ -659,10 +870,42 @@ fun ArExploreScreen(
     }
 }
 
+/**
+ * 동적 POI 마커 레이어 — ARCore anchor의 화면 좌표에 ArPoiCard 배치.
+ */
+@Composable
+private fun BoxScope.ArDynamicPoiMarkers(
+    dynamicPois: List<DynamicPoi>,
+    anchorScreenPositions: Map<String, Offset>,
+    onPoiClick: (DynamicPoi) -> Unit,
+) {
+    dynamicPois.forEach { poi ->
+        val screenPos = anchorScreenPositions[poi.id] ?: return@forEach
+        val xPx = screenPos.x.roundToInt()
+        val yPx = screenPos.y.roundToInt()
+
+        Box(
+            modifier = Modifier.offset { IntOffset(xPx, yPx) },
+        ) {
+            ArPoiCard(
+                title = if (poi.isPending) "분석 중..." else poi.name,
+                subtitle = buildString {
+                    if (poi.category.isNotEmpty()) append("${poi.category} · ")
+                    append("${"%.0f".format(poi.distance)}m")
+                },
+                onClick = if (!poi.isPending) {
+                    { onPoiClick(poi) }
+                } else null,
+            )
+        }
+    }
+}
+
 @Composable
 private fun ArExploreStatusPill(
     isFrozen: Boolean,
     selectedFilters: Set<String>,
+    hasHighAccuracy: Boolean = true,
     onClick: () -> Unit,
 ) {
     when {
@@ -698,6 +941,36 @@ private fun ArExploreStatusPill(
                         contentDescription = null,
                         modifier = Modifier.size(ScanPangDimens.arNavDestinationChevron),
                         tint = Color.White,
+                    )
+                }
+            }
+        }
+        !hasHighAccuracy -> {
+            Surface(
+                modifier = Modifier
+                    .height(ScanPangDimens.arStatusPillHeight)
+                    .clip(CircleShape)
+                    .clickable(onClick = onClick),
+                shape = CircleShape,
+                color = ScanPangColors.ArOverlayWhite80,
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = ScanPangDimens.arStatusPillHorizontalPad),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(ScanPangSpacing.xs),
+                ) {
+                    Icon(
+                        imageVector = Icons.Rounded.CropFree,
+                        contentDescription = null,
+                        modifier = Modifier.size(ScanPangDimens.icon18),
+                        tint = ScanPangColors.OnSurfaceStrong,
+                    )
+                    Text(
+                        text = "VPS 탐색 중...",
+                        style = ScanPangType.arStatusPill15,
+                        color = ScanPangColors.OnSurfaceStrong,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
                     )
                 }
             }
@@ -784,4 +1057,3 @@ private fun buildFilterPillLabel(selected: Set<String>): String {
     if (list.size == 1) return list[0]
     return "${list[0]} 외 ${list.size - 1}개"
 }
-
