@@ -1,45 +1,46 @@
 <?xml version="1.0" encoding="utf-8"?>
-<manifest xmlns:android="http://schemas.android.com/apk/res/android"
-    xmlns:tools="http://schemas.android.com/tools">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
+    <uses-feature
+        android:name="android.hardware.camera"
+        android:required="false" />
+    <uses-feature
+        android:name="android.hardware.camera.ar"
+        android:required="true" />
     <uses-permission android:name="android.permission.CAMERA" />
+    <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
-    <uses-permission android:name="android.permission.INTERNET" />
-
-    <uses-feature android:name="android.hardware.camera" android:required="true" />
-    <uses-feature android:name="android.hardware.camera.ar" android:required="true" />
-    <uses-feature android:name="android.hardware.location.gps" android:required="true" />
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
 
     <application
+        android:usesCleartextTraffic="true"
         android:allowBackup="true"
-        android:dataExtractionRules="@xml/data_extraction_rules"
-        android:fullBackupContent="@xml/backup_rules"
         android:icon="@mipmap/ic_launcher"
         android:label="@string/app_name"
         android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
-        android:theme="@style/Theme.PlaceAugmenting"
-        android:usesCleartextTraffic="true">
-
-        <meta-data
-            android:name="com.google.ar.core"
-            android:value="required"
-            tools:replace="android:value" />
-
-        <meta-data
-            android:name="com.google.android.ar.API_KEY"
-            android:value="${arcoreApiKey}" />
-
+        android:theme="@style/Theme.ScanPang">
         <activity
             android:name=".MainActivity"
             android:exported="true"
-            android:configChanges="orientation|screenSize|screenLayout|keyboardHidden|smallestScreenSize"
-            android:screenOrientation="portrait"> <intent-filter>
-            <action android:name="android.intent.action.MAIN" />
-            <category android:name="android.intent.category.LAUNCHER" />
-        </intent-filter>
+            android:theme="@style/Theme.ScanPang">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
         </activity>
-    </application>
+        <activity
+            android:name="com.hufs.arnavigation_com.ArNavigationActivity"
+            android:exported="false"
+            android:theme="@style/Theme.ScanPang" />
+        <activity
+            android:name=".ar.explore.PlaceAugmentingActivity"
+            android:exported="false"
+            android:theme="@style/Theme.ScanPang" />
 
+        <meta-data
+            android:name="com.google.ar.core"
+            android:value="required" />
+    </application>
 </manifest>
