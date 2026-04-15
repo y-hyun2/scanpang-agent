@@ -15,7 +15,7 @@ if (localPropertiesFile.exists()) {
 
 android {
     namespace = "com.scanpang.app"
-    compileSdk = 36
+    compileSdk = 35
 
     defaultConfig {
         applicationId = "com.scanpang.app"
@@ -24,13 +24,9 @@ android {
         versionCode = 1
         versionName = "1.0"
 
-        val arcoreKey = localProperties.getProperty("ARCORE_API_KEY") ?: ""
-        val geoKey = localProperties.getProperty("GEO_API_KEY") ?: arcoreKey
         val kakaoKey = localProperties.getProperty("KAKAO_REST_API_KEY") ?: ""
         val tmapKey = localProperties.getProperty("TMAP_APP_KEY") ?: ""
 
-        manifestPlaceholders["arcoreApiKey"] = arcoreKey
-        manifestPlaceholders["geoApiKey"] = geoKey
         buildConfigField("String", "KAKAO_REST_API_KEY", "\"$kakaoKey\"")
         buildConfigField("String", "TMAP_APP_KEY", "\"$tmapKey\"")
     }
@@ -72,8 +68,10 @@ dependencies {
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.8.7")
     implementation("androidx.lifecycle:lifecycle-runtime-compose:2.8.7")
     implementation("androidx.activity:activity-compose:1.9.3")
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")
 
     implementation("androidx.compose.ui:ui")
+    implementation("androidx.compose.foundation:foundation")
     implementation("androidx.compose.ui:ui-graphics")
     implementation("androidx.compose.ui:ui-tooling-preview")
     implementation("androidx.compose.material3:material3")
@@ -83,29 +81,27 @@ dependencies {
 
     implementation("io.coil-kt:coil-compose:2.7.0")
 
-    // ScanPang 백엔드 API
-    implementation("com.squareup.retrofit2:retrofit:2.11.0")
-    implementation("com.squareup.retrofit2:converter-gson:2.11.0")
-    implementation("com.squareup.okhttp3:okhttp:4.12.0")
-    implementation("com.squareup.okhttp3:logging-interceptor:4.12.0")
-    implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.8.7")
-
-    // ARCore + SceneView (AR Navigation)
-    implementation("io.github.sceneview:arsceneview:2.3.3")
-    implementation("com.google.ar:core:1.53.0")
     implementation("com.google.android.gms:play-services-location:21.3.0")
-    implementation("com.google.android.gms:play-services-maps:19.0.0")
-
-    // AR Navigation 추가 의존성
-    implementation("androidx.appcompat:appcompat:1.7.0")
-    implementation("androidx.constraintlayout:constraintlayout:2.1.4")
-    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3")
 
     val camerax = "1.4.1"
     implementation("androidx.camera:camera-core:$camerax")
     implementation("androidx.camera:camera-camera2:$camerax")
     implementation("androidx.camera:camera-lifecycle:$camerax")
     implementation("androidx.camera:camera-view:$camerax")
+
+    // ARCore + SceneView (AR Navigation)
+    implementation("io.github.sceneview:arsceneview:2.3.3")
+    implementation("com.google.ar:core:1.53.0")
+    implementation("com.google.android.gms:play-services-maps:19.0.0")
+    implementation("androidx.appcompat:appcompat:1.7.0")
+    implementation("androidx.constraintlayout:constraintlayout:2.1.4")
+
+    // Network (Backend API)
+    implementation("com.squareup.retrofit2:retrofit:2.11.0")
+    implementation("com.squareup.retrofit2:converter-gson:2.11.0")
+    implementation("com.squareup.okhttp3:okhttp:4.12.0")
+    implementation("com.squareup.okhttp3:logging-interceptor:4.12.0")
+    implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.8.7")
 
     debugImplementation("androidx.compose.ui:ui-tooling")
     debugImplementation("androidx.compose.ui:ui-test-manifest")
