@@ -26,9 +26,15 @@ android {
 
         val kakaoKey = localProperties.getProperty("KAKAO_REST_API_KEY") ?: ""
         val tmapKey = localProperties.getProperty("TMAP_APP_KEY") ?: ""
+        val googleMapsKey = localProperties.getProperty("GOOGLE_MAPS_API_KEY") ?: ""
+        val serverUrl = localProperties.getProperty("SERVER_URL") ?: "http://localhost:8000/"
 
         buildConfigField("String", "KAKAO_REST_API_KEY", "\"$kakaoKey\"")
         buildConfigField("String", "TMAP_APP_KEY", "\"$tmapKey\"")
+        buildConfigField("String", "GOOGLE_MAPS_API_KEY", "\"$googleMapsKey\"")
+        buildConfigField("String", "SERVER_URL", "\"$serverUrl\"")
+
+        manifestPlaceholders["googleMapsApiKey"] = googleMapsKey
     }
 
     buildTypes {
