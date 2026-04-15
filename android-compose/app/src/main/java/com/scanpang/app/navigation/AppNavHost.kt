@@ -1,77 +1,81 @@
 package com.scanpang.app.navigation
 
-import android.content.Intent
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalContext
 import androidx.navigation.NavHostController
-import com.hufs.arnavigation_com.ArNavigationActivity
+import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
+import androidx.navigation.navArgument
+import java.net.URLDecoder
+import java.net.URLEncoder
+import java.nio.charset.StandardCharsets
 import com.scanpang.app.screens.HomeScreen
+import com.scanpang.app.screens.SplashScreen
+import com.scanpang.app.screens.onboarding.OnboardingLanguageScreen
+import com.scanpang.app.screens.onboarding.OnboardingNameScreen
+import com.scanpang.app.screens.onboarding.OnboardingPreferenceScreen
+import com.scanpang.app.screens.NearbyHalalRestaurantsScreen
+import com.scanpang.app.screens.NearbyPrayerRoomsScreen
+import com.scanpang.app.screens.PrayerRoomDetailScreen
 import com.scanpang.app.screens.ProfileScreen
 import com.scanpang.app.screens.QiblaDirectionScreen
+import com.scanpang.app.screens.RestaurantDetailScreen
 import com.scanpang.app.screens.SavedPlacesScreen
+import com.scanpang.app.screens.SearchDefaultScreen
 import com.scanpang.app.screens.SearchResultsScreen
-import com.scanpang.app.screens.SearchScreen
-import com.scanpang.app.screens.ar.ArExploreChatKeyboardScreen
-import com.scanpang.app.screens.ar.ArExploreDefaultScreen
-import com.scanpang.app.screens.ar.ArExploreFilterScreen
-import com.scanpang.app.screens.ar.ArExploreFreezeScreen
-import com.scanpang.app.screens.ar.ArExploreRecommendedScreen
-import com.scanpang.app.screens.ar.ArExploreSearchOverlayScreen
-import com.scanpang.app.screens.ar.ArNavigationAgentScreen
-import com.scanpang.app.screens.ar.ArNavigationArrivedScreen
-import com.scanpang.app.screens.ar.ArNavigationArrivalSoonScreen
+import com.scanpang.app.screens.ar.ArExploreScreen
 import com.scanpang.app.screens.ar.ArNavigationMapScreen
-import com.scanpang.app.screens.detail.ArPlaceDetailAiGuideScreen
-import com.scanpang.app.screens.detail.ArPlaceDetailBuildingScreen
-import com.scanpang.app.screens.detail.ArPlaceDetailFloorsScreen
-import com.scanpang.app.screens.detail.ArStoreDetailOverlayScreen
-import com.scanpang.app.screens.detail.NearbyHalalRestaurantsScreen
-import com.scanpang.app.screens.detail.NearbyPrayerRoomsScreen
-import com.scanpang.app.screens.detail.PrayerRoomDetailScreen
-import com.scanpang.app.screens.detail.RestaurantDetailScreen
 
 object AppRoutes {
+    const val Splash = "splash"
+    const val OnboardingLanguage = "onboarding_language"
+    const val OnboardingName = "onboarding_name"
+    const val OnboardingPreference = "onboarding_preference"
+
     const val Home = "home"
     const val Qibla = "qibla"
     const val Search = "search"
     const val SearchResults = "search_results"
+
+    fun searchResultsRoute(query: String): String {
+        val encoded = URLEncoder.encode(query, StandardCharsets.UTF_8.name())
+        return "$SearchResults/$encoded"
+    }
+
     const val Saved = "saved"
     const val Profile = "profile"
-    const val ArDefault = "ar_default"
-    const val ArFilter = "ar_filter"
-    const val ArSearch = "ar_search"
-    const val ArChatKeyboard = "ar_chat_keyboard"
-    const val ArRecommended = "ar_recommended"
-    const val ArFreeze = "ar_freeze"
+    const val NearbyHalal = "nearby_halal"
+    const val NearbyPrayer = "nearby_prayer"
+    const val RestaurantDetail = "restaurant_detail"
+    const val PrayerRoomDetail = "prayer_room_detail"
+    const val ArExplore = "ar_explore"
     const val ArNavMap = "ar_nav_map"
-    const val ArNavAgent = "ar_nav_agent"
-    const val ArNavArrivalSoon = "ar_nav_arrival_soon"
-    const val ArNavArrived = "ar_nav_arrived"
-    const val DetailArPlaceBuilding = "detail_ar_place_building"
-    const val DetailArPlaceFloors = "detail_ar_place_floors"
-    const val DetailArPlaceAi = "detail_ar_place_ai"
-    const val DetailArStore = "detail_ar_store"
-    const val DetailNearbyHalal = "detail_nearby_halal"
-    const val DetailNearbyPrayer = "detail_nearby_prayer"
-    const val DetailRestaurant = "detail_restaurant"
-    const val DetailPrayerRoom = "detail_prayer_room"
 }
 
 @Composable
 fun AppNavHost(
     navController: NavHostController,
     modifier: Modifier = Modifier,
-    startDestination: String = AppRoutes.Home,
+    startDestination: String = AppRoutes.Splash,
 ) {
     NavHost(
         navController = navController,
         startDestination = startDestination,
         modifier = modifier,
     ) {
+        composable(AppRoutes.Splash) {
+            SplashScreen(navController = navController)
+        }
+        composable(AppRoutes.OnboardingLanguage) {
+            OnboardingLanguageScreen(navController = navController)
+        }
+        composable(AppRoutes.OnboardingName) {
+            OnboardingNameScreen(navController = navController)
+        }
+        composable(AppRoutes.OnboardingPreference) {
+            OnboardingPreferenceScreen(navController = navController)
+        }
         composable(AppRoutes.Home) {
             HomeScreen(navController = navController)
         }
@@ -79,10 +83,25 @@ fun AppNavHost(
             QiblaDirectionScreen(navController = navController)
         }
         composable(AppRoutes.Search) {
-            SearchScreen(navController = navController)
+            SearchDefaultScreen(navController = navController)
         }
-        composable(AppRoutes.SearchResults) {
-            SearchResultsScreen(navController = navController)
+        composable(
+            route = "${AppRoutes.SearchResults}/{query}",
+            arguments = listOf(
+                navArgument("query") {
+                    type = NavType.StringType
+                    defaultValue = ""
+                },
+            ),
+        ) { entry ->
+            val raw = entry.arguments?.getString("query").orEmpty()
+            val query = runCatching {
+                URLDecoder.decode(raw, StandardCharsets.UTF_8.name())
+            }.getOrDefault(raw)
+            SearchResultsScreen(
+                navController = navController,
+                searchQuery = query,
+            )
         }
         composable(AppRoutes.Saved) {
             SavedPlacesScreen(navController = navController)
@@ -90,65 +109,23 @@ fun AppNavHost(
         composable(AppRoutes.Profile) {
             ProfileScreen(navController = navController)
         }
-        composable(AppRoutes.ArDefault) {
-            ArExploreDefaultScreen(navController = navController)
-        }
-        composable(AppRoutes.ArFilter) {
-            ArExploreFilterScreen(navController = navController)
-        }
-        composable(AppRoutes.ArSearch) {
-            ArExploreSearchOverlayScreen(navController = navController)
-        }
-        composable(AppRoutes.ArChatKeyboard) {
-            ArExploreChatKeyboardScreen(navController = navController)
-        }
-        composable(AppRoutes.ArRecommended) {
-            ArExploreRecommendedScreen(navController = navController)
-        }
-        composable(AppRoutes.ArFreeze) {
-            ArExploreFreezeScreen(navController = navController)
-        }
-        composable(AppRoutes.ArNavMap) {
-            // AR Navigation Activity 실행 (같은 앱 내)
-            val context = LocalContext.current
-            LaunchedEffect(Unit) {
-                context.startActivity(Intent(context, ArNavigationActivity::class.java))
-            }
-            // 돌아왔을 때 이전 화면으로
-            ArNavigationMapScreen(navController = navController)
-        }
-        composable(AppRoutes.ArNavAgent) {
-            ArNavigationAgentScreen(navController = navController)
-        }
-        composable(AppRoutes.ArNavArrivalSoon) {
-            ArNavigationArrivalSoonScreen(navController = navController)
-        }
-        composable(AppRoutes.ArNavArrived) {
-            ArNavigationArrivedScreen(navController = navController)
-        }
-        composable(AppRoutes.DetailArPlaceBuilding) {
-            ArPlaceDetailBuildingScreen(navController = navController)
-        }
-        composable(AppRoutes.DetailArPlaceFloors) {
-            ArPlaceDetailFloorsScreen(navController = navController)
-        }
-        composable(AppRoutes.DetailArPlaceAi) {
-            ArPlaceDetailAiGuideScreen(navController = navController)
-        }
-        composable(AppRoutes.DetailArStore) {
-            ArStoreDetailOverlayScreen(navController = navController)
-        }
-        composable(AppRoutes.DetailNearbyHalal) {
+        composable(AppRoutes.NearbyHalal) {
             NearbyHalalRestaurantsScreen(navController = navController)
         }
-        composable(AppRoutes.DetailNearbyPrayer) {
+        composable(AppRoutes.NearbyPrayer) {
             NearbyPrayerRoomsScreen(navController = navController)
         }
-        composable(AppRoutes.DetailRestaurant) {
+        composable(AppRoutes.RestaurantDetail) {
             RestaurantDetailScreen(navController = navController)
         }
-        composable(AppRoutes.DetailPrayerRoom) {
+        composable(AppRoutes.PrayerRoomDetail) {
             PrayerRoomDetailScreen(navController = navController)
+        }
+        composable(AppRoutes.ArExplore) {
+            ArExploreScreen(navController = navController)
+        }
+        composable(AppRoutes.ArNavMap) {
+            ArNavigationMapScreen(navController = navController)
         }
     }
 }

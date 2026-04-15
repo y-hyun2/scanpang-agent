@@ -1,9 +1,6 @@
 package com.scanpang.app.screens
 
-import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.getValue
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -16,16 +13,11 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.border
-import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.AltRoute
 import androidx.compose.material.icons.rounded.ChevronRight
 import androidx.compose.material.icons.rounded.Explore
-import androidx.compose.material.icons.rounded.LocalAtm
-import androidx.compose.material.icons.rounded.LocalMall
 import androidx.compose.material.icons.rounded.Mosque
 import androidx.compose.material.icons.rounded.NearMe
 import androidx.compose.material.icons.rounded.Restaurant
@@ -34,19 +26,20 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
+import androidx.lifecycle.viewmodel.compose.viewModel
+import com.scanpang.app.data.remote.ScanPangViewModel
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.navigation.NavController
-import coil.compose.AsyncImage
-import coil.request.ImageRequest
-import com.scanpang.app.components.ScanPangBottomBar
-import com.scanpang.app.components.ScanPangMainTab
+import com.scanpang.app.data.OnboardingPreferences
 import com.scanpang.app.navigation.AppRoutes
-import com.scanpang.app.ui.ScanPangFigmaAssets
 import com.scanpang.app.ui.theme.ScanPangColors
 import com.scanpang.app.ui.theme.ScanPangDimens
 import com.scanpang.app.ui.theme.ScanPangShapes
@@ -57,59 +50,55 @@ import com.scanpang.app.ui.theme.ScanPangType
 fun HomeScreen(
     navController: NavController,
     modifier: Modifier = Modifier,
-    vm: com.scanpang.app.data.HalalViewModel = androidx.lifecycle.viewmodel.compose.viewModel(),
+    viewModel: ScanPangViewModel = viewModel(),
 ) {
-    val prayerTimes by vm.prayerTimes.collectAsState()
-    val qibla by vm.qibla.collectAsState()
-
-    val qiblaDir = qibla?.direction?.toInt() ?: 232
-    val qiblaCompass = when {
-        qiblaDir >= 292 -> "북서"; qiblaDir >= 247 -> "서"; qiblaDir >= 202 -> "남서"
-        qiblaDir >= 157 -> "남"; qiblaDir >= 112 -> "남동"; qiblaDir >= 67 -> "동"
-        qiblaDir >= 22 -> "북동"; else -> "북"
+    LaunchedEffect(Unit) {
+        viewModel.loadPrayerTimesAndQibla()
     }
-    val qiblaText = "키블라 방향: $qiblaCompass ${qiblaDir}°"
 
-    val nextPrayerText = run {
-        val pt = prayerTimes ?: return@run "다음 기도: 로딩 중..."
-        val now = java.util.Calendar.getInstance()
-        val hhmm = "%02d:%02d".format(now.get(java.util.Calendar.HOUR_OF_DAY), now.get(java.util.Calendar.MINUTE))
-        val prayers = listOf("Fajr" to pt.fajr, "Dhuhr" to pt.dhuhr, "Asr" to pt.asr, "Maghrib" to pt.maghrib, "Isha" to pt.isha)
-        val next = prayers.firstOrNull { it.second > hhmm }
-        if (next != null) "다음 기도: ${next.first} ${next.second}" else "다음 기도: Fajr ${pt.fajr} (내일)"
-    }
+    val prayerTimes by viewModel.prayerTimes.collectAsState()
+    val qibla by viewModel.qibla.collectAsState()
+
+    val qiblaText = qibla?.let { "키블라 방향: ${it.direction.toInt()}°" } ?: "키블라 방향: 292°"
+    val nextPrayerText = prayerTimes?.let { "다음 기도: ${it.next_prayer} ${it.next_prayer_time}" } ?: "다음 기도: Dhuhr 12:15"
+
     Scaffold(
         modifier = modifier.fillMaxSize(),
         containerColor = ScanPangColors.Surface,
-        bottomBar = {
-            ScanPangBottomBar(
-                selectedTab = ScanPangMainTab.Home,
-                onHomeClick = { },
-                onSearchClick = { navController.navigate(AppRoutes.Search) { launchSingleTop = true } },
-                onSavedClick = { navController.navigate(AppRoutes.Saved) { launchSingleTop = true } },
-                onProfileClick = { navController.navigate(AppRoutes.Profile) { launchSingleTop = true } },
-                onExploreClick = {
-                    navController.navigate(AppRoutes.ArDefault) { launchSingleTop = true }
-                },
-            )
-        },
-    ) { innerPadding ->
+        contentWindowInsets = androidx.compose.foundation.layout.WindowInsets(0, 0, 0, 0),
+    ) { _ ->
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(innerPadding)
                 .background(ScanPangColors.Surface)
                 .statusBarsPadding()
-                .verticalScroll(rememberScrollState()),
+                .verticalScroll(rememberScrollState())
+                .padding(bottom = ScanPangDimens.mainTabContentBottomInset),
         ) {
-            HomeTopSection(navController = navController, qiblaText = qiblaText, nextPrayerText = nextPrayerText)
-            HomeBottomScrollSection()
+            HomeTopSection(
+                navController = navController,
+                qiblaText = qiblaText,
+                nextPrayerText = nextPrayerText,
+            )
         }
     }
 }
 
 @Composable
-private fun HomeTopSection(navController: NavController, qiblaText: String, nextPrayerText: String) {
+private fun HomeTopSection(
+    navController: NavController,
+    qiblaText: String = "키블라 방향: 남서 232°",
+    nextPrayerText: String = "다음 기도: Dhuhr 12:15",
+) {
+    val context = LocalContext.current
+    val savedName = remember(context) {
+        OnboardingPreferences(context).getDisplayName()
+    }
+    val greetingLine = if (!savedName.isNullOrBlank()) {
+        "안녕하세요, ${savedName}님!"
+    } else {
+        "안녕하세요!"
+    }
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -128,7 +117,7 @@ private fun HomeTopSection(navController: NavController, qiblaText: String, next
             verticalArrangement = Arrangement.spacedBy(ScanPangSpacing.sm),
         ) {
             Text(
-                text = "안녕하세요, 아미나님!\n오늘 명동을 탐험해볼까요?",
+                text = "$greetingLine\n오늘 명동을 탐험해볼까요?",
                 style = ScanPangType.homeGreeting,
                 color = ScanPangColors.OnSurfaceStrong,
             )
@@ -242,16 +231,19 @@ private fun HomeTopSection(navController: NavController, qiblaText: String, next
                 title = "할랄 식당",
                 icon = Icons.Rounded.Restaurant,
                 modifier = Modifier.weight(1f),
+                onClick = { navController.navigate(AppRoutes.NearbyHalal) },
             )
             QuickActionChip(
                 title = "기도실",
                 icon = Icons.Rounded.Mosque,
                 modifier = Modifier.weight(1f),
+                onClick = { navController.navigate(AppRoutes.NearbyPrayer) },
             )
             QuickActionChip(
                 title = "실시간 번역",
                 icon = Icons.Rounded.Translate,
                 modifier = Modifier.weight(1f),
+                onClick = { },
             )
         }
     }
@@ -262,12 +254,13 @@ private fun QuickActionChip(
     title: String,
     icon: androidx.compose.ui.graphics.vector.ImageVector,
     modifier: Modifier = Modifier,
+    onClick: () -> Unit,
 ) {
     Column(
         modifier = modifier
             .clip(ScanPangShapes.radius14)
             .background(ScanPangColors.Background)
-            .clickable(enabled = false) { }
+            .clickable(onClick = onClick)
             .padding(horizontal = ScanPangDimens.homeQuickChipHorizontal, vertical = ScanPangSpacing.lg),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(ScanPangSpacing.sm),
@@ -285,212 +278,5 @@ private fun QuickActionChip(
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
         )
-    }
-}
-
-@Composable
-private fun HomeBottomScrollSection() {
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = ScanPangDimens.screenHorizontal)
-            .padding(top = ScanPangSpacing.lg, bottom = ScanPangDimens.bottomSectionBottom),
-        verticalArrangement = Arrangement.spacedBy(ScanPangDimens.listBlockGap),
-    ) {
-        RecentSection()
-        RecommendSection()
-    }
-}
-
-@Composable
-private fun RecentSection() {
-    Column(verticalArrangement = Arrangement.spacedBy(ScanPangDimens.sectionHeaderGap)) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Text(
-                text = "최근 길찾기",
-                style = ScanPangType.sectionTitle,
-                color = ScanPangColors.OnSurfaceStrong,
-            )
-            Text(
-                text = "더보기",
-                style = ScanPangType.link13,
-                color = ScanPangColors.Primary,
-                modifier = Modifier.clickable(enabled = false) { },
-            )
-        }
-        Column(verticalArrangement = Arrangement.spacedBy(ScanPangDimens.sectionHeaderGap)) {
-            RecentRow(
-                title = "롯데백화점 명동본점",
-                subtitle = "도보 3분 · 오늘 14:20",
-                icon = Icons.Rounded.LocalMall,
-            )
-            RecentRow(
-                title = "CU 뉴명동YWCA점 ATM",
-                subtitle = "도보 8분 · 어제 09:45",
-                icon = Icons.Rounded.LocalAtm,
-            )
-        }
-    }
-}
-
-@Composable
-private fun RecentRow(
-    title: String,
-    subtitle: String,
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
-) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(ScanPangShapes.radius14)
-            .background(ScanPangColors.Background)
-            .clickable(enabled = false) { }
-            .padding(horizontal = ScanPangSpacing.lg, vertical = ScanPangDimens.recentRowVertical),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(ScanPangSpacing.md),
-    ) {
-        Box(
-            modifier = Modifier
-                .size(ScanPangDimens.recentIconCircle)
-                .clip(CircleShape)
-                .background(ScanPangColors.PrimarySoft),
-            contentAlignment = Alignment.Center,
-        ) {
-            Icon(
-                imageVector = icon,
-                contentDescription = null,
-                modifier = Modifier.size(ScanPangDimens.tabIcon),
-                tint = ScanPangColors.Primary,
-            )
-        }
-        Column(
-            modifier = Modifier.weight(1f),
-            verticalArrangement = Arrangement.spacedBy(ScanPangDimens.homeMetaGap),
-        ) {
-            Text(
-                text = title,
-                style = ScanPangType.title14,
-                color = ScanPangColors.OnSurfaceStrong,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-            Text(
-                text = subtitle,
-                style = ScanPangType.caption12,
-                color = ScanPangColors.OnSurfaceMuted,
-            )
-        }
-        Icon(
-            imageVector = Icons.Rounded.ChevronRight,
-            contentDescription = null,
-            modifier = Modifier.size(ScanPangDimens.chevronEnd),
-            tint = ScanPangColors.OnSurfacePlaceholder,
-        )
-    }
-}
-
-@Composable
-private fun RecommendSection() {
-    val context = LocalContext.current
-    Column(verticalArrangement = Arrangement.spacedBy(ScanPangDimens.recommendSectionGap)) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Text(
-                text = "추천 장소",
-                style = ScanPangType.sectionTitle,
-                color = ScanPangColors.OnSurfaceStrong,
-            )
-            Text(
-                text = "더보기",
-                style = ScanPangType.link13,
-                color = ScanPangColors.Primary,
-                modifier = Modifier.clickable(enabled = false) { },
-            )
-        }
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(ScanPangDimens.listBlockGap),
-        ) {
-            PlaceCard(
-                imageUrl = ScanPangFigmaAssets.HomePlaceCard1,
-                title = "봉추찜닭 명동점",
-                subtitle = "할랄 인증 · 도보 5분",
-                context = context,
-                modifier = Modifier.weight(1f),
-            )
-            PlaceCard(
-                imageUrl = ScanPangFigmaAssets.HomePlaceCard2,
-                title = "남산타워",
-                subtitle = "도보 15분 · 인기 명소",
-                context = context,
-                modifier = Modifier.weight(1f),
-            )
-        }
-    }
-}
-
-@Composable
-private fun PlaceCard(
-    imageUrl: String,
-    title: String,
-    subtitle: String,
-    context: android.content.Context,
-    modifier: Modifier = Modifier,
-) {
-    Column(
-        modifier = modifier
-            .clip(ScanPangShapes.radius16)
-            .border(
-                ScanPangDimens.borderHairline,
-                ScanPangColors.OutlineSubtle,
-                ScanPangShapes.radius16,
-            )
-            .background(ScanPangColors.Surface),
-    ) {
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(ScanPangDimens.placeImageHeight)
-                .clip(
-                    RoundedCornerShape(
-                        topStart = ScanPangDimens.cardRadiusLarge,
-                        topEnd = ScanPangDimens.cardRadiusLarge,
-                    ),
-                ),
-        ) {
-            AsyncImage(
-                model = ImageRequest.Builder(context)
-                    .data(imageUrl)
-                    .crossfade(true)
-                    .build(),
-                contentDescription = null,
-                contentScale = ContentScale.Crop,
-                modifier = Modifier.fillMaxSize(),
-            )
-        }
-        Column(
-            modifier = Modifier.padding(ScanPangDimens.cardPadding),
-            verticalArrangement = Arrangement.spacedBy(ScanPangSpacing.xs),
-        ) {
-            Text(
-                text = title,
-                style = ScanPangType.title14,
-                color = ScanPangColors.OnSurfaceStrong,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis,
-            )
-            Text(
-                text = subtitle,
-                style = ScanPangType.caption12,
-                color = ScanPangColors.OnSurfaceMuted,
-            )
-        }
     }
 }

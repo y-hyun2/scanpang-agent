@@ -31,6 +31,8 @@ import com.scanpang.app.ui.theme.ScanPangType
 enum class SearchResultBadgeKind {
     HalalMeat,
     Seafood,
+    Veggie,
+    SalamSeoul,
 }
 
 data class SearchResultTrustTag(
@@ -139,10 +141,14 @@ private fun ResultBadge(
     val bg = when (badgeKind) {
         SearchResultBadgeKind.HalalMeat -> ScanPangColors.HalalMeatBadgeBackground
         SearchResultBadgeKind.Seafood -> ScanPangColors.SeafoodBadgeBackground
+        SearchResultBadgeKind.Veggie -> ScanPangColors.VeggieBadgeBackground
+        SearchResultBadgeKind.SalamSeoul -> ScanPangColors.SalamSeoulBadgeBackground
     }
     val fg = when (badgeKind) {
         SearchResultBadgeKind.HalalMeat -> ScanPangColors.HalalMeatBadgeText
         SearchResultBadgeKind.Seafood -> ScanPangColors.Primary
+        SearchResultBadgeKind.Veggie -> ScanPangColors.VeggieBadgeText
+        SearchResultBadgeKind.SalamSeoul -> ScanPangColors.SalamSeoulBadgeText
     }
     Row(
         modifier = Modifier

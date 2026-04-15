@@ -31,6 +31,8 @@ import androidx.compose.material.icons.rounded.ArrowUpward
 import androidx.compose.material.icons.rounded.CurrencyExchange
 import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material3.Icon
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -333,11 +335,14 @@ fun BoxScope.ArNavPoiFab(
     icon: ImageVector,
     tint: Color,
     modifier: Modifier = Modifier,
+    onClick: (() -> Unit)? = null,
 ) {
+    val clickMod = if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier
     Surface(
         modifier = modifier
             .align(Alignment.TopStart)
-            .size(ScanPangDimens.arNavPoiFab),
+            .size(ScanPangDimens.arNavPoiFab)
+            .then(clickMod),
         shape = CircleShape,
         color = ScanPangColors.Surface,
         shadowElevation = ScanPangDimens.arPoiCardShadowElevation,
@@ -562,6 +567,106 @@ fun ArNavAgentPanelContent(
 }
 
 @Composable
+fun ArNavAiGuideTabWithTextField(
+    query: String,
+    onQueryChange: (String) -> Unit,
+    userMessage: String,
+    agentMessage: String,
+    placeholder: String,
+    modifier: Modifier = Modifier,
+) {
+    Column(
+        modifier = modifier
+            .fillMaxSize()
+            .padding(horizontal = ScanPangDimens.arTopBarHorizontal)
+            .padding(bottom = ScanPangDimens.arChatAreaBottomPad),
+        verticalArrangement = Arrangement.spacedBy(ScanPangDimens.arChatBubbleGap),
+    ) {
+        Column(
+            modifier = Modifier
+                .weight(1f)
+                .fillMaxWidth(),
+            verticalArrangement = Arrangement.Bottom,
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            Column(
+                verticalArrangement = Arrangement.spacedBy(ScanPangSpacing.md),
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.End,
+                ) {
+                    Surface(
+                        shape = ScanPangShapes.arBubbleUser,
+                        color = ScanPangColors.Primary,
+                        shadowElevation = ScanPangDimens.arPoiCardShadowElevation,
+                    ) {
+                        Text(
+                            text = userMessage,
+                            modifier = Modifier.padding(
+                                horizontal = ScanPangDimens.arTopBarHorizontal,
+                                vertical = ScanPangDimens.icon10,
+                            ),
+                            style = ScanPangType.arNavTab13Inactive,
+                            color = Color.White,
+                            maxLines = 3,
+                        )
+                    }
+                }
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.Start,
+                ) {
+                    Surface(
+                        shape = ScanPangShapes.arBubbleAgent,
+                        color = ScanPangColors.ArOverlayWhite93,
+                        shadowElevation = ScanPangDimens.arPoiCardShadowElevation,
+                    ) {
+                        Text(
+                            text = agentMessage,
+                            modifier = Modifier.padding(
+                                horizontal = ScanPangDimens.arTopBarHorizontal,
+                                vertical = ScanPangDimens.icon10,
+                            ),
+                            style = ScanPangType.arNavTab13Inactive,
+                            color = ScanPangColors.OnSurfaceStrong,
+                            maxLines = 4,
+                        )
+                    }
+                }
+            }
+        }
+        OutlinedTextField(
+            value = query,
+            onValueChange = onQueryChange,
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(ScanPangDimens.arNavGuideInputHeight),
+            placeholder = {
+                Text(
+                    text = placeholder,
+                    style = ScanPangType.arNavGuideInput13,
+                    color = ScanPangColors.OnSurfacePlaceholder,
+                )
+            },
+            textStyle = ScanPangType.arNavGuideInput13.copy(color = ScanPangColors.OnSurfaceStrong),
+            singleLine = true,
+            shape = ScanPangShapes.arInputPill,
+            colors = OutlinedTextFieldDefaults.colors(
+                focusedTextColor = ScanPangColors.OnSurfaceStrong,
+                unfocusedTextColor = ScanPangColors.OnSurfaceStrong,
+                focusedBorderColor = ScanPangColors.Primary,
+                unfocusedBorderColor = ScanPangColors.OutlineSubtle,
+                focusedContainerColor = ScanPangColors.ArOverlayWhite85,
+                unfocusedContainerColor = ScanPangColors.ArOverlayWhite85,
+                cursorColor = ScanPangColors.Primary,
+            ),
+        )
+    }
+}
+
+@Composable
 fun ArNavGuideInputBar(
     placeholder: String,
     modifier: Modifier = Modifier,
@@ -737,7 +842,10 @@ fun BoxScope.ArArrivalBadgeStack(
 
 /** 길안내 POI: 쇼핑(왼쪽)·환전(오른쪽) — Figma 위치 */
 @Composable
-fun BoxScope.ArNavDefaultPoiMarkers() {
+fun BoxScope.ArNavDefaultPoiMarkers(
+    onShoppingPoiClick: () -> Unit = {},
+    onExchangePoiClick: () -> Unit = {},
+) {
     ArNavPoiFab(
         icon = Icons.Rounded.LocalMall,
         tint = ScanPangColors.CategoryMall,
@@ -745,6 +853,7 @@ fun BoxScope.ArNavDefaultPoiMarkers() {
             start = ScanPangDimens.arNavPoiOneStart,
             top = ScanPangDimens.arNavPoiOneTop,
         ),
+        onClick = onShoppingPoiClick,
     )
     ArNavPoiFab(
         icon = Icons.Rounded.CurrencyExchange,
@@ -753,5 +862,6 @@ fun BoxScope.ArNavDefaultPoiMarkers() {
             start = ScanPangDimens.arNavPoiTwoStart,
             top = ScanPangDimens.arNavPoiTwoTop,
         ),
+        onClick = onExchangePoiClick,
     )
 }

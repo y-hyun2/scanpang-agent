@@ -43,6 +43,12 @@ object ScanPangColors {
     val HalalMeatBadgeText = Color(0xFF7B1E1E)
     /** SEAFOOD 뱃지 배경 rgba(26,115,232,0.07) */
     val SeafoodBadgeBackground = Color(0x121A73E8)
+    /** VEGGIE 뱃지 */
+    val VeggieBadgeBackground = Color(0x1234A853)
+    val VeggieBadgeText = Color(0xFF15803D)
+    /** SALAM SEOUL 뱃지 */
+    val SalamSeoulBadgeBackground = Color(0x127C3AED)
+    val SalamSeoulBadgeText = Color(0xFF6D28D9)
     /** 영업 중·오픈 상태 (#10B981) */
     val StatusOpen = Color(0xFF10B981)
     /** 신뢰 태그 배경 rgba(16,185,129,0.06) */
@@ -66,6 +72,13 @@ object ScanPangColors {
     /** AR 상단 그라데이션 (from 50% white → 투명) */
     val ArTopGradientStart = Color(0x80FFFFFF)
     val ArTopGradientEnd = Color(0x00FFFFFF)
+    /** AR 탐색 카메라 상단 스크림 (흰색 70% → 투명, Edge-to-edge 오버레이) */
+    val ArExploreScrimGradientTop = Color(0xB3FFFFFF)
+    val ArExploreScrimGradientBottom = Color(0x00FFFFFF)
+    /** AR 검색·필터 바깥 스크림 */
+    val ArOverlayScrimDark = Color(0x66000000)
+    /** TTS 꺼짐 시 아이콘 틴트 */
+    val ArTtsOffIconTint = Color(0xFF9CA3AF)
     /** AR iOS 스타일 키보드 패널 배경 */
     val ArKeyboardIosBackground = Color(0xFFD2D3D8)
     val ArKeyboardIosFunctionKey = Color(0xFFABB0BC)
@@ -133,6 +146,14 @@ object ScanPangDimens {
     val headerTopPadding: Dp = 16.dp
     val bottomBarContainerHeight: Dp = 95.dp
     val bottomPillHeight: Dp = 62.dp
+    /** FAB·라벨 묶음을 위로 띄우는 오프셋 */
+    val tabBarFabCenterOffsetUp: Dp = 28.dp
+    /** 메인 탭(ScanPangTabBar) 위 콘텐츠 하단 여백 */
+    val mainTabContentBottomInset: Dp = bottomBarContainerHeight + tabBarFabCenterOffsetUp
+    /** AR 탐색 화면 상단 그라데이션 오버레이 높이 */
+    val arExploreGradientOverlayHeight: Dp = 200.dp
+    /** POI 바텀시트 최대 높이 */
+    val arPoiSheetMaxHeight: Dp = 400.dp
     val bottomPillHorizontalInset: Dp = 21.dp
     val bottomPillInnerPadding: Dp = 4.dp
     val fabSize: Dp = 56.dp
@@ -274,6 +295,7 @@ object ScanPangDimens {
     val arArrivalStackGap: Dp = 4.dp
 
     val detailArPanelTop: Dp = 230.dp
+    val detailArPanelWidth: Dp = 361.dp
     val detailArPanelHeight: Dp = 352.dp
     val detailArCarouselSmallHeight: Dp = 90.dp
     val detailPhotoHeroHeight: Dp = 240.dp

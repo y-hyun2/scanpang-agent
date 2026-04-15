@@ -16,4 +16,11 @@ object ScanPangFigmaAssets {
     /** 식당 상세 히어로(캐러셀) — Figma 원본 URL 만료 시 교체 */
     const val RestaurantDetailHero =
         "https://www.figma.com/api/mcp/asset/78e2278d-3435-447c-9062-ad855e6b86a9"
+
+    val RestaurantDetailGallery: List<String> = listOf(
+        RestaurantDetailHero,
+        HomePlaceCard1,
+        HomePlaceCard2,
+        ArNavigationMap,
+    )
 }

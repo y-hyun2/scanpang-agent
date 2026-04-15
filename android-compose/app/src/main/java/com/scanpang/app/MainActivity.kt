@@ -6,8 +6,7 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.ui.Modifier
-import androidx.navigation.compose.rememberNavController
-import com.scanpang.app.navigation.AppNavHost
+import com.scanpang.app.navigation.ScanPangApp
 import com.scanpang.app.ui.theme.ScanPangTheme
 
 class MainActivity : ComponentActivity() {
@@ -16,11 +15,7 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         setContent {
             ScanPangTheme {
-                val navController = rememberNavController()
-                AppNavHost(
-                    navController = navController,
-                    modifier = Modifier.fillMaxSize(),
-                )
+                ScanPangApp(modifier = Modifier.fillMaxSize())
             }
         }
     }

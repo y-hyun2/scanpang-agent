@@ -24,6 +24,7 @@ import androidx.compose.material.icons.rounded.Restaurant
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -36,8 +37,7 @@ import coil.request.ImageRequest
 import com.scanpang.app.components.ProfileSettingsCard
 import com.scanpang.app.components.ProfileSettingsRow
 import com.scanpang.app.components.ProfileSettingsSectionLabel
-import com.scanpang.app.components.ScanPangBottomBar
-import com.scanpang.app.components.ScanPangMainTab
+import com.scanpang.app.data.OnboardingPreferences
 import com.scanpang.app.navigation.AppRoutes
 import com.scanpang.app.ui.ScanPangFigmaAssets
 import com.scanpang.app.ui.theme.ScanPangColors
@@ -52,30 +52,31 @@ fun ProfileScreen(
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
+    val onboardingPrefs = remember(context) { OnboardingPreferences(context) }
+    val savedName = onboardingPrefs.getDisplayName().orEmpty().trim()
+    val profileName = if (savedName.isNotEmpty()) savedName else "여행자"
+    val langLabel = OnboardingPreferences.languageDisplayLabel(onboardingPrefs.getLanguageCode())
+    val travelLabel = OnboardingPreferences.travelPreferenceDisplayLabel(onboardingPrefs.getTravelPreference())
+    val profileSubtitle = buildString {
+        if (travelLabel.isNotEmpty()) {
+            append(travelLabel)
+            append(" · ")
+        }
+        append(langLabel)
+    }
+
     Scaffold(
         modifier = modifier.fillMaxSize(),
         containerColor = ScanPangColors.Background,
-        bottomBar = {
-            ScanPangBottomBar(
-                selectedTab = ScanPangMainTab.Profile,
-                onHomeClick = { navController.navigate(AppRoutes.Home) { launchSingleTop = true } },
-                onSearchClick = { navController.navigate(AppRoutes.Search) { launchSingleTop = true } },
-                onSavedClick = { navController.navigate(AppRoutes.Saved) { launchSingleTop = true } },
-                onProfileClick = { },
-                onExploreClick = {
-                    navController.navigate(AppRoutes.ArDefault) { launchSingleTop = true }
-                },
-            )
-        },
-    ) { innerPadding ->
+        contentWindowInsets = androidx.compose.foundation.layout.WindowInsets(0, 0, 0, 0),
+    ) { _ ->
         LazyColumn(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(innerPadding)
                 .background(ScanPangColors.Background)
                 .statusBarsPadding()
                 .padding(horizontal = ScanPangDimens.screenHorizontal)
-                .padding(bottom = ScanPangSpacing.lg),
+                .padding(bottom = ScanPangDimens.mainTabContentBottomInset + ScanPangSpacing.lg),
             verticalArrangement = Arrangement.spacedBy(ScanPangSpacing.md),
         ) {
             item {
@@ -116,12 +117,12 @@ fun ProfileScreen(
                         }
                         Column(verticalArrangement = Arrangement.spacedBy(ScanPangSpacing.xs)) {
                             Text(
-                                text = "Fatima",
+                                text = profileName,
                                 style = ScanPangType.profileName18,
                                 color = ScanPangColors.OnSurfaceStrong,
                             )
                             Text(
-                                text = "혼자 여행 중 · 한국어 · English",
+                                text = profileSubtitle,
                                 style = ScanPangType.meta13,
                                 color = ScanPangColors.OnSurfaceMuted,
                             )
@@ -130,7 +131,13 @@ fun ProfileScreen(
                     Row(
                         horizontalArrangement = Arrangement.spacedBy(ScanPangSpacing.sm),
                     ) {
-                        ProfilePreferenceTag("할랄 우선")
+                        when (onboardingPrefs.getTravelPreference()) {
+                            OnboardingPreferences.TRAVEL_PREF_HALAL ->
+                                ProfilePreferenceTag("할랄 우선")
+                            OnboardingPreferences.TRAVEL_PREF_GENERAL ->
+                                ProfilePreferenceTag("일반 여행")
+                            else -> ProfilePreferenceTag("여행 맞춤")
+                        }
                         ProfilePreferenceTag("AR 탐색 모드")
                         ProfilePreferenceTag("TTS 활성")
                     }
@@ -216,7 +223,14 @@ fun ProfileScreen(
                         icon = Icons.AutoMirrored.Rounded.Logout,
                         iconTint = ScanPangColors.DangerStrong,
                         labelColor = ScanPangColors.DangerStrong,
-                        onClick = { },
+                        onClick = {
+                            OnboardingPreferences(context).clearForLogout()
+                            navController.navigate(AppRoutes.Splash) {
+                                popUpTo(navController.graph.id) {
+                                    inclusive = true
+                                }
+                            }
+                        },
                         showDividerBelow = false,
                     )
                 }
