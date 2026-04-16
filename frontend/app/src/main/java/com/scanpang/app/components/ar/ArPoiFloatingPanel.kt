@@ -1,7 +1,9 @@
 package com.scanpang.app.components.ar
 
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.Orientation
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -12,7 +14,11 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.PagerDefaults
+import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -55,6 +61,8 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import com.scanpang.app.data.remote.ArOverlay
 import com.scanpang.app.data.remote.Docent
 import com.scanpang.app.data.remote.FloorInfo
@@ -319,111 +327,204 @@ private fun ArPoiDetailSegmentedTabs(
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun ArPoiBuildingTabBody(arOverlay: ArOverlay? = null) {
-    Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(118.dp)
-            .clip(RoundedCornerShape(12.dp))
-            .background(Color(0xFFE8E8E8)),
-    ) {
-        Surface(
-            shape = RoundedCornerShape(6.dp),
-            color = Color.Black.copy(alpha = 0.45f),
-            modifier = Modifier
-                .align(Alignment.TopStart)
-                .padding(8.dp),
+    val buildingImageCount = 4
+    val buildingImageBg = listOf(
+        Color(0xFFE8E8E8),
+        Color(0xFFD8D8D8),
+        Color(0xFFC8C8C8),
+        Color(0xFFB8B8B8),
+    )
+    val pagerState = rememberPagerState(pageCount = { buildingImageCount })
+    var buildingGalleryFullscreen by remember { mutableStateOf(false) }
+    val currentBuildingPage = pagerState.currentPage
+
+    if (buildingGalleryFullscreen) {
+        Dialog(
+            onDismissRequest = { buildingGalleryFullscreen = false },
+            properties = DialogProperties(usePlatformDefaultWidth = false),
         ) {
-            Text(
-                text = "1/4",
-                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
-                style = ScanPangType.meta11Medium,
-                color = Color.White,
-            )
-        }
-        IconButton(
-            onClick = { },
-            modifier = Modifier
-                .align(Alignment.TopEnd)
-                .padding(4.dp)
-                .size(32.dp),
-        ) {
-            Icon(
-                imageVector = Icons.Rounded.OpenInFull,
-                contentDescription = "전체 보기",
-                tint = Color.White,
-                modifier = Modifier.size(18.dp),
-            )
-        }
-        Row(
-            modifier = Modifier
-                .align(Alignment.BottomCenter)
-                .padding(bottom = 8.dp),
-            horizontalArrangement = Arrangement.spacedBy(4.dp),
-        ) {
-            repeat(4) { i ->
-                Box(
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color.Black),
+            ) {
+                HorizontalPager(
+                    state = pagerState,
+                    modifier = Modifier.fillMaxSize(),
+                    pageNestedScrollConnection = PagerDefaults.pageNestedScrollConnection(
+                        state = pagerState,
+                        orientation = Orientation.Horizontal,
+                    ),
+                ) { page ->
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .background(buildingImageBg[page]),
+                    )
+                }
+                Surface(
+                    shape = RoundedCornerShape(6.dp),
+                    color = Color.Black.copy(alpha = 0.45f),
                     modifier = Modifier
-                        .size(if (i == 0) 6.dp else 5.dp)
-                        .clip(CircleShape)
-                        .background(if (i == 0) Color.White else Color.White.copy(alpha = 0.45f)),
-                )
+                        .align(Alignment.TopStart)
+                        .statusBarsPadding()
+                        .padding(ScanPangSpacing.md),
+                ) {
+                    Text(
+                        text = "${currentBuildingPage + 1}/$buildingImageCount",
+                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                        style = ScanPangType.meta11Medium,
+                        color = Color.White,
+                    )
+                }
+                IconButton(
+                    onClick = { buildingGalleryFullscreen = false },
+                    modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        .statusBarsPadding()
+                        .padding(ScanPangSpacing.sm),
+                ) {
+                    Icon(
+                        imageVector = Icons.Rounded.Close,
+                        contentDescription = "닫기",
+                        tint = Color.White,
+                    )
+                }
             }
         }
     }
-    Spacer(modifier = Modifier.height(ScanPangSpacing.sm))
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(6.dp),
-        verticalAlignment = Alignment.Top,
-    ) {
-        Icon(
-            imageVector = Icons.Rounded.Info,
-            contentDescription = null,
-            tint = ScanPangColors.Primary,
-            modifier = Modifier.size(18.dp),
-        )
-        Text(
-            text = arOverlay?.let { "${it.name} · ${it.category}" }
-                ?: "명동 중심 대형 복합 쇼핑몰. 지하2층~지상8층, 패션·뷰티·F&B 입점.",
-            style = ScanPangType.body14Regular,
-            color = ScanPangColors.OnSurfaceStrong,
-            modifier = Modifier.weight(1f),
-        )
-    }
-    Spacer(modifier = Modifier.height(ScanPangSpacing.md))
-    val gridItems = listOf(
-        Triple(Icons.Rounded.AccessTime, arOverlay?.open_hours?.ifEmpty { null } ?: "10:00–22:00", false),
-        Triple(Icons.Rounded.Stairs, arOverlay?.floor_info?.let { floors ->
-            if (floors.isNotEmpty()) "${floors.first().floor}~${floors.last().floor}" else "B2~8F"
-        } ?: "B2~8F", false),
-        Triple(Icons.Rounded.Place, "명동 중앙로 26", false),
-        Triple(Icons.Rounded.LocalPhone, "02-778-1234", false),
-        Triple(Icons.Rounded.LocalParking, arOverlay?.parking_info?.ifEmpty { null } ?: "주차 가능", false),
-        Triple(Icons.Rounded.ConfirmationNumber, arOverlay?.admission_fee?.ifEmpty { null } ?: "무료 입장", false),
-        Triple(Icons.Rounded.Language, if (arOverlay?.homepage?.isNotEmpty() == true) "홈페이지" else "홈페이지", true),
-        Triple(Icons.Rounded.Restaurant, arOverlay?.halal_info?.ifEmpty { null } ?: "할랄 식당 有", false),
-    )
-    gridItems.chunked(2).forEach { row ->
+
+    Column(modifier = Modifier.fillMaxWidth()) {
         Row(
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+            verticalAlignment = Alignment.Top,
         ) {
-            row.forEach { (icon, label, isLink) ->
-                ArPoiInfoChip(
-                    icon = icon,
-                    text = label,
-                    modifier = Modifier.weight(1f),
-                    textColor = if (isLink) ScanPangColors.Primary else ScanPangColors.OnSurfaceStrong,
-                    iconTint = if (isLink) ScanPangColors.Primary else ScanPangColors.OnSurfaceMuted,
-                    background = if (label.contains("할랄")) DetailHalalChipBg else DetailChipBg,
-                    strongText = label.contains("할랄"),
+            Icon(
+                imageVector = Icons.Rounded.Info,
+                contentDescription = null,
+                tint = ScanPangColors.Primary,
+                modifier = Modifier.size(18.dp),
+            )
+            Text(
+                text = arOverlay?.let { "${it.name} · ${it.category}" }
+                    ?: "명동 중심 대형 복합 쇼핑몰. 지하2층~지상8층, 패션·뷰티·F&B 입점.",
+                style = ScanPangType.body14Regular,
+                color = ScanPangColors.OnSurfaceStrong,
+                modifier = Modifier.weight(1f),
+            )
+        }
+        Spacer(modifier = Modifier.height(ScanPangSpacing.md))
+        val gridItems = listOf(
+            Triple(Icons.Rounded.AccessTime, arOverlay?.open_hours?.ifEmpty { null } ?: "10:00–22:00", false),
+            Triple(Icons.Rounded.Stairs, "B2~8F", false),
+            Triple(Icons.Rounded.Place, "명동 중앙로 26", false),
+            Triple(Icons.Rounded.LocalPhone, "02-778-1234", false),
+            Triple(Icons.Rounded.LocalParking, arOverlay?.parking_info?.ifEmpty { null } ?: "주차 가능", false),
+            Triple(Icons.Rounded.ConfirmationNumber, arOverlay?.admission_fee?.ifEmpty { null } ?: "무료 입장", false),
+            Triple(Icons.Rounded.Language, "홈페이지", true),
+            Triple(Icons.Rounded.Restaurant, arOverlay?.halal_info?.ifEmpty { null } ?: "할랄 식당 有", false),
+        )
+        gridItems.chunked(2).forEach { row ->
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                row.forEach { (icon, label, isLink) ->
+                    ArPoiInfoChip(
+                        icon = icon,
+                        text = label,
+                        modifier = Modifier.weight(1f),
+                        textColor = if (isLink) ScanPangColors.Primary else ScanPangColors.OnSurfaceStrong,
+                        iconTint = if (isLink) ScanPangColors.Primary else ScanPangColors.OnSurfaceMuted,
+                        background = if (label.contains("할랄")) DetailHalalChipBg else DetailChipBg,
+                        strongText = label.contains("할랄"),
+                    )
+                }
+                if (row.size == 1) Spacer(modifier = Modifier.weight(1f))
+            }
+            Spacer(modifier = Modifier.height(8.dp))
+        }
+
+        Spacer(modifier = Modifier.height(ScanPangSpacing.md))
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(118.dp)
+                .clip(RoundedCornerShape(12.dp)),
+        ) {
+            HorizontalPager(
+                state = pagerState,
+                modifier = Modifier.fillMaxSize(),
+                pageNestedScrollConnection = PagerDefaults.pageNestedScrollConnection(
+                    state = pagerState,
+                    orientation = Orientation.Horizontal,
+                ),
+            ) { page ->
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(buildingImageBg[page]),
                 )
             }
-            if (row.size == 1) Spacer(modifier = Modifier.weight(1f))
+            Surface(
+                shape = RoundedCornerShape(6.dp),
+                color = Color.Black.copy(alpha = 0.45f),
+                modifier = Modifier
+                    .align(Alignment.TopStart)
+                    .padding(8.dp),
+            ) {
+                Text(
+                    text = "${currentBuildingPage + 1}/$buildingImageCount",
+                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                    style = ScanPangType.meta11Medium,
+                    color = Color.White,
+                )
+            }
+            Surface(
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .padding(4.dp)
+                    .size(32.dp)
+                    .clip(CircleShape)
+                    .clickable { buildingGalleryFullscreen = true },
+                shape = CircleShape,
+                color = Color.Black.copy(alpha = 0.35f),
+            ) {
+                Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
+                    Icon(
+                        imageVector = Icons.Rounded.OpenInFull,
+                        contentDescription = "전체 보기",
+                        tint = Color.White,
+                        modifier = Modifier.size(18.dp),
+                    )
+                }
+            }
+            Row(
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .padding(bottom = 8.dp),
+                horizontalArrangement = Arrangement.spacedBy(4.dp),
+            ) {
+                repeat(buildingImageCount) { i ->
+                    Box(
+                        modifier = Modifier
+                            .size(if (i == currentBuildingPage) 6.dp else 5.dp)
+                            .clip(CircleShape)
+                            .background(
+                                if (i == currentBuildingPage) {
+                                    Color.White
+                                } else {
+                                    Color.White.copy(alpha = 0.45f)
+                                },
+                            ),
+                    )
+                }
+            }
         }
-        Spacer(modifier = Modifier.height(8.dp))
     }
 }
 
@@ -615,12 +716,32 @@ private fun ArPoiAiGuideTabBody(docent: Docent? = null) {
                 1 -> Icons.Rounded.ShoppingBag
                 else -> Icons.Rounded.CameraAlt
             }
-            ArPoiAiPointCard(
-                icon = icon,
-                title = suggestion,
-                subtitle = "",
-            )
+            ArPoiAiPointCard(icon = icon, title = suggestion, subtitle = "")
             Spacer(modifier = Modifier.height(8.dp))
+        }
+    }
+    Spacer(modifier = Modifier.height(ScanPangSpacing.md))
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(12.dp),
+        color = DetailAiTipBg,
+    ) {
+        Row(
+            modifier = Modifier.padding(12.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.Top,
+        ) {
+            Icon(
+                imageVector = Icons.Rounded.Lightbulb,
+                contentDescription = null,
+                tint = Color(0xFFF59E0B),
+                modifier = Modifier.size(20.dp),
+            )
+            Text(
+                text = "혼자 여행 팁: 2F~3F 뷰티 매장은 평일 오전이 한적해요",
+                style = ScanPangType.caption12Medium,
+                color = DetailAiTipFg,
+            )
         }
     }
     Spacer(modifier = Modifier.height(8.dp))
@@ -679,8 +800,6 @@ fun ArFloorStoreGuideOverlay(
     onDismiss: () -> Unit,
     onStartNavigation: () -> Unit,
     modifier: Modifier = Modifier,
-    storeCategory: String = "",
-    storeAddress: String = "",
 ) {
     Box(
         modifier = modifier
@@ -705,7 +824,7 @@ fun ArFloorStoreGuideOverlay(
                 )
                 Spacer(modifier = Modifier.height(ScanPangSpacing.sm))
                 Text(
-                    text = storeCategory.ifEmpty { "HALAL MEAT · 한식 · 영업 중" },
+                    text = "HALAL MEAT · 한식 · 영업 중",
                     style = ScanPangType.caption12Medium,
                     color = ScanPangColors.OnSurfaceMuted,
                 )

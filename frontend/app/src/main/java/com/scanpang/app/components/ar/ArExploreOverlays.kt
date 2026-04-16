@@ -7,9 +7,11 @@ import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.runtime.getValue
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -34,22 +36,27 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowRight
 import androidx.compose.material.icons.automirrored.rounded.Send
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.TextField
 import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.material.icons.rounded.AccountBalance
 import androidx.compose.material.icons.rounded.CameraAlt
 import androidx.compose.material.icons.rounded.Check
+import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.Coffee
 import androidx.compose.material.icons.rounded.CropFree
 import androidx.compose.material.icons.rounded.CurrencyExchange
 import androidx.compose.material.icons.rounded.DirectionsTransit
 import androidx.compose.material.icons.rounded.FilterList
+import androidx.compose.material.icons.rounded.History
 import androidx.compose.material.icons.rounded.Home
 import androidx.compose.material.icons.rounded.LocalAtm
 import androidx.compose.material.icons.rounded.LocalHospital
@@ -63,10 +70,12 @@ import androidx.compose.material.icons.rounded.Wc
 import androidx.compose.material.icons.rounded.Mic
 import androidx.compose.material.icons.rounded.Headset
 import androidx.compose.material.icons.rounded.Pause
+import androidx.compose.material.icons.rounded.Place
 import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material.icons.automirrored.rounded.VolumeUp
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -1118,6 +1127,274 @@ private fun ArExploreRoundSideButton(
                 modifier = Modifier.size(ScanPangDimens.icon20),
                 tint = iconTint,
             )
+        }
+    }
+}
+
+private val ArExploreHalalBadgeBg = Color(0xFFE8F5E9)
+private val ArExploreHalalBadgeFg = Color(0xFF2E7D32)
+
+data class ArExploreSearchHitUi(
+    val title: String,
+    val category: String,
+    val distance: String,
+    val badgeLabel: String?,
+)
+
+@Composable
+fun ArExploreSearchPanelContent(
+    query: String,
+    onQueryChange: (String) -> Unit,
+    onSubmitSearch: () -> Unit,
+    recentQueries: List<String>,
+    onRecentQueryClick: (String) -> Unit,
+    onRecentQueryRemove: (String) -> Unit,
+    onRecentClearAll: () -> Unit,
+    showResultList: Boolean,
+    searchHits: List<ArExploreSearchHitUi>,
+    onHitViewInfo: (ArExploreSearchHitUi) -> Unit,
+    onHitStartNav: (ArExploreSearchHitUi) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Column(
+        modifier = modifier.verticalScroll(rememberScrollState()),
+        verticalArrangement = Arrangement.spacedBy(ScanPangSpacing.md),
+    ) {
+        ArExploreSearchEditableBar(
+            query = query,
+            onQueryChange = onQueryChange,
+            placeholder = "장소, 건물, 매장 검색",
+            onSearchIme = onSubmitSearch,
+        )
+        if (!showResultList && recentQueries.isNotEmpty()) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    text = "최근 검색",
+                    style = ScanPangType.sectionTitle16,
+                    color = ScanPangColors.OnSurfaceStrong,
+                )
+                TextButton(
+                    onClick = onRecentClearAll,
+                    contentPadding = PaddingValues(horizontal = ScanPangSpacing.sm, vertical = ScanPangSpacing.xs),
+                ) {
+                    Text(
+                        text = "전체 삭제",
+                        style = ScanPangType.caption12Medium,
+                        color = ScanPangColors.OnSurfaceMuted,
+                    )
+                }
+            }
+            recentQueries.forEach { q ->
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { onRecentQueryClick(q) }
+                        .padding(vertical = ScanPangSpacing.sm),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(ScanPangSpacing.sm),
+                ) {
+                    Icon(
+                        imageVector = Icons.Rounded.History,
+                        contentDescription = null,
+                        tint = ScanPangColors.OnSurfaceMuted,
+                        modifier = Modifier.size(ScanPangDimens.icon18),
+                    )
+                    Text(
+                        text = q,
+                        style = ScanPangType.body14Regular,
+                        color = ScanPangColors.OnSurfaceStrong,
+                        modifier = Modifier.weight(1f),
+                    )
+                    IconButton(
+                        onClick = { onRecentQueryRemove(q) },
+                        modifier = Modifier.size(36.dp),
+                    ) {
+                        Icon(
+                            imageVector = Icons.Rounded.Close,
+                            contentDescription = "삭제",
+                            tint = ScanPangColors.OnSurfaceMuted,
+                            modifier = Modifier.size(ScanPangDimens.icon18),
+                        )
+                    }
+                }
+            }
+        }
+        if (showResultList) {
+            HorizontalDivider(color = ScanPangColors.OutlineSubtle)
+            Text(
+                text = "정확도 · 거리순",
+                style = ScanPangType.meta11SemiBold,
+                color = ScanPangColors.OnSurfaceMuted,
+            )
+            searchHits.forEach { hit ->
+                ArExploreSearchResultCard(
+                    hit = hit,
+                    onViewInfo = { onHitViewInfo(hit) },
+                    onStartNav = { onHitStartNav(hit) },
+                    modifier = Modifier.padding(bottom = ScanPangSpacing.sm),
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun ArExploreSearchEditableBar(
+    query: String,
+    onQueryChange: (String) -> Unit,
+    placeholder: String,
+    onSearchIme: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .height(ScanPangDimens.searchBarHeightActive)
+            .clip(ScanPangShapes.radius14)
+            .background(ScanPangColors.Background)
+            .padding(horizontal = ScanPangDimens.searchBarInnerHorizontal),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(ScanPangSpacing.sm),
+    ) {
+        Icon(
+            imageVector = Icons.Rounded.Search,
+            contentDescription = null,
+            tint = ScanPangColors.OnSurfaceMuted,
+            modifier = Modifier.size(ScanPangDimens.icon20),
+        )
+        BasicTextField(
+            value = query,
+            onValueChange = onQueryChange,
+            singleLine = true,
+            textStyle = ScanPangType.body15Medium.copy(color = ScanPangColors.OnSurfaceStrong),
+            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+            keyboardActions = KeyboardActions(onSearch = { onSearchIme() }),
+            modifier = Modifier.weight(1f),
+            decorationBox = { innerTextField ->
+                Box {
+                    if (query.isEmpty()) {
+                        Text(
+                            text = placeholder,
+                            style = ScanPangType.searchPlaceholderRegular,
+                            color = ScanPangColors.OnSurfacePlaceholder,
+                        )
+                    }
+                    innerTextField()
+                }
+            },
+        )
+        if (query.isNotEmpty()) {
+            Icon(
+                imageVector = Icons.Rounded.Close,
+                contentDescription = "지우기",
+                modifier = Modifier
+                    .size(ScanPangDimens.icon18)
+                    .clickable { onQueryChange("") },
+                tint = ScanPangColors.OnSurfacePlaceholder,
+            )
+        }
+    }
+}
+
+@Composable
+private fun ArExploreSearchResultCard(
+    hit: ArExploreSearchHitUi,
+    onViewInfo: () -> Unit,
+    onStartNav: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Surface(
+        modifier = modifier.fillMaxWidth(),
+        shape = ScanPangShapes.radius14,
+        color = ScanPangColors.Surface,
+        border = BorderStroke(ScanPangDimens.borderHairline, ScanPangColors.OutlineSubtle),
+        shadowElevation = ScanPangDimens.arPoiCardShadowElevation,
+    ) {
+        Column(
+            modifier = Modifier.padding(ScanPangSpacing.md),
+            verticalArrangement = Arrangement.spacedBy(ScanPangSpacing.md),
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(ScanPangSpacing.md),
+            ) {
+                Surface(
+                    shape = CircleShape,
+                    color = ScanPangColors.PrimarySoft,
+                    modifier = Modifier.size(40.dp),
+                ) {
+                    Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
+                        Icon(
+                            imageVector = Icons.Rounded.Place,
+                            contentDescription = null,
+                            tint = ScanPangColors.Primary,
+                            modifier = Modifier.size(22.dp),
+                        )
+                    }
+                }
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = hit.title,
+                        style = ScanPangType.title16SemiBold,
+                        color = ScanPangColors.OnSurfaceStrong,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    Text(
+                        text = "${hit.category} · ${hit.distance}",
+                        style = ScanPangType.caption12Medium,
+                        color = ScanPangColors.OnSurfaceMuted,
+                    )
+                    if (hit.badgeLabel != null) {
+                        Spacer(modifier = Modifier.height(ScanPangSpacing.xs))
+                        Surface(
+                            shape = ScanPangShapes.badge6,
+                            color = ArExploreHalalBadgeBg,
+                        ) {
+                            Text(
+                                text = hit.badgeLabel,
+                                modifier = Modifier.padding(
+                                    horizontal = ScanPangSpacing.sm,
+                                    vertical = ScanPangDimens.badgePadVertical,
+                                ),
+                                style = ScanPangType.tag11Medium,
+                                color = ArExploreHalalBadgeFg,
+                            )
+                        }
+                    }
+                }
+                Icon(
+                    imageVector = Icons.AutoMirrored.Rounded.KeyboardArrowRight,
+                    contentDescription = null,
+                    tint = ScanPangColors.OnSurfaceMuted,
+                    modifier = Modifier.size(ScanPangDimens.icon20),
+                )
+            }
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(ScanPangSpacing.sm, Alignment.End),
+            ) {
+                OutlinedButton(
+                    onClick = onViewInfo,
+                    shape = ScanPangShapes.radius14,
+                    border = BorderStroke(ScanPangDimens.borderHairline, ScanPangColors.OutlineSubtle),
+                    colors = ButtonDefaults.outlinedButtonColors(contentColor = ScanPangColors.OnSurfaceStrong),
+                ) {
+                    Text("정보 보기", style = ScanPangType.body15Medium)
+                }
+                Button(
+                    onClick = onStartNav,
+                    shape = ScanPangShapes.radius14,
+                    colors = ButtonDefaults.buttonColors(containerColor = ScanPangColors.Primary),
+                ) {
+                    Text("길안내", style = ScanPangType.body15Medium, color = Color.White)
+                }
+            }
         }
     }
 }

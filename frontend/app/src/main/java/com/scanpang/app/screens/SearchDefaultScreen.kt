@@ -6,8 +6,8 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
@@ -41,8 +41,9 @@ import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.text.PlatformTextStyle
 import androidx.compose.ui.text.input.ImeAction
-import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
 import androidx.navigation.NavController
 import com.scanpang.app.components.RecentSearchRow
 import com.scanpang.app.components.ScanPangCategoryTile
@@ -98,13 +99,15 @@ fun SearchDefaultScreen(
                 onValueChange = { query = it },
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(ScanPangDimens.searchBarHeightDefault)
+                    .defaultMinSize(minHeight = 52.dp)
                     .clip(ScanPangShapes.radius14),
                 placeholder = {
                     Text(
                         text = "장소, 식당, 카테고리 검색",
-                        style = ScanPangType.searchPlaceholderRegular,
-                        color = ScanPangColors.OnSurfacePlaceholder,
+                        style = ScanPangType.searchPlaceholderRegular.copy(
+                            color = ScanPangColors.OnSurfacePlaceholder,
+                            platformStyle = PlatformTextStyle(includeFontPadding = false),
+                        ),
                     )
                 },
                 leadingIcon = {
@@ -115,7 +118,10 @@ fun SearchDefaultScreen(
                         tint = ScanPangColors.OnSurfacePlaceholder,
                     )
                 },
-                textStyle = ScanPangType.body15Medium.copy(color = ScanPangColors.OnSurfaceStrong),
+                textStyle = ScanPangType.body15Medium.copy(
+                    color = ScanPangColors.OnSurfaceStrong,
+                    platformStyle = PlatformTextStyle(includeFontPadding = false),
+                ),
                 singleLine = true,
                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
                 keyboardActions = KeyboardActions(
