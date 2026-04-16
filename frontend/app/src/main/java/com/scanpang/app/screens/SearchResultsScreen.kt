@@ -141,10 +141,26 @@ private fun NavCandidate.toResultRow(): ResultRow {
         isOpen = true,
         trust = if (recommended) listOf(SearchResultTrustTag("추천", Icons.Rounded.Star)) else emptyList(),
     )
+    // 카테고리 키워드로 적절한 상세 화면 결정
+    val route = when {
+        name.contains("성당") || name.contains("타워") || name.contains("궁") || name.contains("박물관") -> AppRoutes.TouristDetail
+        name.contains("약국") -> AppRoutes.PharmacyDetail
+        name.contains("병원") || name.contains("의원") -> AppRoutes.HospitalDetail
+        name.contains("은행") -> AppRoutes.BankDetail
+        name.contains("환전") -> AppRoutes.ExchangeDetail
+        name.contains("카페") || name.contains("커피") || name.contains("스타벅스") -> AppRoutes.CafeDetail
+        name.contains("편의점") || name.contains("GS25") || name.contains("CU") || name.contains("세븐") -> AppRoutes.ConvenienceDetail
+        name.contains("역") && (name.contains("지하철") || name.length <= 6) -> AppRoutes.SubwayDetail
+        name.contains("ATM") -> AppRoutes.AtmDetail
+        name.contains("화장실") -> AppRoutes.RestroomDetail
+        name.contains("보관") || name.contains("로커") -> AppRoutes.LockersDetail
+        name.contains("쇼핑") || name.contains("백화점") || name.contains("몰") || name.contains("마트") -> AppRoutes.ShoppingDetail
+        else -> AppRoutes.restaurantDetailRoute(name, address)
+    }
     return ResultRow(
         id = "nav:$poi_id",
         item = item,
-        detailRoute = AppRoutes.arNavMapRoute(name),
+        detailRoute = route,
     )
 }
 
