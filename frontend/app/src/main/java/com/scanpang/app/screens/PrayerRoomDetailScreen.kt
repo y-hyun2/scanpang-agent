@@ -156,7 +156,7 @@ fun PrayerRoomDetailScreen(
             ) {
                 Button(
                     onClick = {
-                        navController.navigate(AppRoutes.ArNavMap) { launchSingleTop = true }
+                        navController.navigate(AppRoutes.arNavMapRoute(roomName)) { launchSingleTop = true }
                     },
                     modifier = Modifier
                         .weight(1f)

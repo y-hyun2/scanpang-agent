@@ -97,6 +97,15 @@ class ArNavigationActivity : AppCompatActivity() {
         setupSearchUI(); setupOverlayUI()
         sceneView = binding.sceneView
         checkAndRequestPermissions(); observeViewModel()
+
+        // Intent에서 목적지 이름 받기
+        intent.getStringExtra("DESTINATION_NAME")?.let { destName ->
+            if (destName.isNotEmpty()) {
+                targetDestination = destName
+                binding.searchInput.setText(destName)
+                viewModel.updateState(NavigationState.LOCALIZING)
+            }
+        }
     }
 
     override fun onDestroy() { super.onDestroy(); frameCallback.stop(); activeArNodes.values.forEach { it.destroy() } }

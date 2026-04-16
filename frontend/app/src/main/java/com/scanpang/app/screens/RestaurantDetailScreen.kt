@@ -330,7 +330,7 @@ fun RestaurantDetailScreen(
             ) {
                 Button(
                     onClick = {
-                        navController.navigate(AppRoutes.ArNavMap) { launchSingleTop = true }
+                        navController.navigate(AppRoutes.arNavMapRoute(DetailPlaceName)) { launchSingleTop = true }
                     },
                     modifier = Modifier
                         .weight(1f)

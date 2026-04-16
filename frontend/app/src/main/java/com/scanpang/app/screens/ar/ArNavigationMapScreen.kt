@@ -51,12 +51,16 @@ fun ArNavigationMapScreen(
     navController: NavController,
     modifier: Modifier = Modifier,
     viewModel: ScanPangViewModel = viewModel(),
+    destinationName: String = "",
 ) {
     // AR Navigation Activity 실행 (ARCore 3D 경로 렌더링)
     val context = LocalContext.current
     LaunchedEffect(Unit) {
         val intent = Intent(context, ArNavigationActivity::class.java).apply {
             addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP)
+            if (destinationName.isNotEmpty()) {
+                putExtra("DESTINATION_NAME", destinationName)
+            }
         }
         context.startActivity(intent)
     }

@@ -56,6 +56,10 @@ object AppRoutes {
     const val PrayerRoomDetail = "prayer_room_detail"
     const val ArExplore = "ar_explore"
     const val ArNavMap = "ar_nav_map"
+    fun arNavMapRoute(destName: String = ""): String {
+        val encoded = URLEncoder.encode(destName, StandardCharsets.UTF_8.name())
+        return "$ArNavMap/$encoded"
+    }
 }
 
 @Composable
@@ -141,7 +145,16 @@ fun AppNavHost(
             ArExploreScreen(navController = navController)
         }
         composable(AppRoutes.ArNavMap) {
-            ArNavigationMapScreen(navController = navController)
+            ArNavigationMapScreen(navController = navController, destinationName = "")
+        }
+        composable(
+            route = "${AppRoutes.ArNavMap}/{destName}",
+            arguments = listOf(
+                navArgument("destName") { type = NavType.StringType; defaultValue = "" },
+            ),
+        ) { entry ->
+            val destName = runCatching { URLDecoder.decode(entry.arguments?.getString("destName").orEmpty(), StandardCharsets.UTF_8.name()) }.getOrDefault("")
+            ArNavigationMapScreen(navController = navController, destinationName = destName)
         }
     }
 }
