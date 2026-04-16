@@ -44,6 +44,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -103,9 +104,16 @@ fun RestaurantDetailScreen(
     var fullscreenOpen by remember { mutableStateOf(false) }
     val savedStore = remember { SavedPlacesStore(context) }
 
+    // 식당 목록 로드 (아직 안 불렸으면)
+    LaunchedEffect(Unit) {
+        viewModel.loadRestaurants()
+    }
+
     val restaurants by viewModel.restaurants.collectAsState()
     val restaurant = if (placeName.isNotEmpty()) {
+        // 이름 정확 매칭 → 부분 매칭 → 첫 번째
         restaurants.find { it.name_ko == placeName }
+            ?: restaurants.find { it.name_ko.contains(placeName) || placeName.contains(it.name_ko) }
     } else {
         restaurants.firstOrNull()
     }
