@@ -76,13 +76,35 @@ async def _call_kakao_keyword(keyword: str, lat: Optional[float] = None, lng: Op
 
 
 def _dedupe_pois(tmap_results: list[dict], kakao_results: list[dict]) -> list[dict]:
-    """TMAP + Kakao 결과 병합. 이름이 동일한 POI는 TMAP 쪽 유지, Kakao 고유 결과를 뒤에 추가."""
-    seen_names = {p["name"] for p in tmap_results}
-    merged = list(tmap_results)
-    for kp in kakao_results:
-        if kp["name"] not in seen_names:
-            seen_names.add(kp["name"])
-            merged.append(kp)
+    """
+    Kakao 우선 병합 + 좌표 기반 중복 제거 (50m 이내 = 같은 장소).
+    Kakao 이름이 더 보편적이므로 Kakao 결과를 먼저 넣고, TMAP 고유 결과를 뒤에 추가.
+    """
+    from math import radians, sin, cos, sqrt, atan2
+
+    def _haversine_m(lat1, lng1, lat2, lng2):
+        try:
+            R = 6371000
+            dlat = radians(float(lat2) - float(lat1))
+            dlng = radians(float(lng2) - float(lng1))
+            a = sin(dlat/2)**2 + cos(radians(float(lat1))) * cos(radians(float(lat2))) * sin(dlng/2)**2
+            return R * 2 * atan2(sqrt(a), sqrt(1-a))
+        except (ValueError, TypeError):
+            return 99999
+
+    # Kakao 먼저
+    merged = list(kakao_results)
+
+    for tp in tmap_results:
+        is_duplicate = False
+        for existing in merged:
+            if _haversine_m(tp.get("pnsLat",0), tp.get("pnsLon",0),
+                           existing.get("pnsLat",0), existing.get("pnsLon",0)) < 50:
+                is_duplicate = True
+                break
+        if not is_duplicate:
+            merged.append(tp)
+
     return merged[:10]
 
 
