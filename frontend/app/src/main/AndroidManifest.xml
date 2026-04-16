@@ -34,7 +34,7 @@
         <activity
             android:name="com.hufs.arnavigation_com.ArNavigationActivity"
             android:exported="false"
-            android:theme="@style/Theme.ScanPang" />
+            android:theme="@style/Theme.ScanPang.AppCompat" />
         <activity
             android:name=".ar.explore.PlaceAugmentingActivity"
             android:exported="false"
