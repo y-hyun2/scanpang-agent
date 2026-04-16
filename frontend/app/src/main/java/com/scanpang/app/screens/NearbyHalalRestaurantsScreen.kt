@@ -202,8 +202,8 @@ fun NearbyHalalRestaurantsScreen(
                     isOpen = true,
                     trustTags = buildList {
                         add(SearchResultTrustTag("할랄 인증", Icons.Rounded.Verified))
-                        if (restaurant.muslim_cooks_available) add(SearchResultTrustTag("무슬림 조리사", Icons.Rounded.Restaurant))
-                        if (restaurant.no_alcohol_sales) add(SearchResultTrustTag("주류 미판매", Icons.Rounded.NoDrinks))
+                        if (restaurant.muslim_cooks_available == true) add(SearchResultTrustTag("무슬림 조리사", Icons.Rounded.Restaurant))
+                        if (restaurant.no_alcohol_sales == true) add(SearchResultTrustTag("주류 미판매", Icons.Rounded.NoDrinks))
                     },
                     onClick = {
                         navController.navigate(
