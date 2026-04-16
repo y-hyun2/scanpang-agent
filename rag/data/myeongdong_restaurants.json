@@ -28,7 +28,7 @@
       },
       {
         "name_ko": "된장지리",
-        "name_en": "Fish Soup Seasoned with Soybean Paste",
+        "name_en": "Fish Soup Seasoned with Soybean Paste ",
         "price_krw": 27000
       },
       {
@@ -37,7 +37,7 @@
         "price_krw": 65000
       }
     ],
-    "short_description_ko": "1970년대부터 복지리의 진수를 전해온 전통 복어요리 전문점",
+    "short_description_ko": "1970년대부터 복지리의 진수를 전해온 전통 복어요리 전문점으로, 신선한 복어와 정성스러운 조리법으로 깊고 깔끔한 맛의 복지리를 즐길 수 있는 식당이다. 복지리를 제대로 맛보고 싶다면 이곳을 추천한다.",
     "address": "서울 중구 세종대로14길 22 1층",
     "phone": "(+82) 02-755-0189",
     "opening_hours": {
@@ -67,8 +67,8 @@
       "sat": null,
       "sun": null
     },
-    "latitude": 37.5627998606316,
-    "longitude": 126.977930950651
+    "latitude": null,
+    "longitude": null
   },
   {
     "restaurant_id": "00002",
@@ -76,6 +76,31 @@
     "name_en": "Huirak Galchi",
     "area_major": "명동",
     "halal_type": "SEAFOOD SALAM SEOUL",
+    "muslim_cooks_available": null,
+    "no_alcohol_sales": null,
+    "cuisine_type": [
+      "해산물"
+    ],
+    "food_keywords": [
+      "갈치",
+      "갈치조림(1인분)",
+      "Hairtail Fish Boiled Soup (for 1)",
+      "모듬생선구이",
+      "Assorted Grilled Fish"
+    ],
+    "menu_examples": [
+      {
+        "name_ko": "갈치조림(1인분)",
+        "name_en": "Hairtail Fish Boiled Soup (for 1)",
+        "price_krw": 14000
+      },
+      {
+        "name_ko": "모듬생선구이",
+        "name_en": "Assorted Grilled Fish",
+        "price_krw": 14000
+      }
+    ],
+    "short_description_ko": "남대문시장 갈치골목에서 가장 오랜 역사를 자랑하는 터줏대감으로, 매콤하면서도 달콤한 맛의 갈치조림으로 널리 알려져 있다. 푸짐한 양과 깊은 풍미로 많은 이들에게 만족스러운 식사 경험을 선사하는 명소이다.",
     "address": "서울 중구 남대문시장길 22-6",
     "phone": "(+82) 02-755-3449",
     "opening_hours": {
@@ -87,8 +112,26 @@
       "sat": "07:00-21:00",
       "sun": "closed"
     },
-    "latitude": 37.559902542991,
-    "longitude": 126.977077182341
+    "break_time": {
+      "mon": null,
+      "tue": null,
+      "wed": null,
+      "thu": null,
+      "fri": null,
+      "sat": null,
+      "sun": null
+    },
+    "last_order": {
+      "mon": null,
+      "tue": null,
+      "wed": null,
+      "thu": null,
+      "fri": null,
+      "sat": null,
+      "sun": null
+    },
+    "latitude": null,
+    "longitude": null
   },
   {
     "restaurant_id": "00003",
@@ -96,7 +139,35 @@
     "name_en": "Jungang Galchi Restaurant",
     "area_major": "명동",
     "halal_type": "SEAFOOD SALAM SEOUL",
+    "muslim_cooks_available": null,
+    "no_alcohol_sales": null,
+    "cuisine_type": [
+      "해산물",
+      "한식"
+    ],
+    "food_keywords": [
+      "램",
+      "갈치",
+      "갈치조림",
+      "Braised Beltfish with Rice",
+      "모듬생선구이",
+      "Assorted Grilled Fish with Rice"
+    ],
+    "menu_examples": [
+      {
+        "name_ko": "갈치조림",
+        "name_en": "Braised Beltfish with Rice",
+        "price_krw": 14000
+      },
+      {
+        "name_ko": "모듬생선구이",
+        "name_en": "Assorted Grilled Fish with Rice",
+        "price_krw": 14000
+      }
+    ],
+    "short_description_ko": "남대문시장 갈치골목에 자리한 갈치조림 전문 한식당으로, TV 맛집 프로그램에 여러 차례 소개되며 많은 사랑을 받고 있다. 자작한 국물에 부드럽고 살이 꽉 찬 갈치조림이 이곳의 대표 메뉴로, 남대문시장을 방문하는 이들에게 꼭 추천할 만한 맛집이다.",
     "address": "서울 중구 남대문시장길 22-12",
+    "phone": "(+82) 02-752-2892",
     "opening_hours": {
       "mon": "08:30-21:00",
       "tue": "08:30-21:00",
@@ -106,8 +177,26 @@
       "sat": "08:30-21:00",
       "sun": "08:30-21:00"
     },
-    "latitude": 37.5597882067481,
-    "longitude": 126.977078575528
+    "break_time": {
+      "mon": null,
+      "tue": null,
+      "wed": null,
+      "thu": null,
+      "fri": null,
+      "sat": null,
+      "sun": null
+    },
+    "last_order": {
+      "mon": null,
+      "tue": null,
+      "wed": null,
+      "thu": null,
+      "fri": null,
+      "sat": null,
+      "sun": null
+    },
+    "latitude": null,
+    "longitude": null
   },
   {
     "restaurant_id": "00004",
@@ -115,7 +204,33 @@
     "name_en": "Necktie Man Galchi Dongtae",
     "area_major": "명동",
     "halal_type": "SEAFOOD SALAM SEOUL",
+    "muslim_cooks_available": null,
+    "no_alcohol_sales": null,
+    "cuisine_type": [
+      "해산물"
+    ],
+    "food_keywords": [
+      "갈치",
+      "국산갈치조림(1인)",
+      "Hairtail Fish Boiled Soup (for 1)",
+      "힘나는 동태탕",
+      "Frozen Pollack Boiled Soup"
+    ],
+    "menu_examples": [
+      {
+        "name_ko": "국산갈치조림(1인)",
+        "name_en": "Hairtail Fish Boiled Soup (for 1)",
+        "price_krw": 14000
+      },
+      {
+        "name_ko": "힘나는 동태탕",
+        "name_en": "Frozen Pollack Boiled Soup",
+        "price_krw": 12000
+      }
+    ],
+    "short_description_ko": "남대문시장 갈치골목에 자리한 갈치조림 전문점으로, 푸짐한 양과 정성스럽게 준비된 밑반찬이 특징이다. 진하게 우러난 국물과 매콤한 양념이 어우러진 갈치조림은 이곳의 대표 메뉴로, 남대문시장을 찾는 식객들에게 꾸준한 사랑을 받고 있다.",
     "address": "서울 중구 남대문시장길 18-9",
+    "phone": "(+82) 02-772-9787",
     "opening_hours": {
       "mon": "07:30-20:00",
       "tue": "07:30-20:00",
@@ -125,8 +240,26 @@
       "sat": "07:30-20:00",
       "sun": "closed every other week"
     },
-    "latitude": 37.5596682721994,
-    "longitude": 126.977017608388
+    "break_time": {
+      "mon": null,
+      "tue": null,
+      "wed": null,
+      "thu": null,
+      "fri": null,
+      "sat": null,
+      "sun": null
+    },
+    "last_order": {
+      "mon": null,
+      "tue": null,
+      "wed": null,
+      "thu": null,
+      "fri": null,
+      "sat": null,
+      "sun": null
+    },
+    "latitude": null,
+    "longitude": null
   },
   {
     "restaurant_id": "00005",
@@ -134,7 +267,33 @@
     "name_en": "Bongchu Jjimdak",
     "area_major": "명동",
     "halal_type": "SALAM SEOUL",
+    "muslim_cooks_available": null,
+    "no_alcohol_sales": null,
+    "cuisine_type": [
+      "한식"
+    ],
+    "food_keywords": [
+      "찜닭",
+      "봉추찜닭 소(2인)",
+      "Bongchu Braised Chicken (Small, for 2)",
+      "봉추찜닭 중(3인)",
+      "Bongchu Braised Chicken (Medium, for 3)"
+    ],
+    "menu_examples": [
+      {
+        "name_ko": "봉추찜닭 소(2인)",
+        "name_en": "Bongchu Braised Chicken (Small, for 2)",
+        "price_krw": 24000
+      },
+      {
+        "name_ko": "봉추찜닭 중(3인)",
+        "name_en": "Bongchu Braised Chicken (Medium, for 3)",
+        "price_krw": 37000
+      }
+    ],
+    "short_description_ko": "",
     "address": "서울 중구 명동8나길 47",
+    "phone": "(+82) 02-3789-9381",
     "opening_hours": {
       "mon": "11:00-21:30",
       "tue": "11:00-21:30",
@@ -144,8 +303,26 @@
       "sat": "11:00-21:30",
       "sun": "11:00-21:30"
     },
-    "latitude": 37.5610635616056,
-    "longitude": 126.982277079998
+    "break_time": {
+      "mon": null,
+      "tue": null,
+      "wed": null,
+      "thu": null,
+      "fri": null,
+      "sat": null,
+      "sun": null
+    },
+    "last_order": {
+      "mon": null,
+      "tue": null,
+      "wed": null,
+      "thu": null,
+      "fri": null,
+      "sat": null,
+      "sun": null
+    },
+    "latitude": null,
+    "longitude": null
   },
   {
     "restaurant_id": "00006",
@@ -155,7 +332,31 @@
     "halal_type": "HALAL MEAT SALAM SEOUL",
     "muslim_cooks_available": true,
     "no_alcohol_sales": true,
+    "cuisine_type": [
+      "한식"
+    ],
+    "food_keywords": [
+      "치킨",
+      "후라이드치킨",
+      "Fried Chicken",
+      "양념치킨",
+      "Seasoned Fried Chicken"
+    ],
+    "menu_examples": [
+      {
+        "name_ko": "후라이드치킨",
+        "name_en": "Fried Chicken",
+        "price_krw": 28000
+      },
+      {
+        "name_ko": "양념치킨",
+        "name_en": "Seasoned Fried Chicken",
+        "price_krw": 30000
+      }
+    ],
+    "short_description_ko": "할랄푸드를 사용해 한국식 치킨을 선보이는 곳이다. 갓 튀겨 바삭한 프라이드 치킨은 물론, 얼얼하게 매운 양념치킨도 인기 메뉴다.",
     "address": "서울 중구 명동8길 11-4",
+    "phone": "010-3142-0278",
     "opening_hours": {
       "mon": "11:00-22:00",
       "tue": "11:00-22:00",
@@ -165,8 +366,26 @@
       "sat": "11:00-22:00",
       "sun": "11:00-22:00"
     },
-    "latitude": 37.56314071724,
-    "longitude": 126.984851886132
+    "break_time": {
+      "mon": null,
+      "tue": null,
+      "wed": null,
+      "thu": null,
+      "fri": null,
+      "sat": null,
+      "sun": null
+    },
+    "last_order": {
+      "mon": "21:10",
+      "tue": "21:10",
+      "wed": "21:10",
+      "thu": "21:10",
+      "fri": "21:10",
+      "sat": "21:10",
+      "sun": "21:10"
+    },
+    "latitude": null,
+    "longitude": null
   },
   {
     "restaurant_id": "00007",
@@ -176,7 +395,32 @@
     "halal_type": "HALAL MEAT SALAM SEOUL",
     "muslim_cooks_available": true,
     "no_alcohol_sales": true,
+    "cuisine_type": [
+      "해산물",
+      "한식"
+    ],
+    "food_keywords": [
+      "간장게장",
+      "비빔밥",
+      "Bibimbap",
+      "해물된장찌개",
+      "Seafood miso soup"
+    ],
+    "menu_examples": [
+      {
+        "name_ko": "비빔밥",
+        "name_en": "Bibimbap",
+        "price_krw": 18000
+      },
+      {
+        "name_ko": "해물된장찌개",
+        "name_en": "Seafood miso soup",
+        "price_krw": 12000
+      }
+    ],
+    "short_description_ko": "명동 한복판에 위치한 할랄 한식의 대표 명소로, 찌개, 비빔밥, 간장게장 등 한국의 일상적인 맛을 엄격한 할랄 기준으로 준비해 신뢰감 있는 편안한 미식 경험을 선사한다. 서울에서 한식의 진정한 매력을 느끼고 싶다면 반드시 방문해야 할 곳이다.",
     "address": "서울 중구 명동8길 11-6",
+    "phone": "010-3142-0278",
     "opening_hours": {
       "mon": "11:00-22:00",
       "tue": "11:00-22:00",
@@ -186,8 +430,26 @@
       "sat": "11:00-22:00",
       "sun": "11:00-22:00"
     },
-    "latitude": 37.563160464697,
-    "longitude": 126.984974235146
+    "break_time": {
+      "mon": null,
+      "tue": null,
+      "wed": null,
+      "thu": null,
+      "fri": null,
+      "sat": null,
+      "sun": null
+    },
+    "last_order": {
+      "mon": "21:20",
+      "tue": "21:20",
+      "wed": "21:20",
+      "thu": "21:20",
+      "fri": "21:20",
+      "sat": "21:20",
+      "sun": "21:20"
+    },
+    "latitude": null,
+    "longitude": null
   },
   {
     "restaurant_id": "00008",
@@ -195,7 +457,26 @@
     "name_en": "Myeongdong Chungmu Gimbap",
     "area_major": "명동",
     "halal_type": "SALAM SEOUL",
+    "muslim_cooks_available": null,
+    "no_alcohol_sales": true,
+    "cuisine_type": [
+      "한식"
+    ],
+    "food_keywords": [
+      "김밥",
+      "충무김밥",
+      "Chungmu Gimbap"
+    ],
+    "menu_examples": [
+      {
+        "name_ko": "충무김밥",
+        "name_en": "Chungmu Gimbap",
+        "price_krw": 11000
+      }
+    ],
+    "short_description_ko": "40년 넘게 명동을 지켜온 로컬 맛집으로, 단일 메뉴인 충무김밥 세트만을 고집해온 곳이다. 소박한 김밥에 매콤한 오징어무침과 아삭한 무김치가 어우러져, 단순하지만 깊은 맛으로 오래도록 사랑받고 있다.",
     "address": "서울 중구 명동10길 16",
+    "phone": "(+82) 02-755-8488",
     "opening_hours": {
       "mon": "09:30-22:00",
       "tue": "09:30-22:00",
@@ -205,8 +486,26 @@
       "sat": "09:00-22:00",
       "sun": "09:00-22:00"
     },
-    "latitude": 37.5631380580384,
-    "longitude": 126.985197100893
+    "break_time": {
+      "mon": null,
+      "tue": null,
+      "wed": null,
+      "thu": null,
+      "fri": null,
+      "sat": null,
+      "sun": null
+    },
+    "last_order": {
+      "mon": null,
+      "tue": null,
+      "wed": null,
+      "thu": null,
+      "fri": null,
+      "sat": null,
+      "sun": null
+    },
+    "latitude": null,
+    "longitude": null
   },
   {
     "restaurant_id": "00009",
@@ -214,7 +513,34 @@
     "name_en": "Gurkha India Restaurant",
     "area_major": "명동",
     "halal_type": "HALAL MEAT SALAM SEOUL",
+    "muslim_cooks_available": null,
+    "no_alcohol_sales": null,
+    "cuisine_type": [
+      "인도",
+      "네팔"
+    ],
+    "food_keywords": [
+      "커리",
+      "머튼 커리",
+      "Mutton Curry",
+      "말라이 코프타 커리",
+      "Malai Kofta Curry"
+    ],
+    "menu_examples": [
+      {
+        "name_ko": "머튼 커리",
+        "name_en": "Mutton Curry",
+        "price_krw": 16000
+      },
+      {
+        "name_ko": "말라이 코프타 커리",
+        "name_en": "Malai Kofta Curry",
+        "price_krw": 15000
+      }
+    ],
+    "short_description_ko": "인도·네팔 현지인이 직접 운영하는 이곳은 진정한 현지의 맛을 고스란히 전하는 정통 레스토랑이다. 머튼 커리, 말라이 코프타 커리 등 현지에서나 맛볼 수 있는 독특한 인도 요리를 선보이며, 색다른 미식 경험을 선사한다.",
     "address": "서울 중구 명동10길 16-1 지상 5층 구르카",
+    "phone": "(+82) 02-775-8860",
     "opening_hours": {
       "mon": "11:00-23:00",
       "tue": "11:00-23:00",
@@ -224,8 +550,26 @@
       "sat": "11:00-23:00",
       "sun": "11:00-23:00"
     },
-    "latitude": 37.5630678689105,
-    "longitude": 126.985185117182
+    "break_time": {
+      "mon": null,
+      "tue": null,
+      "wed": null,
+      "thu": null,
+      "fri": null,
+      "sat": null,
+      "sun": null
+    },
+    "last_order": {
+      "mon": "22:50",
+      "tue": "22:50",
+      "wed": "22:50",
+      "thu": "22:50",
+      "fri": "22:50",
+      "sat": "22:50",
+      "sun": "22:50"
+    },
+    "latitude": null,
+    "longitude": null
   },
   {
     "restaurant_id": "00010",
@@ -233,7 +577,26 @@
     "name_en": "Hamcho Ganjang Gejang",
     "area_major": "명동",
     "halal_type": "SEAFOOD SALAM SEOUL",
+    "muslim_cooks_available": null,
+    "no_alcohol_sales": null,
+    "cuisine_type": [
+      "해산물"
+    ],
+    "food_keywords": [
+      "간장게장",
+      "해산물",
+      "Soy Sauce Marinated Raw Crab Set(for 2)"
+    ],
+    "menu_examples": [
+      {
+        "name_ko": "간장게장 정식(2인세트)",
+        "name_en": "Soy Sauce Marinated Raw Crab Set(for 2)",
+        "price_krw": 88000
+      }
+    ],
+    "short_description_ko": "신선한 꽃게를 특제 간장 양념에 숙성시킨 한국 전통의 발효 해산물 요리, 간장게장을 전문으로 하는 식당이다. 비법 재료인 함초를 더해 깊고 깔끔한 감칠맛을 자랑하는 간장게장은, 단순한 식사를 넘어 한국의 음식 문화를 오롯이 느낄 수 있는 특별한 미식 체험으로 손꼽힌다.",
     "address": "서울 중구 명동8가길 27 지하 1",
+    "phone": "(+82) 02-318-1624",
     "opening_hours": {
       "mon": "11:30-22:00",
       "tue": "11:30-22:00",
@@ -243,8 +606,26 @@
       "sat": "11:30-22:00",
       "sun": "11:30-22:00"
     },
-    "latitude": 37.5620005331406,
-    "longitude": 126.986563787577
+    "break_time": {
+      "mon": null,
+      "tue": null,
+      "wed": null,
+      "thu": null,
+      "fri": null,
+      "sat": null,
+      "sun": null
+    },
+    "last_order": {
+      "mon": "21:30",
+      "tue": "21:30",
+      "wed": "21:30",
+      "thu": "21:30",
+      "fri": "21:30",
+      "sat": "21:30",
+      "sun": "21:30"
+    },
+    "latitude": null,
+    "longitude": null
   },
   {
     "restaurant_id": "00011",
@@ -254,7 +635,34 @@
     "halal_type": "HALAL MEAT SALAM SEOUL",
     "muslim_cooks_available": true,
     "no_alcohol_sales": true,
+    "cuisine_type": [
+      "말레이시아",
+      "한식"
+    ],
+    "food_keywords": [
+      "치킨",
+      "사테",
+      "나시르막",
+      "렌당 치킨 라이스",
+      "Nasi Putih Ayam Rendang",
+      "불고기",
+      "Beef Bulgogi"
+    ],
+    "menu_examples": [
+      {
+        "name_ko": "렌당 치킨 라이스",
+        "name_en": "Nasi Putih Ayam Rendang",
+        "price_krw": 13900
+      },
+      {
+        "name_ko": "불고기",
+        "name_en": "Beef Bulgogi",
+        "price_krw": 13900
+      }
+    ],
+    "short_description_ko": "말레이어로 “느긋하게 쉬자”는 뜻의 ‘레팍라’는, 그 이름처럼 편안한 분위기 속에서 말레이시아의 정통 요리를 즐길 수 있는 식당이다. 나시르막(Nasi Lemak), 미고랭(Mee Goreng), 사테(Satay), 락사(Laksa) 등 대표 메뉴를 통해 한국에서는 접하기 어려운 이국적인 맛을 경험할 수 있다.",
     "address": "서울 중구 퇴계로24길 2",
+    "phone": "(+82) 02-318-8836",
     "opening_hours": {
       "mon": "10:30-22:00",
       "tue": "10:30-22:00",
@@ -264,8 +672,26 @@
       "sat": "10:30-22:00",
       "sun": "10:30-22:00"
     },
-    "latitude": 37.5607597227316,
-    "longitude": 126.986940678078
+    "break_time": {
+      "mon": "16:00-17:00",
+      "tue": "16:00-17:00",
+      "wed": "16:00-17:00",
+      "thu": "16:00-17:00",
+      "fri": "16:00-17:00",
+      "sat": "16:00-17:00",
+      "sun": "16:00-17:00"
+    },
+    "last_order": {
+      "mon": "21:30",
+      "tue": "21:30",
+      "wed": "21:30",
+      "thu": "21:30",
+      "fri": "21:30",
+      "sat": "21:30",
+      "sun": "21:30"
+    },
+    "latitude": null,
+    "longitude": null
   },
   {
     "restaurant_id": "00012",
@@ -275,7 +701,34 @@
     "halal_type": "HALAL MEAT SALAM SEOUL",
     "muslim_cooks_available": true,
     "no_alcohol_sales": true,
+    "cuisine_type": [
+      "한정식",
+      "해산물",
+      "한식"
+    ],
+    "food_keywords": [
+      "한정식",
+      "간장게장",
+      "간장게장한정식(1인)",
+      "Soy Sauce Marinated Raw Crab Set(for 1)",
+      "갈비찜한정식(1인)",
+      "Braised Short Ribs Set(for 1)"
+    ],
+    "menu_examples": [
+      {
+        "name_ko": "간장게장한정식(1인)",
+        "name_en": "Soy Sauce Marinated Raw Crab Set(for 1)",
+        "price_krw": 45000
+      },
+      {
+        "name_ko": "갈비찜한정식(1인)",
+        "name_en": "Braised Short Ribs Set(for 1)",
+        "price_krw": 45000
+      }
+    ],
+    "short_description_ko": "할랄 한정식 전문점으로, 매일 정성껏 준비하는 신선한 18가지 반찬과 국, 찌개로 구성된 한 상을 통해 한국 전통 식문화의 풍성함을 경험할 수 있다. 한정식은 다양한 맛과 식감을 동시에 즐길 수 있는 한국의 전통 코스 요리로, 다양한 한식을 한 자리에서 맛볼 수 있다.",
     "address": "서울 중구 퇴계로18길 7 지하2층",
+    "phone": "(+82) 02-779-9998",
     "opening_hours": {
       "mon": "11:00-22:00",
       "tue": "11:00-22:00",
@@ -285,8 +738,26 @@
       "sat": "11:00-22:00",
       "sun": "11:00-22:00"
     },
-    "latitude": 37.5603587467134,
-    "longitude": 126.985876395948
+    "break_time": {
+      "mon": null,
+      "tue": null,
+      "wed": null,
+      "thu": null,
+      "fri": null,
+      "sat": null,
+      "sun": null
+    },
+    "last_order": {
+      "mon": "21:00",
+      "tue": "21:00",
+      "wed": "21:00",
+      "thu": "21:00",
+      "fri": "21:00",
+      "sat": "21:00",
+      "sun": "21:00"
+    },
+    "latitude": null,
+    "longitude": null
   },
   {
     "restaurant_id": "00013",
@@ -296,7 +767,34 @@
     "halal_type": "HALAL MEAT SALAM SEOUL",
     "muslim_cooks_available": true,
     "no_alcohol_sales": true,
+    "cuisine_type": [
+      "인도",
+      "인도네시아"
+    ],
+    "food_keywords": [
+      "양고기",
+      "사테",
+      "나시고랭",
+      "양고기 사테 마두라",
+      "Sate kambing madura",
+      "검은 양념 오리",
+      "Bebek carok madura"
+    ],
+    "menu_examples": [
+      {
+        "name_ko": "양고기 사테 마두라",
+        "name_en": "Sate kambing madura",
+        "price_krw": 14000
+      },
+      {
+        "name_ko": "검은 양념 오리",
+        "name_en": "Bebek carok madura",
+        "price_krw": 14000
+      }
+    ],
+    "short_description_ko": "인도네시아의 맛과 문화를 고스란히 담아낸 식당이다. 미고랭(볶음면), 나시고랭(볶음밥)을 비롯해, '사떼 아얌(Sate Ayam)', '템페(Tempe)' 등 다채로운 인도네시아 요리를 선보인다. 모든 요리는 할랄푸드로 준비되며, 기도실도 갖추어 무슬림 관광객들에게 친근한 공간이다.",
     "address": "서울 중구 퇴계로20길 15, 2층",
+    "phone": "010-2260-4042",
     "opening_hours": {
       "mon": "10:00-22:00",
       "tue": "10:00-22:00",
@@ -306,8 +804,26 @@
       "sat": "10:00-22:00",
       "sun": "10:00-22:00"
     },
-    "latitude": 37.5594977545052,
-    "longitude": 126.98588040657
+    "break_time": {
+      "mon": null,
+      "tue": null,
+      "wed": null,
+      "thu": null,
+      "fri": null,
+      "sat": null,
+      "sun": null
+    },
+    "last_order": {
+      "mon": null,
+      "tue": null,
+      "wed": null,
+      "thu": null,
+      "fri": null,
+      "sat": null,
+      "sun": null
+    },
+    "latitude": null,
+    "longitude": null
   },
   {
     "restaurant_id": "00014",
@@ -315,7 +831,34 @@
     "name_en": "MaeHwa Lamb Skewers Myeongdong",
     "area_major": "명동",
     "halal_type": "HALAL MEAT SALAM SEOUL",
+    "muslim_cooks_available": null,
+    "no_alcohol_sales": null,
+    "cuisine_type": [
+      "기타"
+    ],
+    "food_keywords": [
+      "양고기",
+      "램",
+      "고급양갈비구이",
+      "Premium Lamb Chops",
+      "마라룽샤",
+      "Spicy Lobster"
+    ],
+    "menu_examples": [
+      {
+        "name_ko": "고급양갈비구이",
+        "name_en": "Premium Lamb Chops",
+        "price_krw": 25000
+      },
+      {
+        "name_ko": "마라룽샤",
+        "name_en": "Spicy Lobster",
+        "price_krw": 30000
+      }
+    ],
+    "short_description_ko": "육질이 부드러운 1년 미만의 어린 양고기, 즉 ‘램(lamb)’만을 사용하는 양고기 전문점이다. 잡내 없이 깔끔한 맛과 연한 식감 덕분에 양고기를 처음 접하는 이들에게도 부담 없이 추천할 수 있다. 색다른 풍미를 즐기고자 하는 미식가들에게 제격이다.",
     "address": "서울 중구 퇴계로20길 15 1층",
+    "phone": "(+82) 02-772-9289",
     "opening_hours": {
       "mon": "11:00-22:20",
       "tue": "11:00-22:20",
@@ -325,8 +868,26 @@
       "sat": "11:00-22:20",
       "sun": "11:00-22:20"
     },
-    "latitude": 37.5594977545052,
-    "longitude": 126.98588040657
+    "break_time": {
+      "mon": null,
+      "tue": null,
+      "wed": null,
+      "thu": null,
+      "fri": null,
+      "sat": null,
+      "sun": null
+    },
+    "last_order": {
+      "mon": null,
+      "tue": null,
+      "wed": null,
+      "thu": null,
+      "fri": null,
+      "sat": null,
+      "sun": null
+    },
+    "latitude": null,
+    "longitude": null
   },
   {
     "restaurant_id": "00015",
@@ -334,7 +895,34 @@
     "name_en": "Vegan Kitchen",
     "area_major": "명동",
     "halal_type": "VEGGIE SALAM SEOUL",
+    "muslim_cooks_available": null,
+    "no_alcohol_sales": null,
+    "cuisine_type": [
+      "비건",
+      "한식"
+    ],
+    "food_keywords": [
+      "비건",
+      "치킨",
+      "아보카도",
+      "poke Avocado Poke",
+      "poke Chicken Poke"
+    ],
+    "menu_examples": [
+      {
+        "name_ko": "아보카도",
+        "name_en": "poke Avocado Poke",
+        "price_krw": 11000
+      },
+      {
+        "name_ko": "치킨",
+        "name_en": "poke Chicken Poke",
+        "price_krw": 12000
+      }
+    ],
+    "short_description_ko": "서울에서 손꼽히는 비건 레스토랑으로, 담백하고 깊은 풍미의 비건 잡채와 철판에서 직접 조리한 순두부덮밥이 대표 메뉴다. 철저한 재료 관리와 정성스러운 조리법으로 건강한 식사를 선사하며, 모던하고 편안한 분위기 속에서 비건 식문화를 경험할 수 있는 공간이다.",
     "address": "서울 중구 퇴계로20길 21 1층",
+    "phone": "(+82) 02-777-8819",
     "opening_hours": {
       "mon": "10:30-22:00",
       "tue": "10:30-22:00",
@@ -344,8 +932,26 @@
       "sat": "10:30-22:00",
       "sun": "10:30-22:00"
     },
-    "latitude": 37.559260082877,
-    "longitude": 126.9859759746
+    "break_time": {
+      "mon": null,
+      "tue": null,
+      "wed": null,
+      "thu": null,
+      "fri": null,
+      "sat": null,
+      "sun": null
+    },
+    "last_order": {
+      "mon": "21:30",
+      "tue": "21:30",
+      "wed": "21:30",
+      "thu": "21:30",
+      "fri": "21:30",
+      "sat": "21:30",
+      "sun": "21:30"
+    },
+    "latitude": null,
+    "longitude": null
   },
   {
     "restaurant_id": "00016",
@@ -355,7 +961,34 @@
     "halal_type": "HALAL MEAT SALAM SEOUL",
     "muslim_cooks_available": true,
     "no_alcohol_sales": true,
+    "cuisine_type": [
+      "말레이시아",
+      "한식"
+    ],
+    "food_keywords": [
+      "치킨",
+      "나시고랭",
+      "나시르막",
+      "오리지널 후라이드치킨",
+      "Original Fried Chicken",
+      "부대찌개",
+      "Korean Army Stew"
+    ],
+    "menu_examples": [
+      {
+        "name_ko": "오리지널 후라이드치킨",
+        "name_en": "Original Fried Chicken",
+        "price_krw": 15000
+      },
+      {
+        "name_ko": "부대찌개",
+        "name_en": "Korean Army Stew",
+        "price_krw": 24000
+      }
+    ],
+    "short_description_ko": "말레이시아 셰프가 직접 조리하는 다양한 종류의 나시고랭과 나시르막은 물론, 할랄 재료로 만든 인기 한식들도 즐길 수 있는 곳이다. 여행 중 다양한 메뉴를 안심하고 선택할 곳을 찾는다면, 이곳이 안성맞춤이다.",
     "address": "서울 중구 퇴계로20길 25 1,2층",
+    "phone": "(+82) 0507-1380",
     "opening_hours": {
       "mon": "11:00-22:00",
       "tue": "11:00-22:00",
@@ -365,8 +998,26 @@
       "sat": "11:00-22:00",
       "sun": "11:00-22:00"
     },
-    "latitude": 37.5590605188786,
-    "longitude": 126.986033733202
+    "break_time": {
+      "mon": null,
+      "tue": null,
+      "wed": null,
+      "thu": null,
+      "fri": null,
+      "sat": null,
+      "sun": null
+    },
+    "last_order": {
+      "mon": "21:10",
+      "tue": "21:10",
+      "wed": "21:10",
+      "thu": "21:10",
+      "fri": "21:10",
+      "sat": "21:10",
+      "sun": "21:10"
+    },
+    "latitude": null,
+    "longitude": null
   },
   {
     "restaurant_id": "00017",
@@ -374,7 +1025,34 @@
     "name_en": "Lamb Camp",
     "area_major": "명동",
     "halal_type": "SALAM SEOUL",
+    "muslim_cooks_available": null,
+    "no_alcohol_sales": null,
+    "cuisine_type": [
+      "기타"
+    ],
+    "food_keywords": [
+      "양고기",
+      "램",
+      "양반마리(400g)",
+      "Half Lamb (400g)",
+      "양한마리(700g)",
+      "Whole Lamb (700g)"
+    ],
+    "menu_examples": [
+      {
+        "name_ko": "양반마리(400g)",
+        "name_en": "Half Lamb (400g)",
+        "price_krw": 58000
+      },
+      {
+        "name_ko": "양한마리(700g)",
+        "name_en": "Whole Lamb (700g)",
+        "price_krw": 95000
+      }
+    ],
+    "short_description_ko": "처음 양고기를 접하는 이들도 부담 없이 즐길 수 있도록, 잡내 없이 부드러운 양고기만을 선보이는 식당이다. 수제로 만든 특제 소스와 함께 토르티야에 싸 먹는 방식은 양고기의 풍미를 한층 깊게 살려주며, 특별한 미식 경험을 완성한다.",
     "address": "서울 중구 퇴계로20길 46",
+    "phone": "(+82) 0507-1410",
     "opening_hours": {
       "mon": "11:00-22:00",
       "tue": "11:00-22:00",
@@ -384,8 +1062,26 @@
       "sat": "11:00-22:00",
       "sun": "closed"
     },
-    "latitude": 37.5582620938997,
-    "longitude": 126.986364813572
+    "break_time": {
+      "mon": null,
+      "tue": null,
+      "wed": null,
+      "thu": null,
+      "fri": null,
+      "sat": null,
+      "sun": null
+    },
+    "last_order": {
+      "mon": null,
+      "tue": null,
+      "wed": null,
+      "thu": null,
+      "fri": null,
+      "sat": null,
+      "sun": null
+    },
+    "latitude": null,
+    "longitude": null
   },
   {
     "restaurant_id": "00018",
@@ -395,7 +1091,32 @@
     "halal_type": "HALAL MEAT SALAM SEOUL",
     "muslim_cooks_available": true,
     "no_alcohol_sales": true,
+    "cuisine_type": [
+      "한식"
+    ],
+    "food_keywords": [
+      "할랄육류",
+      "한식",
+      "고기구이",
+      "한우등심",
+      "와규늑간살",
+      "양갈비"
+    ],
+    "menu_examples": [
+      {
+        "name_ko": "와규 늑간살(150g)",
+        "name_en": "Wagyu rib fingers(150g)",
+        "price_krw": 32000
+      },
+      {
+        "name_ko": "양갈비(3pcs)",
+        "name_en": "Lamb Chops(3pcs)",
+        "price_krw": 48000
+      }
+    ],
+    "short_description_ko": "할랄 미트를 사용한 한국식 고깃집으로, 한우 등심과 와규 늑간살, 양갈비 등 다양한 부위를 한국식 반찬과 함께 맛볼 수 있다. 명동 한가운데 위치해 무슬림 관광객들에게 꾸준히 사랑받는 명소이다.",
     "address": "서울 중구 퇴계로20길 46",
+    "phone": "(+82) 0507-1410",
     "opening_hours": {
       "mon": "12:00-22:30",
       "tue": "12:00-22:30",
@@ -405,8 +1126,26 @@
       "sat": "12:00-22:30",
       "sun": "12:00-22:30"
     },
-    "latitude": 37.5582620938997,
-    "longitude": 126.986364813572
+    "break_time": {
+      "mon": null,
+      "tue": null,
+      "wed": null,
+      "thu": null,
+      "fri": null,
+      "sat": null,
+      "sun": null
+    },
+    "last_order": {
+      "mon": "21:40",
+      "tue": "21:40",
+      "wed": "21:40",
+      "thu": "21:40",
+      "fri": "21:40",
+      "sat": "21:40",
+      "sun": "21:40"
+    },
+    "latitude": null,
+    "longitude": null
   },
   {
     "restaurant_id": "00019",
@@ -414,7 +1153,28 @@
     "name_en": "Myeongdongjeong",
     "area_major": "명동",
     "halal_type": "HALAL MEAT SALAM SEOUL",
+    "muslim_cooks_available": null,
+    "no_alcohol_sales": null,
+    "cuisine_type": [
+      "기타"
+    ],
+    "food_keywords": [
+      "할랄육류",
+      "한정식",
+      "전통한식",
+      "궁중요리",
+      "코스요리"
+    ],
+    "menu_examples": [
+      {
+        "name_ko": "귀빈상 정식",
+        "name_en": "Gwibin sang(VIP Set Menu)",
+        "price_krw": 65000
+      }
+    ],
+    "short_description_ko": "할랄 미트를 사용한 정통 한정식 전문점으로, 궁중요리를 바탕으로 한식의 깊이와 격조 있는 상차림을 선보인다. 정갈하고 조화로운 맛으로 한국 전통 식문화를 품격있게 경험할 수 있는 곳이다.",
     "address": "서울 중구 퇴계로20길 46",
+    "phone": "(+82) 0507-1410",
     "opening_hours": {
       "mon": "11:00-21:30",
       "tue": "11:00-21:30",
@@ -424,8 +1184,26 @@
       "sat": "11:00-21:30",
       "sun": "11:00-21:30"
     },
-    "latitude": 37.5582620938997,
-    "longitude": 126.986364813572
+    "break_time": {
+      "mon": "15:00-17:00",
+      "tue": "15:00-17:00",
+      "wed": "15:00-17:00",
+      "thu": "15:00-17:00",
+      "fri": "15:00-17:00",
+      "sat": "15:00-17:00",
+      "sun": "15:00-17:00"
+    },
+    "last_order": {
+      "mon": "20:00",
+      "tue": "20:00",
+      "wed": "20:00",
+      "thu": "20:00",
+      "fri": "20:00",
+      "sat": "20:00",
+      "sun": "20:00"
+    },
+    "latitude": null,
+    "longitude": null
   },
   {
     "restaurant_id": "00020",
@@ -433,7 +1211,34 @@
     "name_en": "Yusukdan Buja Nakji",
     "area_major": "명동",
     "halal_type": "SEAFOOD SALAM SEOUL",
+    "muslim_cooks_available": null,
+    "no_alcohol_sales": null,
+    "cuisine_type": [
+      "기타"
+    ],
+    "food_keywords": [
+      "낙지",
+      "해산물",
+      "낙지볶음",
+      "연포탕",
+      "연포무침",
+      "매운맛"
+    ],
+    "menu_examples": [
+      {
+        "name_ko": "연포무침 (대)",
+        "name_en": "Seasoned Octopus (Large)",
+        "price_krw": 95000
+      },
+      {
+        "name_ko": "낙지볶음(1인분)",
+        "name_en": "Stir-fried Octopus (for 1)",
+        "price_krw": 25000
+      }
+    ],
+    "short_description_ko": "할랄 미트를 사용한 정통 한정식 전문점으로, 궁중요리를 바탕으로 한식의 깊이와 격조 있는 상차림을 선보인다. 정갈하고 조화로운 맛으로 한국 전통 식문화를 품격있게 경험할 수 있는 곳이다.",
     "address": "서울 중구 퇴계로20길 46",
+    "phone": "(+82) 0507-1410",
     "opening_hours": {
       "mon": "11:00-23:00",
       "tue": "11:00-23:00",
@@ -443,7 +1248,25 @@
       "sat": "closed",
       "sun": "closed"
     },
-    "latitude": 37.5582620938997,
-    "longitude": 126.986364813572
+    "break_time": {
+      "mon": "14:00-16:30",
+      "tue": "14:00-16:30",
+      "wed": "14:00-16:30",
+      "thu": "14:00-16:30",
+      "fri": "14:00-16:30",
+      "sat": null,
+      "sun": null
+    },
+    "last_order": {
+      "mon": "22:00",
+      "tue": "22:00",
+      "wed": "22:00",
+      "thu": "22:00",
+      "fri": "22:00",
+      "sat": null,
+      "sun": null
+    },
+    "latitude": null,
+    "longitude": null
   }
 ]
