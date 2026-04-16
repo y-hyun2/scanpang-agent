@@ -18,10 +18,18 @@ INTENT_PROMPT = """Extract navigation intent from the user's message. Return val
   "language": "ko" or "en" or "ar"
 }
 
+Keyword rules:
+- If the user mentions a well-known landmark, monument, or institution by its common/short name, expand it to the official full name for better search accuracy.
+  Examples: "명동성당" → "명동대성당", "남대문" → "숭례문", "동대문" → "흥인지문", "63빌딩" → "63스퀘어"
+- If the place is a regular shop/restaurant, keep the name as-is.
+- For category searches (할랄 식당, 편의점, 카페 등), keep the category keyword as-is.
+
 Examples:
+- "명동성당 어떻게 가?" → {"keyword": "명동대성당", "intent": "specific_place", "language": "ko"}
 - "캄풍쿠 어떻게 가?" → {"keyword": "캄풍쿠", "intent": "specific_place", "language": "ko"}
 - "주변 할랄 식당 알려줘" → {"keyword": "할랄 식당", "intent": "category_search", "language": "ko"}
 - "How do I get to Kampungku?" → {"keyword": "Kampungku", "intent": "specific_place", "language": "en"}
+- "How to get to Myeongdong Cathedral?" → {"keyword": "명동대성당", "intent": "specific_place", "language": "en"}
 - "مطعم حلال قريب" → {"keyword": "할랄 식당", "intent": "category_search", "language": "ar"}
 """
 

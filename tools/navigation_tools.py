@@ -5,6 +5,7 @@ from dotenv import load_dotenv
 
 load_dotenv()
 TMAP_KEY = os.getenv("TMAP_API_KEY")
+KAKAO_KEY = os.getenv("KAKAO_REST_API_KEY")
 
 
 async def _call_tmap_poi(params: dict) -> list[dict]:
@@ -39,15 +40,64 @@ async def _call_tmap_poi(params: dict) -> list[dict]:
     return sorted_results[:5]
 
 
+async def _call_kakao_keyword(keyword: str, lat: Optional[float] = None, lng: Optional[float] = None) -> list[dict]:
+    """Kakao Local 키워드 검색 → TMAP과 동일한 POI dict 형태로 반환"""
+    if not KAKAO_KEY:
+        return []
+    params: dict = {"query": keyword, "size": 5}
+    if lat and lng:
+        params["y"] = str(lat)
+        params["x"] = str(lng)
+        params["sort"] = "accuracy"  # 정확도순 (거리순은 "distance")
+    headers = {"Authorization": f"KakaoAK {KAKAO_KEY}"}
+    try:
+        async with httpx.AsyncClient() as client:
+            resp = await client.get(
+                "https://dapi.kakao.com/v2/local/search/keyword.json",
+                params=params,
+                headers=headers,
+            )
+            resp.raise_for_status()
+            data = resp.json()
+    except Exception:
+        return []
+
+    results = []
+    for doc in data.get("documents", []):
+        results.append({
+            "id": doc.get("id", ""),
+            "name": doc.get("place_name", ""),
+            "pnsLat": doc.get("y", ""),
+            "pnsLon": doc.get("x", ""),
+            "address": doc.get("road_address_name") or doc.get("address_name", ""),
+            "source": "kakao",
+        })
+    return results
+
+
+def _dedupe_pois(tmap_results: list[dict], kakao_results: list[dict]) -> list[dict]:
+    """TMAP + Kakao 결과 병합. 이름이 동일한 POI는 TMAP 쪽 유지, Kakao 고유 결과를 뒤에 추가."""
+    seen_names = {p["name"] for p in tmap_results}
+    merged = list(tmap_results)
+    for kp in kakao_results:
+        if kp["name"] not in seen_names:
+            seen_names.add(kp["name"])
+            merged.append(kp)
+    return merged[:10]
+
+
 async def search_poi(
     keyword: str,
     user_lat: Optional[float] = None,
     user_lng: Optional[float] = None,
 ) -> list[dict]:
     """
-    1차: 현재 위치 기준 5km 반경 내 거리순 검색
-    결과 없으면 2차: 전국 거리순 fallback
+    TMAP + Kakao Local 병행 검색 후 병합.
+    TMAP: 1차 5km → 2차 전국 fallback
+    Kakao: 정확도순 검색 (유사도 랭킹이 우수하여 정식 명칭 매칭에 강함)
     """
+    import asyncio
+
     base_params = {
         "version": 1,
         "searchKeyword": keyword,
@@ -56,30 +106,35 @@ async def search_poi(
         "appKey": TMAP_KEY,
     }
 
-    if user_lat and user_lng:
-        # 1차: 5km 반경
-        params_5km = {
-            **base_params,
-            "searchtypCd": "R",
-            "centerLat": user_lat,
-            "centerLon": user_lng,
-            "radius": 5,
-        }
-        results = await _call_tmap_poi(params_5km)
-        if results:
-            return results
+    async def _tmap_search() -> list[dict]:
+        if user_lat and user_lng:
+            params_5km = {
+                **base_params,
+                "searchtypCd": "R",
+                "centerLat": user_lat,
+                "centerLon": user_lng,
+                "radius": 5,
+            }
+            results = await _call_tmap_poi(params_5km)
+            if results:
+                return results
+            params_nationwide = {
+                **base_params,
+                "searchtypCd": "R",
+                "centerLat": user_lat,
+                "centerLon": user_lng,
+            }
+            return await _call_tmap_poi(params_nationwide)
+        return await _call_tmap_poi(base_params)
 
-        # 2차 fallback: 전국 거리순 (radius 없음)
-        params_nationwide = {
-            **base_params,
-            "searchtypCd": "R",
-            "centerLat": user_lat,
-            "centerLon": user_lng,
-        }
-        return await _call_tmap_poi(params_nationwide)
+    # TMAP과 Kakao 동시 검색
+    tmap_results, kakao_results = await asyncio.gather(
+        _tmap_search(),
+        _call_kakao_keyword(keyword, user_lat, user_lng),
+    )
 
-    # 위치 정보 없으면 키워드 검색만
-    return await _call_tmap_poi(base_params)
+    merged = _dedupe_pois(tmap_results, kakao_results)
+    return merged if merged else kakao_results[:5]
 
 
 async def get_pedestrian_route(
