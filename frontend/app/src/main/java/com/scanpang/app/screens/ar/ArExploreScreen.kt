@@ -167,10 +167,6 @@ fun ArExploreScreen(
                     text = "안녕하세요! 스캔팡입니다. 주변 장소를 AR로 안내해 드릴게요.",
                     isUser = false,
                 ),
-                ArAgentChatMessage(
-                    text = "아미나님, 오늘은 어떤 할랄 맛집을 찾으세요?",
-                    isUser = true,
-                ),
             ),
         )
     }
