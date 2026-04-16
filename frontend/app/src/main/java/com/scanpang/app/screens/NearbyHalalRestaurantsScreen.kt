@@ -197,8 +197,8 @@ fun NearbyHalalRestaurantsScreen(
                     title = restaurant.name_ko,
                     badgeKind = badgeKind,
                     badgeLabel = restaurant.halal_type.uppercase(),
-                    cuisineLabel = restaurant.cuisine,
-                    distance = "${restaurant.distance_m}m",
+                    cuisineLabel = restaurant.cuisine_type.joinToString(" · ").ifEmpty { restaurant.halal_type },
+                    distance = "${restaurant.distance_m.toInt()}m",
                     isOpen = true,
                     trustTags = buildList {
                         add(SearchResultTrustTag("할랄 인증", Icons.Rounded.Verified))

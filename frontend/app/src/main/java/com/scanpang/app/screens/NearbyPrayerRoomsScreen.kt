@@ -72,7 +72,7 @@ fun NearbyPrayerRoomsScreen(
 
     val visibleRooms = when (filterIndex) {
         1 -> prayerRooms.sortedBy { it.distance_m }
-        2 -> prayerRooms.filter { it.gender.isNotEmpty() && it.gender != "공용" }
+        2 -> prayerRooms.filter { it.facilities["gender_separation"] == true }
         else -> prayerRooms
     }
 

@@ -112,9 +112,9 @@ fun RestaurantDetailScreen(
 
     val DetailPlaceId = restaurant?.restaurant_id ?: placeName.ifEmpty { DefaultPlaceId }
     val DetailPlaceName = placeName.ifEmpty { restaurant?.name_ko ?: DefaultPlaceName }
-    val DetailPlaceCategory = restaurant?.cuisine?.ifEmpty { DefaultPlaceCategory } ?: DefaultPlaceCategory
+    val DetailPlaceCategory = restaurant?.cuisine_type?.joinToString(" · ")?.ifEmpty { DefaultPlaceCategory } ?: DefaultPlaceCategory
     val DetailPlaceDistanceLine = if (placeAddress.isNotEmpty()) placeAddress
-        else restaurant?.let { "${it.cuisine} · ${it.distance_m}m" } ?: DefaultPlaceDistanceLine
+        else restaurant?.let { "${it.cuisine_type.joinToString(" · ")} · ${it.distance_m.toInt()}m" } ?: DefaultPlaceDistanceLine
     val DetailPlaceTags = DefaultPlaceTags
 
     var bookmarked by remember { mutableStateOf(savedStore.isSaved(DetailPlaceId)) }
@@ -381,7 +381,7 @@ fun RestaurantDetailScreen(
                             color = ScanPangColors.OnSurfaceStrong,
                         )
                         Text(
-                            text = restaurant?.open_hours?.let { "영업 중 · $it" } ?: "영업 중 · 월–일 11:00–22:00",
+                            text = restaurant?.opening_hours?.let { "영업 중 · $it" } ?: "영업 중 · 월–일 11:00–22:00",
                             style = ScanPangType.caption12Medium,
                             color = ScanPangColors.OnSurfaceMuted,
                         )
@@ -395,7 +395,7 @@ fun RestaurantDetailScreen(
                 color = ScanPangColors.OnSurfaceStrong,
             )
             Text(
-                text = restaurant?.short_description_ko?.ifEmpty { null }
+                text = restaurant?.name_en?.ifEmpty { null }
                     ?: "명동 한복판에서 한우와 전통 한식을 할랄 기준으로 즐길 수 있는 공간입니다. 가족 단위 방문에 적합합니다.",
                 style = ScanPangType.detailIntro13,
                 color = ScanPangColors.OnSurfaceMuted,
@@ -407,10 +407,7 @@ fun RestaurantDetailScreen(
             )
             if (restaurant != null && restaurant.menu_examples.isNotEmpty()) {
                 restaurant.menu_examples.forEach { menu ->
-                    DetailMenuLine(
-                        name = menu.name_ko,
-                        price = if (menu.price_krw > 0) "${String.format("%,d", menu.price_krw)}원" else "",
-                    )
+                    DetailMenuLine(name = menu, price = "")
                 }
             } else {
                 DetailMenuLine(name = "한우 불고기 정식", price = "15,000원")
@@ -434,7 +431,7 @@ fun RestaurantDetailScreen(
             DetailInfoLine(
                 icon = Icons.Rounded.AccessTime,
                 label = "영업시간",
-                value = restaurant?.open_hours ?: "11:00 – 22:00 (연중무휴)",
+                value = restaurant?.opening_hours ?: "11:00 – 22:00 (연중무휴)",
             )
             Spacer(modifier = Modifier.height(ScanPangDimens.detailContentBottomPad))
         }

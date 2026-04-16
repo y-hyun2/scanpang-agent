@@ -65,7 +65,7 @@ fun PrayerRoomDetailScreen(
     val roomName = room?.name ?: "명동 공중기도실"
     val roomSubtitle = room?.let {
         buildString {
-            if (it.distance_m > 0) append("${it.distance_m}m")
+            if (it.distance_m > 0) append("${it.distance_m.toInt()}m")
             if (it.floor.isNotEmpty()) { if (isNotEmpty()) append(" · "); append(it.floor) }
         }.ifEmpty { it.address }
     } ?: "도보 3분 · 지하 1층"
@@ -196,17 +196,16 @@ fun PrayerRoomDetailScreen(
                 color = ScanPangColors.OnSurfaceStrong,
             )
             Text(
-                text = room?.notes?.ifEmpty { null }
-                    ?: "명동 거리 중심부에 위치한 무슬림 방문객을 위한 기도 공간입니다. 세정 시설과 키블라 표시가 준비되어 있습니다.",
+                text = "명동 거리 중심부에 위치한 무슬림 방문객을 위한 기도 공간입니다. 세정 시설과 키블라 표시가 준비되어 있습니다.",
                 style = ScanPangType.detailIntro13,
                 color = ScanPangColors.OnSurfaceMuted,
             )
             room?.facilities?.let { fac ->
                 val facilityList = buildList {
-                    if (fac.wudu) add("세정시설(우두)")
-                    if (fac.prayer_mat) add("기도 매트")
-                    if (fac.gender_separation) add("남녀 분리")
-                    if (fac.quran_available) add("꾸란 비치")
+                    if (fac["wudu"] == true) add("세정시설(우두)")
+                    if (fac["prayer_mat"] == true) add("기도 매트")
+                    if (fac["gender_separation"] == true) add("남녀 분리")
+                    if (fac["quran_available"] == true) add("꾸란 비치")
                 }
                 if (facilityList.isNotEmpty()) {
                     Text(

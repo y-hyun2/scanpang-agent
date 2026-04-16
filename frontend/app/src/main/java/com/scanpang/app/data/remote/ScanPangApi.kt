@@ -234,49 +234,29 @@ data class HalalRestaurant(
     val name_ko: String = "",
     val name_en: String = "",
     val halal_type: String = "",
-    val muslim_cooks_available: Boolean = false,
-    val no_alcohol_sales: Boolean = false,
+    val muslim_cooks_available: Boolean? = null,
+    val no_alcohol_sales: Boolean? = null,
     val cuisine_type: List<String> = emptyList(),
-    val menu_examples: List<MenuExample> = emptyList(),
-    val short_description_ko: String = "",
-    val distance_m: Int = 0,
+    val menu_examples: List<String> = emptyList(),
+    val distance_m: Double = 0.0,
     val lat: Double = 0.0,
     val lng: Double = 0.0,
     val address: String = "",
-    val cuisine: String = "",
     val phone: String = "",
-    val open_hours: String = "",
-    val opening_hours: Map<String, String> = emptyMap(),
-    val break_time: Map<String, String> = emptyMap(),
+    val opening_hours: String = "",
+    val break_time: String = "",
     val last_order: String = "",
-)
-
-data class MenuExample(
-    val name_ko: String = "",
-    val name_en: String = "",
-    val price_krw: Int = 0,
 )
 
 data class PrayerRoomDetail(
     val name: String = "",
     val name_en: String = "",
-    val distance_m: Int = 0,
+    val distance_m: Double = 0.0,
     val lat: Double = 0.0,
     val lng: Double = 0.0,
     val address: String = "",
     val floor: String = "",
     val open_hours: String = "",
-    val phone: String = "",
-    val gender: String = "",
-    val facilities: PrayerFacilities? = null,
-    val availability_status: String = "",
-    val capacity: Int = 0,
-    val notes: String = "",
-)
-
-data class PrayerFacilities(
-    val wudu: Boolean = false,
-    val gender_separation: Boolean = false,
-    val prayer_mat: Boolean = false,
-    val quran_available: Boolean = false,
+    val facilities: Map<String, Any> = emptyMap(),
+    val availability_status: String = "unknown",
 )
