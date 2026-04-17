@@ -76,6 +76,7 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import androidx.navigation.NavController
+import com.scanpang.app.components.ar.ArCameraBackdrop
 import com.google.ar.core.Anchor
 import com.google.ar.core.Config
 import com.google.ar.core.Earth
