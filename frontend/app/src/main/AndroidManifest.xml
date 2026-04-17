@@ -45,6 +45,9 @@
             android:value="required"
             tools:replace="android:value" />
         <meta-data
+            android:name="com.google.android.ar.API_KEY"
+            android:value="${googleMapsApiKey}" />
+        <meta-data
             android:name="com.google.android.geo.API_KEY"
             android:value="${googleMapsApiKey}" />
     </application>
