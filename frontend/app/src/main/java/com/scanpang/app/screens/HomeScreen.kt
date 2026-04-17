@@ -25,19 +25,27 @@ import androidx.compose.material.icons.rounded.Translate
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import android.Manifest
+import android.content.pm.PackageManager
+import android.location.Geocoder
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
+import androidx.core.content.ContextCompat
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.google.android.gms.location.LocationServices
 import com.scanpang.app.data.remote.ScanPangViewModel
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.navigation.NavController
+import java.util.Locale
 import com.scanpang.app.data.OnboardingPreferences
 import com.scanpang.app.navigation.AppRoutes
 import com.scanpang.app.ui.theme.ScanPangColors
@@ -99,6 +107,41 @@ private fun HomeTopSection(
     } else {
         "안녕하세요!"
     }
+
+    // GPS + 역지오코딩으로 현재 위치 표시
+    var locationText by remember { mutableStateOf("현재 위치를 가져오는 중...") }
+    LaunchedEffect(Unit) {
+        val hasPermission = ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED ||
+            ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED
+        if (!hasPermission) {
+            locationText = "위치 권한이 필요합니다"
+            return@LaunchedEffect
+        }
+        val fusedClient = LocationServices.getFusedLocationProviderClient(context)
+        fusedClient.lastLocation.addOnSuccessListener { loc ->
+            if (loc != null) {
+                try {
+                    @Suppress("DEPRECATION")
+                    val geocoder = Geocoder(context, Locale.KOREAN)
+                    val addresses = geocoder.getFromLocation(loc.latitude, loc.longitude, 1)
+                    if (!addresses.isNullOrEmpty()) {
+                        val addr = addresses[0]
+                        val dong = addr.subLocality ?: addr.thoroughfare ?: ""
+                        val detail = addr.featureName ?: ""
+                        locationText = "현재 위치: ${dong} ${detail} 근처".trim()
+                    } else {
+                        locationText = "현재 위치: %.4f, %.4f".format(loc.latitude, loc.longitude)
+                    }
+                } catch (_: Exception) {
+                    locationText = "현재 위치: %.4f, %.4f".format(loc.latitude, loc.longitude)
+                }
+            } else {
+                locationText = "현재 위치를 확인할 수 없습니다"
+            }
+        }.addOnFailureListener {
+            locationText = "위치 가져오기 실패"
+        }
+    }
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -132,7 +175,7 @@ private fun HomeTopSection(
                     tint = ScanPangColors.OnSurfaceMuted,
                 )
                 Text(
-                    text = "현재 위치: 명동역 6번 출구 근처",
+                    text = locationText,
                     style = ScanPangType.meta13,
                     color = ScanPangColors.OnSurfaceMuted,
                     maxLines = 1,
