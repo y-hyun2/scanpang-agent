@@ -173,12 +173,97 @@ SEOUL_RESTROOM_API_KEY=   # 서울시 공중화장실
 
 | 엔드포인트 | 에이전트 | 설명 |
 |---|---|---|
+| `POST /ar/agent/chat` | **Orchestrator** | **단일 엔드포인트 → 4개 에이전트 자동 라우팅** |
 | `POST /place/query` | Place Insight | 건물 인식 → AR 오버레이 + 도슨트 TTS |
 | `POST /place/store` | Store Detail | 층별 매장 상세 (Kakao + Chroma 캐싱) |
 | `POST /navigation/search` | Navigation | 자연어 → POI 후보 (LLM 의도 파악) |
 | `POST /navigation/route` | Navigation | 확정 목적지 → 보행자 경로 + 턴별 TTS |
 | `POST /convenience/query` | Convenience | 주변 편의시설 (15개 카테고리) |
 | `POST /halal/query` | Halal | 기도시간 / 키블라 / 할랄식당 / 기도실 |
+
+---
+
+## LangGraph Orchestrator (`/ar/agent/chat`)
+
+프론트엔드 AR 채팅 창의 단일 엔드포인트. GPT-4o가 메시지를 분류해 4개 에이전트 중 하나로 자동 라우팅합니다.
+
+### 흐름
+
+```
+POST /ar/agent/chat
+  └─ intent_classifier (GPT-4o, few-shot 18개)
+       ├─ "place"       → place_insight_agent  → AR 오버레이 + 도슨트
+       ├─ "navigation"  → navigation_agent     → POI 검색 결과
+       ├─ "halal"       → halal_agent          → 기도시간 / 할랄식당 / 기도실
+       └─ "convenience" → convenience_agent    → 주변 편의시설
+            └─ response_synthesizer → { speech, source_agent, raw_data }
+```
+
+### 라우팅 기준
+
+| 메시지 예시 | 분류 |
+|---|---|
+| "이 건물 뭐야?", "여기 운영시간?" | `place` |
+| "명동역 어떻게 가?", "롯데백화점 경로" | `navigation` |
+| "기도 시간 알려줘", "할랄 식당", "기도실 어디야?" | `halal` |
+| "ATM", "화장실", "카페", "환전소", "약국" | `convenience` |
+
+> **주의**: 할랄 식당은 `halal`로 분류 (일반 식당은 `convenience`)
+
+### curl 테스트 예시
+
+```bash
+BASE="http://localhost:8000"
+
+# 건물 정보 (place)
+curl -s -X POST "$BASE/ar/agent/chat" \
+  -H "Content-Type: application/json" \
+  -d '{"message":"이 건물 뭐야?","lat":37.5636,"lng":126.9822,"heading":45.0,"language":"ko"}' | jq .
+
+# 길 안내 (navigation)
+curl -s -X POST "$BASE/ar/agent/chat" \
+  -H "Content-Type: application/json" \
+  -d '{"message":"명동역까지 어떻게 가?","lat":37.5636,"lng":126.9822}' | jq .
+
+# 기도 시간 (halal)
+curl -s -X POST "$BASE/ar/agent/chat" \
+  -H "Content-Type: application/json" \
+  -d '{"message":"지금 기도 시간 알려줘","lat":37.5636,"lng":126.9822,"language":"ar"}' | jq .
+
+# 할랄 식당 (halal — convenience 아님)
+curl -s -X POST "$BASE/ar/agent/chat" \
+  -H "Content-Type: application/json" \
+  -d '{"message":"근처 할랄 식당 추천해줘","lat":37.5636,"lng":126.9822}' | jq .
+
+# ATM (convenience)
+curl -s -X POST "$BASE/ar/agent/chat" \
+  -H "Content-Type: application/json" \
+  -d '{"message":"근처 ATM 찾아줘","lat":37.5636,"lng":126.9822}' | jq .
+
+# 화장실 (convenience)
+curl -s -X POST "$BASE/ar/agent/chat" \
+  -H "Content-Type: application/json" \
+  -d '{"message":"화장실 어디야?","lat":37.5636,"lng":126.9822}' | jq .
+```
+
+### 응답 형식
+
+```json
+{
+  "speech":       "근처 할랄 식당으로 명동 할랄가든(120m)이 있습니다.",
+  "source_agent": "halal",
+  "raw_data":     { ... },
+  "session_id":   "550e8400-e29b-41d4-a716-446655440000"
+}
+```
+
+### 테스트 실행
+
+```bash
+source venv/bin/activate
+python -m pytest tests/test_orchestrator.py -v
+# 18개 케이스 전부 통과 (LLM / 서브에이전트 mock)
+```
 
 ---
 

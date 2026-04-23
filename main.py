@@ -1,4 +1,7 @@
+from typing import Optional
+
 from fastapi import FastAPI
+from pydantic import BaseModel
 from schemas.navigation import NavRequest, RouteRequest
 from agents.navigation_agent import run_search_agent, run_route_agent
 from schemas.place import PlaceRequest
@@ -9,8 +12,27 @@ from schemas.convenience import ConvenienceRequest
 from agents.convenience_agent import run_convenience_agent
 from schemas.halal import HalalRequest
 from agents.halal_agent import run_halal_agent
+from agents.orchestrator_agent import run_orchestrator
 
 app = FastAPI(title="ScanPang Navigation API")
+
+
+# ── Orchestrator 스키마 ───────────────────────────────────────────────────
+
+class AgentChatRequest(BaseModel):
+    message: str
+    lat: float
+    lng: float
+    heading: float = 0.0
+    language: str = "ko"
+    session_id: Optional[str] = None
+
+
+class AgentChatResponse(BaseModel):
+    speech: str
+    source_agent: str
+    raw_data: dict
+    session_id: str
 
 
 @app.post("/navigation/search")
@@ -62,3 +84,20 @@ async def halal_query(req: HalalRequest):
     category: prayer_time | qibla | restaurant | prayer_room
     """
     return await run_halal_agent(req)
+
+
+@app.post("/ar/agent/chat", response_model=AgentChatResponse)
+async def ar_agent_chat(req: AgentChatRequest):
+    """
+    LangGraph Orchestrator: 단일 엔드포인트에서 4개 에이전트를 자동 라우팅.
+    intent_classifier(GPT-4o) → place | navigation | halal | convenience → 통합 응답
+    """
+    result = await run_orchestrator(
+        message=req.message,
+        lat=req.lat,
+        lng=req.lng,
+        heading=req.heading,
+        language=req.language,
+    )
+    result["session_id"] = req.session_id or result["session_id"]
+    return result
