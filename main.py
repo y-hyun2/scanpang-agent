@@ -13,8 +13,19 @@ from agents.convenience_agent import run_convenience_agent
 from schemas.halal import HalalRequest
 from agents.halal_agent import run_halal_agent
 from agents.orchestrator_agent import run_orchestrator
+from core.session_store import get_session_store
 
 app = FastAPI(title="ScanPang Navigation API")
+
+
+@app.on_event("startup")
+async def _startup():
+    await get_session_store().connect()
+
+
+@app.on_event("shutdown")
+async def _shutdown():
+    await get_session_store().close()
 
 
 # ── Orchestrator 스키마 ───────────────────────────────────────────────────
@@ -98,6 +109,6 @@ async def ar_agent_chat(req: AgentChatRequest):
         lng=req.lng,
         heading=req.heading,
         language=req.language,
+        session_id=req.session_id,
     )
-    result["session_id"] = req.session_id or result["session_id"]
     return result

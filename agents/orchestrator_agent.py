@@ -3,6 +3,11 @@ orchestrator_agent.py
 LangGraph 기반 멀티-에이전트 오케스트레이터.
 
 흐름: intent_classifier → (place | navigation | halal | convenience) → response_synthesizer
+
+세션 처리:
+  - 요청 전: Redis에서 최근 5턴 조회 → intent_classifier 프롬프트에 주입
+  - 요청 후: user 발화 + assistant 응답을 Redis에 저장 (TTL 24h, 최대 10턴)
+  - Redis 미연결: graceful degradation (세션 없이 단일 턴으로 동작)
 """
 
 import json
@@ -19,10 +24,12 @@ from agents.convenience_agent import run_convenience_agent
 from agents.halal_agent import run_halal_agent
 from agents.navigation_agent import run_search_agent
 from agents.place_insight_agent import run_place_insight_agent
+from core.session_store import get_session_store
 from schemas.convenience import ConvenienceRequest
 from schemas.halal import HalalRequest
 from schemas.navigation import NavRequest
 from schemas.place import PlaceRequest
+from schemas.session import ConversationTurn, SessionContext
 
 load_dotenv()
 
@@ -34,6 +41,8 @@ class OrchestratorState(TypedDict):
     user_lng: float
     user_heading: float
     language: str
+    session_id: str
+    session_context: str          # 프롬프트에 삽입할 이전 대화 이력 텍스트
     selected_agent: Literal["place", "navigation", "halal", "convenience"]
     sub_agent_response: dict
     final_speech: str
@@ -56,6 +65,7 @@ _INTENT_SYSTEM = """당신은 AR 관광 앱의 요청 라우터입니다. 사용
 - 일반 식당/카페는 "convenience"
 - 건물 자체에 대한 질문(이게 뭐야, 여기 몇 층이야)은 "place"
 - 어디로 가고 싶다는 내용은 "navigation"
+- 대화 이력이 있을 경우, "거기", "그곳", "저기서", "방금 말한 곳" 같은 지시어는 이전 대화에서 언급된 장소를 가리킨다.
 
 아래 예시를 참고하세요."""
 
@@ -103,12 +113,19 @@ _llm = ChatOpenAI(model="gpt-4o", temperature=0, response_format={"type": "json_
 
 # ── 독립 분류 함수 (테스트 가능) ─────────────────────────────────────────────
 
-async def classify_intent(message: str) -> Literal["place", "navigation", "halal", "convenience"]:
+async def classify_intent(
+    message: str,
+    session_context: str = "",
+) -> Literal["place", "navigation", "halal", "convenience"]:
     """사용자 메시지 → 에이전트 종류 분류. 실패 시 convenience 반환."""
+    user_content = f'메시지: "{message}"'
+    if session_context:
+        user_content = f"{session_context}\n\n{user_content}"
+
     messages = [
         {"role": "system", "content": _INTENT_SYSTEM},
         *_FEW_SHOTS,
-        {"role": "user", "content": f'메시지: "{message}"'},
+        {"role": "user", "content": user_content},
     ]
     try:
         response = await _llm.ainvoke(messages)
@@ -124,7 +141,10 @@ async def classify_intent(message: str) -> Literal["place", "navigation", "halal
 # ── LangGraph 노드 ────────────────────────────────────────────────────────
 
 async def _intent_classifier_node(state: OrchestratorState) -> dict:
-    selected = await classify_intent(state["user_message"])
+    selected = await classify_intent(
+        state["user_message"],
+        session_context=state.get("session_context", ""),
+    )
     return {"selected_agent": selected, "source_agent": selected}
 
 
@@ -226,9 +246,11 @@ async def run_orchestrator(
     lng: float,
     heading: float = 0.0,
     language: str = "ko",
+    session_id: Optional[str] = None,
 ) -> dict:
     """
     단일 진입점: 메시지를 받아 적절한 에이전트로 라우팅하고 결과를 반환한다.
+    session_id가 있으면 Redis에서 이전 대화 이력을 조회해 intent_classifier에 주입한다.
 
     Returns:
         {
@@ -238,23 +260,45 @@ async def run_orchestrator(
             "session_id": str,
         }
     """
+    sid = session_id or str(uuid.uuid4())
+    store = get_session_store()
+
+    # ── 세션 컨텍스트 조회 ────────────────────────────────────────────────
+    session_context = ""
+    if store.available and session_id:
+        raw_turns = await store.get_recent_turns(sid, n=5)
+        turns = [ConversationTurn(**t) for t in raw_turns]
+        ctx = SessionContext(session_id=sid, turns=turns)
+        session_context = ctx.to_prompt_text()
+
+    # ── LangGraph 실행 ────────────────────────────────────────────────────
     initial_state: OrchestratorState = {
-        "user_message":   message,
-        "user_lat":       lat,
-        "user_lng":       lng,
-        "user_heading":   heading,
-        "language":       language,
-        "selected_agent": "convenience",   # 초기값 (classifier가 덮어씀)
+        "user_message":    message,
+        "user_lat":        lat,
+        "user_lng":        lng,
+        "user_heading":    heading,
+        "language":        language,
+        "session_id":      sid,
+        "session_context": session_context,
+        "selected_agent":  "convenience",
         "sub_agent_response": {},
-        "final_speech":   "",
-        "source_agent":   "",
+        "final_speech":    "",
+        "source_agent":    "",
     }
 
     result = await _graph.ainvoke(initial_state)
 
+    speech       = result["final_speech"]
+    source_agent = result["source_agent"]
+    raw_data     = result["sub_agent_response"]
+
+    # ── 세션 저장 (user + assistant 턴) ──────────────────────────────────
+    await store.save_turn(sid, "user",      message, mask_pii=True)
+    await store.save_turn(sid, "assistant", speech,  agent_name=source_agent, mask_pii=False)
+
     return {
-        "speech":       result["final_speech"],
-        "source_agent": result["source_agent"],
-        "raw_data":     result["sub_agent_response"],
-        "session_id":   str(uuid.uuid4()),
+        "speech":       speech,
+        "source_agent": source_agent,
+        "raw_data":     raw_data,
+        "session_id":   sid,
     }

@@ -9,3 +9,4 @@ langgraph>=0.2.0
 sentence-transformers
 pydantic
 shapely
+redis>=5.0.0
