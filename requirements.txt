@@ -10,3 +10,4 @@ sentence-transformers
 pydantic
 shapely
 redis>=5.0.0
+rapidfuzz

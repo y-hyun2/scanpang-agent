@@ -1,5 +1,6 @@
+from typing import List, Literal, Optional
+
 from pydantic import BaseModel
-from typing import List
 
 
 class PlaceRequest(BaseModel):
@@ -13,7 +14,7 @@ class PlaceRequest(BaseModel):
 
 
 class FloorInfo(BaseModel):
-    floor: str
+    floor: Optional[str] = None          # null 허용: 층 정보가 명시되지 않은 매장
     stores: List[str]
 
 
@@ -29,6 +30,10 @@ class ArOverlay(BaseModel):
     parking_info: str
     admission_fee: str
     is_estimated: bool = False
+    status: Literal["partial", "ready"] = "ready"
+    floor_info_loading: bool = False
+    coverage_rate: Optional[float] = None
+    last_updated: Optional[str] = None
 
 
 class Docent(BaseModel):
