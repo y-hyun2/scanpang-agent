@@ -10,15 +10,20 @@
 ```
 Scanpang_agent/
 │
-├── main.py                         # FastAPI 서버 진입점 (6개 엔드포인트)
+├── main.py                         # FastAPI 서버 진입점 (7개 엔드포인트)
 ├── requirements.txt
+├── docker-compose.yml              # Redis 7 (세션 저장소)
 ├── .env                            # API 키 (.gitignore)
 │
 ├── agents/                         # 백엔드 AI 에이전트
+│   ├── orchestrator_agent.py       #   LangGraph Orchestrator (세션 컨텍스트 주입)
 │   ├── place_insight_agent.py      #   건물 인식 → AR 오버레이 + 도슨트 TTS
 │   ├── navigation_agent.py         #   AR 길찾기 (검색 + 경로 + 턴별 TTS)
 │   ├── convenience_agent.py        #   주변 편의시설 (15개 카테고리)
 │   └── halal_agent.py              #   할랄 식당 / 기도실 / 기도시간 / 키블라
+│
+├── core/                           # 공통 인프라
+│   └── session_store.py            #   Redis 세션 저장소 (TTL 24h, 최대 10턴, PII 마스킹)
 │
 ├── tools/                          # 외부 API 래퍼 + 데이터 도구
 │   ├── building_raycast.py         #   VWorld 3D 폴리곤 STRtree 레이캐스팅
@@ -33,7 +38,8 @@ Scanpang_agent/
 │   ├── navigation.py               #   TurnPoint, ArCommand, LatLng
 │   ├── convenience.py              #   Facility, ConvenienceResponse
 │   ├── halal.py                    #   PrayerTimeData, HalalRestaurant
-│   └── store.py                    #   StoreDetail
+│   ├── store.py                    #   StoreDetail
+│   └── session.py                  #   ConversationTurn, SessionContext
 │
 ├── rag/                            # 데이터 구축 스크립트 + 정적 데이터
 │   ├── build_place_db.py           #   명동 10개 건물 → Chroma 구축
@@ -47,6 +53,10 @@ Scanpang_agent/
 ├── chroma_db/                      # ChromaDB 벡터 저장소
 │   ├── place_info/                 #   건물 기본정보 + 층별 매장
 │   └── store_detail/               #   개별 매장 상세 (on-demand 캐시)
+│
+├── tests/
+│   ├── test_orchestrator.py        # Orchestrator 라우팅 18개 케이스
+│   └── test_session.py             # 세션 저장소 9개 케이스
 │
 └── frontend/                       # Android 프론트엔드 (단일 APK)
     ├── build.gradle.kts
@@ -70,7 +80,7 @@ Scanpang_agent/
     │       │   │   ├── SplashScreen.kt        #     스플래시
     │       │   │   ├── onboarding/            #     온보딩 (언어, 이름, 선호)
     │       │   │   └── ar/
-    │       │   │       ├── ArExploreScreen.kt       # AR 탐색 UI
+    │       │   │       ├── ArExploreScreen.kt       # AR 탐색 UI (ARCore VPS)
     │       │   │       └── ArNavigationMapScreen.kt  # AR 길안내 UI
     │       │   ├── components/                #   공용 UI 컴포넌트
     │       │   │   ├── ar/                    #     AR 오버레이 컴포넌트
@@ -84,13 +94,13 @@ Scanpang_agent/
     │       │   │   ├── SavedPlacesStore.kt
     │       │   │   └── SearchHistoryPreferences.kt
     │       │   ├── ar/
-    │       │   │   ├── AgentService.kt        #   AR 채팅 에이전트 (/place/query)
+    │       │   │   ├── AgentService.kt        #   AR 채팅 에이전트 (/ar/agent/chat)
     │       │   │   ├── ArExploreTtsController.kt  # TTS 컨트롤러
     │       │   │   ├── ArSpeechRecognizerHelper.kt # STT 헬퍼
     │       │   │   ├── VoiceAgent.kt          #   음성 에이전트
     │       │   │   └── explore/
     │       │   │       └── PlaceAugmentingActivity.kt  # AR 탐색 엔진
-    │       │   │           # ARCore VPS + building_raycast + /place/query
+    │       │   │           # ARCore VPS + building_raycast + /ar/agent/chat
     │       │   │           # 건물 마커 동적 배치, 층별 정보, 도슨트 TTS
     │       │   ├── qibla/                     #   키블라/기도시간
     │       │   └── ui/                        #   테마, 에셋
@@ -112,6 +122,8 @@ Scanpang_agent/
 |---|---|
 | 백엔드 | FastAPI, Python 3.11 |
 | LLM | OpenAI GPT-4o |
+| 오케스트레이션 | LangGraph StateGraph (intent_classifier → 4 sub-agents) |
+| 세션 | Redis 7 (대화 맥락 유지, TTL 24h) |
 | 건물 인식 | VWorld WFS 건물 폴리곤 + Shapely STRtree 레이캐스팅 |
 | 길찾기 | TMAP 보행자 경로 + LLM 턴별 TTS |
 | 장소 정보 | Kakao Local, TourAPI, 소상공인 API, Juso API |
@@ -123,6 +135,16 @@ Scanpang_agent/
 ---
 
 ## 실행 방법
+
+### Redis (세션 저장소)
+
+```bash
+# Docker 필요
+docker compose up -d redis
+
+# 실기기 연결 시 포트 포워딩도 추가
+adb reverse tcp:6379 tcp:6379
+```
 
 ### 백엔드
 
@@ -165,6 +187,7 @@ VWORLD_API_KEY=           # VWorld WFS
 VWORLD_DOMAIN=http://localhost
 SEOUL_LOCKER_API_KEY=     # 서울시 물품보관함
 SEOUL_RESTROOM_API_KEY=   # 서울시 공중화장실
+REDIS_URL=redis://localhost:6379/0
 ```
 
 ---
@@ -173,7 +196,7 @@ SEOUL_RESTROOM_API_KEY=   # 서울시 공중화장실
 
 | 엔드포인트 | 에이전트 | 설명 |
 |---|---|---|
-| `POST /ar/agent/chat` | **Orchestrator** | **단일 엔드포인트 → 4개 에이전트 자동 라우팅** |
+| `POST /ar/agent/chat` | **Orchestrator** | **단일 엔드포인트 → 4개 에이전트 자동 라우팅 + 세션 유지** |
 | `POST /place/query` | Place Insight | 건물 인식 → AR 오버레이 + 도슨트 TTS |
 | `POST /place/store` | Store Detail | 층별 매장 상세 (Kakao + Chroma 캐싱) |
 | `POST /navigation/search` | Navigation | 자연어 → POI 후보 (LLM 의도 파악) |
@@ -186,17 +209,23 @@ SEOUL_RESTROOM_API_KEY=   # 서울시 공중화장실
 ## LangGraph Orchestrator (`/ar/agent/chat`)
 
 프론트엔드 AR 채팅 창의 단일 엔드포인트. GPT-4o가 메시지를 분류해 4개 에이전트 중 하나로 자동 라우팅합니다.
+`session_id`를 재사용하면 이전 대화 이력이 intent_classifier에 주입되어 "거기", "저기" 같은 지시어를 올바르게 해석합니다.
 
 ### 흐름
 
 ```
-POST /ar/agent/chat
-  └─ intent_classifier (GPT-4o, few-shot 18개)
+POST /ar/agent/chat  { session_id? }
+  │
+  ├─ Redis: get_recent_turns(session_id, n=5)
+  │
+  └─ intent_classifier (GPT-4o, few-shot 18개 + 이전 대화 이력)
        ├─ "place"       → place_insight_agent  → AR 오버레이 + 도슨트
        ├─ "navigation"  → navigation_agent     → POI 검색 결과
        ├─ "halal"       → halal_agent          → 기도시간 / 할랄식당 / 기도실
        └─ "convenience" → convenience_agent    → 주변 편의시설
-            └─ response_synthesizer → { speech, source_agent, raw_data }
+            └─ response_synthesizer → { speech, source_agent, raw_data, session_id }
+                  │
+                  └─ Redis: save_turn(user) + save_turn(assistant)
 ```
 
 ### 라우팅 기준
@@ -204,46 +233,40 @@ POST /ar/agent/chat
 | 메시지 예시 | 분류 |
 |---|---|
 | "이 건물 뭐야?", "여기 운영시간?" | `place` |
-| "명동역 어떻게 가?", "롯데백화점 경로" | `navigation` |
+| "명동역 어떻게 가?", "롯데백화점 경로", "거기 어떻게 가?" | `navigation` |
 | "기도 시간 알려줘", "할랄 식당", "기도실 어디야?" | `halal` |
 | "ATM", "화장실", "카페", "환전소", "약국" | `convenience` |
 
 > **주의**: 할랄 식당은 `halal`로 분류 (일반 식당은 `convenience`)
 
-### curl 테스트 예시
+### 세션 다중 턴 테스트
+
+```bash
+SESSION=$(uuidgen | tr '[:upper:]' '[:lower:]')
+
+# 1턴: 건물 질문 → place
+curl -s -X POST http://localhost:8000/ar/agent/chat \
+  -H "Content-Type: application/json" \
+  -d "{\"message\":\"눈스퀘어 뭐야?\",\"lat\":37.5636,\"lng\":126.9822,\"session_id\":\"$SESSION\"}" | jq .
+
+# 2턴: 지시어 → 이전 이력 참고해 navigation으로 분류
+curl -s -X POST http://localhost:8000/ar/agent/chat \
+  -H "Content-Type: application/json" \
+  -d "{\"message\":\"거기 어떻게 가?\",\"lat\":37.5636,\"lng\":126.9822,\"session_id\":\"$SESSION\"}" | jq .
+```
+
+### 단일 턴 curl 예시
 
 ```bash
 BASE="http://localhost:8000"
 
-# 건물 정보 (place)
 curl -s -X POST "$BASE/ar/agent/chat" \
   -H "Content-Type: application/json" \
   -d '{"message":"이 건물 뭐야?","lat":37.5636,"lng":126.9822,"heading":45.0,"language":"ko"}' | jq .
 
-# 길 안내 (navigation)
-curl -s -X POST "$BASE/ar/agent/chat" \
-  -H "Content-Type: application/json" \
-  -d '{"message":"명동역까지 어떻게 가?","lat":37.5636,"lng":126.9822}' | jq .
-
-# 기도 시간 (halal)
-curl -s -X POST "$BASE/ar/agent/chat" \
-  -H "Content-Type: application/json" \
-  -d '{"message":"지금 기도 시간 알려줘","lat":37.5636,"lng":126.9822,"language":"ar"}' | jq .
-
-# 할랄 식당 (halal — convenience 아님)
-curl -s -X POST "$BASE/ar/agent/chat" \
-  -H "Content-Type: application/json" \
-  -d '{"message":"근처 할랄 식당 추천해줘","lat":37.5636,"lng":126.9822}' | jq .
-
-# ATM (convenience)
 curl -s -X POST "$BASE/ar/agent/chat" \
   -H "Content-Type: application/json" \
   -d '{"message":"근처 ATM 찾아줘","lat":37.5636,"lng":126.9822}' | jq .
-
-# 화장실 (convenience)
-curl -s -X POST "$BASE/ar/agent/chat" \
-  -H "Content-Type: application/json" \
-  -d '{"message":"화장실 어디야?","lat":37.5636,"lng":126.9822}' | jq .
 ```
 
 ### 응답 형식
@@ -261,9 +284,23 @@ curl -s -X POST "$BASE/ar/agent/chat" \
 
 ```bash
 source venv/bin/activate
-python -m pytest tests/test_orchestrator.py -v
-# 18개 케이스 전부 통과 (LLM / 서브에이전트 mock)
+python -m pytest tests/ -v
+# test_orchestrator.py: 18개 케이스 통과 (LLM / 서브에이전트 mock)
+# test_session.py:      8개 케이스 통과 (PII 마스킹, graceful degradation, 지시어 시나리오)
 ```
+
+---
+
+## Redis 세션 저장소
+
+| 항목 | 값 |
+|---|---|
+| 키 구조 | `scanpang:session:{id}:turns` (LIST) + `:meta` (HASH) |
+| TTL | 24시간 (마지막 활동 기준 자동 연장) |
+| 최대 턴 수 | 10턴 (LTRIM 자동 pruning) |
+| PII 마스킹 | 전화번호·이메일 자동 마스킹 (user 발화 저장 시) |
+| Graceful degradation | Redis 미연결 → 단일 턴으로 정상 동작 |
+| 메모리 한계 | 128MB, allkeys-lru (docker-compose) |
 
 ---
 
@@ -279,7 +316,7 @@ python -m pytest tests/test_orchestrator.py -v
   ├── 키블라 나침반 (5대 기도시간 + 방향)
   └── AR 탐색 (건물 조준 → 건물 인식 → 층별 정보 + 도슨트)
 
-AR 탐색: PlaceAugmentingActivity (ARCore VPS + /place/query)
+AR 탐색: PlaceAugmentingActivity (ARCore VPS + /ar/agent/chat)
 AR 길안내: ArNavigationActivity (ARCore + SceneView + /navigation/route)
 ```
 
