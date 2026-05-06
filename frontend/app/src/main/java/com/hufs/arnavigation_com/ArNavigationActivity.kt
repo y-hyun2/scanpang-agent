@@ -241,7 +241,8 @@ class ArNavigationActivity : AppCompatActivity() {
     }
 
     // ───── 매 프레임 업데이트 ─────
-    private fun updateGeospatialAndChunk() {
+    private fun
+      updateGeospatialAndChunk() {
         val earth = sceneView.session?.earth ?: return; if (earth.trackingState != TrackingState.TRACKING) return
         val pose = earth.cameraGeospatialPose; val lat = pose.latitude; val lng = pose.longitude; val now = System.currentTimeMillis()
         if (viewModel.navigationState.value == NavigationState.LOCALIZING && pose.horizontalAccuracy < 10.0 && targetDestination.isNotEmpty()) { viewModel.updateState(NavigationState.READY_TO_ROUTE); viewModel.fetchRoute(lng.toString(), lat.toString(), targetDestination) }
@@ -252,7 +253,7 @@ class ArNavigationActivity : AppCompatActivity() {
             }
             if (currentTargetPointIndex < majorPointIndices.size) {
                 val tn = fullRouteNodes[majorPointIndices[currentTargetPointIndex]]; Location.distanceBetween(lat, lng, tn.lat, tn.lng, distanceResults); val dist = distanceResults[0]
-                if (tn.type == NodeType.END && dist <= 6.0f) { clearAllArNodes(); updateNavCard("목적지", "0m", true); statusTextView.visibility = android.view.View.VISIBLE; updateStatusUI("🎉 목적지에 도착했습니다!"); binding.navCard.visibility = android.view.View.GONE; binding.miniMapContainer.visibility = android.view.View.GONE; return }
+                if (tn.type == NodeType.END && dist <= 11.0f) { clearAllArNodes(); updateNavCard("목적지", "0m", true); statusTextView.visibility = android.view.View.VISIBLE; updateStatusUI("🎉 목적지에 도착했습니다!"); binding.navCard.visibility = android.view.View.GONE; binding.miniMapContainer.visibility = android.view.View.GONE; return }
                 val st = when (tn.type) {
                     NodeType.END -> { updateNavCard("목적지", "${dist.toInt()}m", false); "목적지까지 ${dist.toInt()}m" }
                     NodeType.TURN_POINT -> when (turnDirectionMap[currentTargetPointIndex]) {
@@ -264,7 +265,7 @@ class ArNavigationActivity : AppCompatActivity() {
                 if (mapInitialized) { val cl = com.google.android.gms.maps.model.LatLng(lat, lng); val h = pose.heading.toFloat()
                     if (myLocationMarker == null) myLocationMarker = googleMap.addMarker(com.google.android.gms.maps.model.MarkerOptions().position(cl).icon(createLocationBitmap(h)).anchor(0.5f, 0.5f).flat(true))
                     else { myLocationMarker?.position = cl; myLocationMarker?.setIcon(createLocationBitmap(h)) } }
-                if (dist <= 6.0f) { clearAllArNodes(); currentTargetPointIndex++ }
+                if (dist <= 8.0f) { clearAllArNodes(); currentTargetPointIndex++ }
             }
             if (now - lastChunkRenderTime > 2000) { renderNearbyArrows(lat, lng); lastChunkRenderTime = now }
             updateDirectionDots(lat, lng, pose.heading)
@@ -286,7 +287,7 @@ class ArNavigationActivity : AppCompatActivity() {
         for (i in startIdx..endIdx) {
             if (renderedIndices.contains(i)) continue; renderedIndices.add(i); val node = fullRouteNodes[i]
             if (node.type == NodeType.PATH_POINT) continue
-            val yOff = if (node.type == NodeType.TURN_POINT) 0.5 else 1.5
+            val yOff = if (node.type == NodeType.TURN_POINT) 0.0 else 1.5
             val anchor = earth.createAnchor(node.lat, node.lng, earth.cameraGeospatialPose.altitude - yOff, 0f, 0f, 0f, 1f) ?: continue
             if (lastAnchorAltitude == Double.MAX_VALUE) lastAnchorAltitude = earth.cameraGeospatialPose.altitude
             val anchorNode = AnchorNode(engine = sceneView.engine, anchor = anchor)
@@ -296,7 +297,7 @@ class ArNavigationActivity : AppCompatActivity() {
                     var lbi = i - 1; while (lbi > 0 && fullRouteNodes[lbi].type == NodeType.TURN_POINT) lbi--
                     val lbn = fullRouteNodes.getOrNull(lbi) ?: node; val ir = FloatArray(2); Location.distanceBetween(lbn.lat, lbn.lng, node.lat, node.lng, ir)
                     val mi = majorPointIndices.indexOf(i); if (mi != -1) turnDirectionMap[mi] = (node.turnType == 18)
-                    lifecycleScope.launch { sceneView.modelLoader.loadModelInstance(mp)?.let { val an = ModelNode(it).apply { scale = Float3(1f, 1f, 1f); rotation = Float3(0f, ir[1] + 180f, 0f) }; anchorNode.addChildNode(an); activeModelNodes[i] = an }; sceneView.addChildNode(anchorNode); activeArNodes[i] = anchorNode }; continue
+                    lifecycleScope.launch { sceneView.modelLoader.loadModelInstance(mp)?.let { val an = ModelNode(it).apply { scale = Float3(2.5f, 2.5f, 2.5f); rotation = Float3(0f, ir[1] + 180f, 0f) }; anchorNode.addChildNode(an); activeModelNodes[i] = an }; sceneView.addChildNode(anchorNode); activeArNodes[i] = anchorNode }; continue
                 }
                 val isRight: Boolean? = when (node.turnType) { 13, 19 -> true; 12, 16 -> false; else -> {
                     val d = FloatArray(1); var pi = i - 1; while (pi > 0) { val c = fullRouteNodes[pi]; if (c.type == NodeType.TURN_POINT) break; Location.distanceBetween(c.lat, c.lng, node.lat, node.lng, d); if (d[0] >= 10f) break; pi-- }
@@ -307,7 +308,7 @@ class ArNavigationActivity : AppCompatActivity() {
                 val mp = if (isRight) "models/right.glb" else "models/left.glb"
                 var lbi = i - 1; while (lbi > 0 && fullRouteNodes[lbi].type == NodeType.TURN_POINT) lbi--
                 val lbn = fullRouteNodes.getOrNull(lbi) ?: node; val ir = FloatArray(2); Location.distanceBetween(lbn.lat, lbn.lng, node.lat, node.lng, ir)
-                lifecycleScope.launch { sceneView.modelLoader.loadModelInstance(mp)?.let { val an = ModelNode(it).apply { scale = Float3(1f, 1f, 1f); rotation = Float3(0f, ir[1] + 180f, 0f) }; anchorNode.addChildNode(an); activeModelNodes[i] = an }; sceneView.addChildNode(anchorNode); activeArNodes[i] = anchorNode }
+                lifecycleScope.launch { sceneView.modelLoader.loadModelInstance(mp)?.let { val an = ModelNode(it).apply { scale = Float3(2.5f, 2.5f, 2.5f); rotation = Float3(0f, ir[1] + 180f, 0f) }; anchorNode.addChildNode(an); activeModelNodes[i] = an }; sceneView.addChildNode(anchorNode); activeArNodes[i] = anchorNode }
             } else {
                 val path = when (node.type) { NodeType.START, NodeType.END -> "models/map_pointer.glb"; else -> continue }
                 lifecycleScope.launch { sceneView.modelLoader.loadModelInstance(path)?.let { val h = earth.cameraGeospatialPose.heading.toFloat(); val mn = ModelNode(it).apply { scale = Float3(1f, 1f, 1f); rotation = Float3(0f, h, 0f) }; anchorNode.addChildNode(mn); activeModelNodes[i] = mn; sceneView.addChildNode(anchorNode); activeArNodes[i] = anchorNode } }

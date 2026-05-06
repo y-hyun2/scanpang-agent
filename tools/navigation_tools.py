@@ -10,10 +10,14 @@ KAKAO_KEY = os.getenv("KAKAO_REST_API_KEY")
 
 async def _call_tmap_poi(params: dict) -> list[dict]:
     """TMAP POI API 호출 → 파싱된 POI 리스트 반환 (결과 없으면 빈 리스트)"""
-    async with httpx.AsyncClient() as client:
-        resp = await client.get("https://apis.openapi.sk.com/tmap/pois", params=params)
-        resp.raise_for_status()
-        data = resp.json()
+    try:
+        async with httpx.AsyncClient(timeout=8.0) as client:
+            resp = await client.get("https://apis.openapi.sk.com/tmap/pois", params=params)
+            resp.raise_for_status()
+            data = resp.json()
+    except Exception as e:
+        print(f"[TMAP] POI 검색 실패: {e}")
+        return []
     raw_pois = data.get("searchPoiInfo", {}).get("pois", {}).get("poi", [])
     if not raw_pois:
         return []

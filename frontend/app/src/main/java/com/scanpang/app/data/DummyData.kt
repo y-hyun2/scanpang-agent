@@ -2,6 +2,7 @@ package com.scanpang.app.data
 
 import com.scanpang.app.R
 import com.scanpang.app.data.remote.Facility
+import com.scanpang.app.data.remote.GeneralRestaurantDetail
 import com.scanpang.app.data.remote.HalalRestaurant
 import com.scanpang.app.data.remote.NavCandidate
 import com.scanpang.app.data.remote.PrayerRoomDetail
@@ -580,6 +581,32 @@ fun Facility.toPlace(categoryLabel: String): Place = Place(
     tags = extra.keys.toList(),
     latitude = lat,
     longitude = lng,
+)
+
+fun GeneralRestaurantDetail.toRestaurantPlace(): RestaurantPlace = RestaurantPlace(
+    place = Place(
+        id = restaurant_id.ifBlank { name_ko },
+        name = name_ko,
+        category = "식당",
+        subCategory = cuisine_type.joinToString(", "),
+        distance = "",
+        address = address,
+        phone = phone,
+        openHours = opening_hours,
+        isOpen = is_open_today,
+        description = short_description_ko.ifBlank { name_ko },
+        tags = food_keywords.take(3),
+        latitude = latitude ?: 37.5636,
+        longitude = longitude ?: 126.9869,
+    ),
+    halalCategory = if (source == "halal") "HALAL MEAT" else "",
+    menuItems = menu_examples.map {
+        MenuItem(
+            name = it.name_ko,
+            price = if (it.price_krw > 0) "%,d원".format(it.price_krw) else "",
+        )
+    },
+    lastOrder = last_order,
 )
 
 fun NavCandidate.toPlace(): Place = Place(

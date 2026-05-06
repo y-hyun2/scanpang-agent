@@ -52,6 +52,7 @@ import com.scanpang.app.data.DummyData
 import com.scanpang.app.data.RestaurantPlace
 import com.scanpang.app.data.SavedPlaceNavTarget
 import com.scanpang.app.data.galleryModels
+import com.scanpang.app.data.remote.GeneralRestaurantDetail
 import com.scanpang.app.data.remote.ScanPangViewModel
 import com.scanpang.app.data.toRestaurantPlace
 import com.scanpang.app.navigation.AppRoutes
@@ -74,17 +75,23 @@ fun RestaurantDetailScreen(
 ) {
     val viewModel: ScanPangViewModel = viewModel()
     val apiRestaurants by viewModel.restaurants.collectAsState()
+    val generalRestaurant by viewModel.generalRestaurant.collectAsState()
     val isLoading by viewModel.loading.collectAsState()
 
-    LaunchedEffect(Unit) { viewModel.loadRestaurants() }
+    LaunchedEffect(Unit) {
+        viewModel.loadRestaurants()
+        if (placeName.isNotBlank()) viewModel.loadGeneralRestaurant(placeName)
+    }
 
-    val rp: RestaurantPlace? = remember(apiRestaurants, placeName) {
-        val fromApi = apiRestaurants.map { it.toRestaurantPlace() }
-        if (placeName.isNotBlank()) {
-            fromApi.firstOrNull { it.place.name == placeName }
-        } else {
-            fromApi.firstOrNull()
-        }
+    val rp: RestaurantPlace? = remember(generalRestaurant, apiRestaurants, placeName) {
+        // 1순위: 일반 식당 RAG 데이터
+        generalRestaurant?.toRestaurantPlace()
+            // 2순위: 할랄 식당 API 데이터
+            ?: run {
+                val fromApi = apiRestaurants.map { it.toRestaurantPlace() }
+                if (placeName.isNotBlank()) fromApi.firstOrNull { it.place.name == placeName }
+                else fromApi.firstOrNull()
+            }
     }
 
     // API 로딩 중이면 로딩 표시 (DummyData 플래시 방지)

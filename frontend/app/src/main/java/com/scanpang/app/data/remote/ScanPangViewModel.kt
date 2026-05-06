@@ -29,6 +29,9 @@ class ScanPangViewModel : ViewModel() {
     private val _restaurants = MutableStateFlow<List<HalalRestaurant>>(emptyList())
     val restaurants: StateFlow<List<HalalRestaurant>> = _restaurants
 
+    private val _generalRestaurant = MutableStateFlow<GeneralRestaurantDetail?>(null)
+    val generalRestaurant: StateFlow<GeneralRestaurantDetail?> = _generalRestaurant
+
     private val _prayerRooms = MutableStateFlow<List<PrayerRoomDetail>>(emptyList())
     val prayerRooms: StateFlow<List<PrayerRoomDetail>> = _prayerRooms
 
@@ -81,6 +84,22 @@ class ScanPangViewModel : ViewModel() {
                 _restaurants.value = response.restaurants
             } catch (e: Exception) {
                 Log.e("ScanPangVM", "loadRestaurants FAILED", e)
+            } finally {
+                _loading.value = false
+            }
+        }
+    }
+
+    fun loadGeneralRestaurant(name: String) {
+        viewModelScope.launch {
+            _loading.value = true
+            _generalRestaurant.value = null
+            Log.d("ScanPangVM", "loadGeneralRestaurant START (name=$name)")
+            try {
+                _generalRestaurant.value = api.getRestaurantDetail(RestaurantDetailRequest(name = name))
+                Log.d("ScanPangVM", "loadGeneralRestaurant OK: ${_generalRestaurant.value?.name_ko}")
+            } catch (e: Exception) {
+                Log.e("ScanPangVM", "loadGeneralRestaurant FAILED", e)
             } finally {
                 _loading.value = false
             }
