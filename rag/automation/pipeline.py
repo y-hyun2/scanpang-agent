@@ -13,7 +13,7 @@ import chromadb
 from chromadb.utils.embedding_functions import DefaultEmbeddingFunction
 from dotenv import load_dotenv
 
-from rag.automation.kakao_radius import collect_stores_by_radius
+from rag.automation.kakao_radius import collect_stores_at_building
 from rag.automation.llm_extractor import extract_stores
 from rag.automation.query_builder import build_queries
 from rag.automation.search_collector import collect
@@ -137,12 +137,18 @@ async def process_one_building(ufid: str) -> dict:
     phone = kakao_info.get("phone", "")
     category = kakao_info.get("category", "")
 
-    # ── 3) Kakao 반경 매장 수집 ──────────────────────────────────────────────
+    # ── 3) Kakao 건물 소속 매장 수집 (폴리곤+주소 이중 필터) ──────────────
     kakao_stores: list[dict] = []
     try:
-        kakao_stores = await collect_stores_by_radius(lat, lng, radius_m=20)
+        polygon_coords = json.loads(building.get("polygon_2d", "[]"))
+        kakao_stores = await collect_stores_at_building(
+            ufid=ufid,
+            bld_polygon_coords=polygon_coords,
+            bld_road_address=addr,
+            bld_name=bld_nm,
+        )
     except Exception as e:
-        print(f"[pipeline] collect_stores_by_radius 실패: {e}")
+        print(f"[pipeline] collect_stores_at_building 실패: {e}")
 
     # ── 4) 쿼리 스펙 생성 ────────────────────────────────────────────────────
     query_specs = build_queries(building, kakao_stores)
