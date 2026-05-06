@@ -245,7 +245,7 @@ class ArNavigationActivity : AppCompatActivity() {
       updateGeospatialAndChunk() {
         val earth = sceneView.session?.earth ?: return; if (earth.trackingState != TrackingState.TRACKING) return
         val pose = earth.cameraGeospatialPose; val lat = pose.latitude; val lng = pose.longitude; val now = System.currentTimeMillis()
-        if (viewModel.navigationState.value == NavigationState.LOCALIZING && pose.horizontalAccuracy < 10.0 && targetDestination.isNotEmpty()) { viewModel.updateState(NavigationState.READY_TO_ROUTE); viewModel.fetchRoute(lng.toString(), lat.toString(), targetDestination) }
+        if (viewModel.navigationState.value == NavigationState.LOCALIZING && pose.horizontalAccuracy < 20.0 && targetDestination.isNotEmpty()) { viewModel.updateState(NavigationState.READY_TO_ROUTE); viewModel.fetchRoute(lng.toString(), lat.toString(), targetDestination) }
         if (viewModel.navigationState.value == NavigationState.READY_TO_ROUTE && majorPointIndices.isNotEmpty()) {
             if (lastAnchorAltitude != Double.MAX_VALUE && kotlin.math.abs(pose.altitude - lastAnchorAltitude) > 1.5) {
                 val d = (pose.altitude - lastAnchorAltitude).toFloat(); lastAnchorAltitude = pose.altitude; altitudeCorrectionJob?.cancel()

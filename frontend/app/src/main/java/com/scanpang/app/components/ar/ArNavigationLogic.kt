@@ -1,0 +1,76 @@
+package com.scanpang.app.components.ar
+
+import android.location.Location
+import com.hufs.arnavigation_com.ArRouteNode
+import com.hufs.arnavigation_com.NodeType
+import com.scanpang.arnavigation.data.remote.dto.NavRouteResponse
+
+/**
+ * AR 길안내용 라우트 파싱 + 기하 헬퍼.
+ * (`ArNavigationActivity`의 private 메서드를 Compose에서 재사용 가능하게 top-level로 추출)
+ */
+
+internal fun parseNavResponse(response: NavRouteResponse): List<ArRouteNode> {
+    val arCommand = response.ar_command ?: return emptyList()
+    val parsedNodes = mutableListOf<ArRouteNode>()
+    val distRes = FloatArray(1)
+    var lastLat = 0.0
+    var lastLng = 0.0
+    arCommand.route_line.forEachIndexed { idx, point ->
+        if (idx == 0) {
+            lastLat = point.lat
+            lastLng = point.lng
+            return@forEachIndexed
+        }
+        Location.distanceBetween(lastLat, lastLng, point.lat, point.lng, distRes)
+        if (distRes[0] >= 10.0f) {
+            val segs = (distRes[0] / 10.0f).toInt()
+            for (j in 1..segs) {
+                val f = (j * 10.0f) / distRes[0]
+                parsedNodes.add(
+                    ArRouteNode(
+                        lastLat + (point.lat - lastLat) * f,
+                        lastLng + (point.lng - lastLng) * f,
+                        NodeType.PATH_POINT,
+                    ),
+                )
+            }
+        }
+        lastLat = point.lat
+        lastLng = point.lng
+    }
+    arCommand.turn_points.forEach { tp ->
+        var bestIdx = -1
+        var bestDist = Float.MAX_VALUE
+        parsedNodes.forEachIndexed { idx, node ->
+            Location.distanceBetween(tp.lat, tp.lng, node.lat, node.lng, distRes)
+            if (distRes[0] < bestDist) {
+                bestDist = distRes[0]
+                bestIdx = idx
+            }
+        }
+        if (bestIdx >= 0 && bestDist < 20f) {
+            parsedNodes[bestIdx] = ArRouteNode(tp.lat, tp.lng, NodeType.TURN_POINT, tp.turnType, isCalculated = false)
+        } else {
+            parsedNodes.add(ArRouteNode(tp.lat, tp.lng, NodeType.TURN_POINT, tp.turnType, isCalculated = false))
+        }
+    }
+    if (parsedNodes.isNotEmpty()) {
+        parsedNodes[0] = parsedNodes[0].copy(type = NodeType.START)
+        parsedNodes.add(ArRouteNode(arCommand.destination.lat, arCommand.destination.lng, NodeType.END))
+    }
+    return parsedNodes
+}
+
+internal fun bearingBetween(from: ArRouteNode, to: ArRouteNode): Float {
+    val r = FloatArray(2)
+    Location.distanceBetween(from.lat, from.lng, to.lat, to.lng, r)
+    return r[1]
+}
+
+internal fun calcTurnAngle(incoming: Float, outgoing: Float): Float {
+    var d = outgoing - incoming
+    while (d > 180f) d -= 360f
+    while (d < -180f) d += 360f
+    return d
+}
