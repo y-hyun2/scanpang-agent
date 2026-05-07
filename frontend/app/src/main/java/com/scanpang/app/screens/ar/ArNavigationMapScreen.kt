@@ -91,6 +91,7 @@ fun ArNavigationMapScreen(
     }
     var activeTab by remember { mutableStateOf(NAV_TAB_MAP) }
     var aiQuery by remember { mutableStateOf("") }
+    var bottomSheetExpanded by remember { mutableStateOf(true) }
 
     Box(modifier = modifier.fillMaxSize()) {
         ArRealSceneView(
@@ -146,6 +147,8 @@ fun ArNavigationMapScreen(
                 mapTabSelected = activeTab == NAV_TAB_MAP,
                 onSelectMap = { activeTab = NAV_TAB_MAP },
                 onSelectAgent = { activeTab = NAV_TAB_AI },
+                expanded = bottomSheetExpanded,
+                onToggleExpanded = { bottomSheetExpanded = !bottomSheetExpanded },
                 modifier = Modifier.fillMaxWidth(),
                 mapContent = {
                     ArNavMiniMap(

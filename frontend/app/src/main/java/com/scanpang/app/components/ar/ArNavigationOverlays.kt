@@ -1,5 +1,7 @@
 package com.scanpang.app.components.ar
 
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -36,6 +38,7 @@ import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -363,10 +366,21 @@ fun ArNavBottomSheet(
     mapTabSelected: Boolean,
     onSelectMap: () -> Unit,
     onSelectAgent: () -> Unit,
+    expanded: Boolean,
+    onToggleExpanded: () -> Unit,
     modifier: Modifier = Modifier,
     mapContent: @Composable () -> Unit,
     agentContent: @Composable () -> Unit,
 ) {
+    // 펼쳐졌을 때 = 전체 높이, 접혔을 때 = 드래그 핸들 + 탭 행만 (지도/AI 콘텐츠 숨김)
+    val collapsedHeight = ScanPangDimens.arNavBottomSheetDragH + ScanPangDimens.arNavTabRowHeight
+    val expandedHeight = ScanPangDimens.arChatAreaMaxHeight
+    val animatedHeight by animateDpAsState(
+        targetValue = if (expanded) expandedHeight else collapsedHeight,
+        animationSpec = tween(durationMillis = 250),
+        label = "bottomSheetHeight",
+    )
+
     Surface(
         modifier = modifier.fillMaxWidth(),
         shape = ScanPangShapes.arNavBottomSheetTop,
@@ -376,12 +390,14 @@ fun ArNavBottomSheet(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(ScanPangDimens.arChatAreaMaxHeight),
+                .height(animatedHeight),
         ) {
+            // 드래그 핸들 영역 — 클릭하면 시트 펼침/접힘 토글
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(ScanPangDimens.arNavBottomSheetDragH),
+                    .height(ScanPangDimens.arNavBottomSheetDragH)
+                    .clickable(onClick = onToggleExpanded),
                 contentAlignment = Alignment.Center,
             ) {
                 Box(
