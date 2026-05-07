@@ -55,6 +55,10 @@ data class ArNavUiState(
     val nextDistanceM: Int = 0,
     val isArrived: Boolean = false,
     val turnDirection: TurnDirection = TurnDirection.STRAIGHT,
+    /** 사용자가 폰을 아래로 내려다보고 있을 때만 true (점선 나침반 표시 조건). */
+    val showCompass: Boolean = false,
+    /** 다음 턴 방향과 현재 heading의 각도차(deg). 양수=오른쪽, 음수=왼쪽. */
+    val compassAngleDeg: Float = 0f,
 ) {
     enum class Phase { LOCALIZING, ROUTING, ARRIVED }
 }
@@ -184,7 +188,7 @@ fun ArRealSceneView(
             config.lightEstimationMode = Config.LightEstimationMode.DISABLED
             config.depthMode = Config.DepthMode.DISABLED
         },
-        onSessionUpdated = { session, _ ->
+        onSessionUpdated = { session, frame ->
             val earth = session.earth ?: return@ARScene
             if (earth.earthState != Earth.EarthState.ENABLED ||
                 earth.trackingState != TrackingState.TRACKING
@@ -196,6 +200,11 @@ fun ArRealSceneView(
             val now = System.currentTimeMillis()
 
             onPoseUpdate(lat, lng, pose.heading, pose.altitude, pose.horizontalAccuracy)
+
+            // 카메라 pitch — 폰을 아래로 내려다보는지 판정 (점선 나침반 표시 조건)
+            val poseMatrix = FloatArray(16)
+            frame.camera.pose.toMatrix(poseMatrix, 0)
+            val isLookingDown = poseMatrix[9] > 0.5f
 
             val navState = mainViewModel.navigationState.value
 
@@ -264,6 +273,13 @@ fun ArRealSceneView(
                     nextDist = distRes[0].toInt()
                 }
 
+                // 점선 나침반: 다음 턴 방향과 현재 heading의 각도차 (양수=오른쪽 회전 필요)
+                val bearingResults = FloatArray(2)
+                Location.distanceBetween(lat, lng, tn.lat, tn.lng, bearingResults)
+                var compassAngle = bearingResults[1] - pose.heading.toFloat()
+                while (compassAngle > 180f) compassAngle -= 360f
+                while (compassAngle < -180f) compassAngle += 360f
+
                 onNavigationUpdate(
                     ArNavUiState(
                         phase = ArNavUiState.Phase.ROUTING,
@@ -272,6 +288,8 @@ fun ArRealSceneView(
                         nextDistanceM = nextDist,
                         turnDirection = turnDir,
                         statusMessage = "${direction}까지 ${dist.toInt()}m",
+                        showCompass = isLookingDown,
+                        compassAngleDeg = compassAngle,
                     ),
                 )
 

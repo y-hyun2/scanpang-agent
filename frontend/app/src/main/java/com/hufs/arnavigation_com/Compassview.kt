@@ -15,8 +15,9 @@ class CompassView @JvmOverloads constructor(
 
     private val density = context.resources.displayMetrics.density
 
-    // navCard 아래 시작점 (대략 160dp 아래부터 점 시작)
-    private val navCardBottomDp = 160f
+    // 점선 시작점 (위에서부터 이 dp 만큼 내려간 위치부터 점 그리기 시작)
+    // 값이 클수록 점선이 화면 더 아래에서 시작하고 전체 길이가 짧아짐
+    private val navCardBottomDp = 230f
 
     private val arrowPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         color = Color.parseColor("#4285F4")

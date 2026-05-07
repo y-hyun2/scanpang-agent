@@ -2,6 +2,7 @@ package com.scanpang.app.screens.ar
 
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.navigationBarsPadding
@@ -21,6 +22,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.scanpang.app.data.remote.ScanPangViewModel
 import androidx.compose.ui.Modifier
 import androidx.navigation.NavController
+import com.scanpang.app.components.ar.ArNavCompass
 import com.scanpang.app.components.ar.ArNavMiniMap
 import com.scanpang.app.components.ar.ArNavUiState
 import com.scanpang.app.components.ar.ArRealSceneView
@@ -168,5 +170,16 @@ fun ArNavigationMapScreen(
             )
         }
 
+        // 점선 나침반 — 폰을 아래로 내려다볼 때만 표시. BottomSheet보다 위에 z-order로
+        // 그리되, 화면 상단 60% 영역으로 한정해 지도와 겹치지 않게.
+        if (navUiState.showCompass) {
+            ArNavCompass(
+                angleDiffDeg = navUiState.compassAngleDeg,
+                modifier = Modifier
+                    .align(Alignment.TopCenter)
+                    .fillMaxWidth()
+                    .fillMaxHeight(0.75f),
+            )
+        }
     }
 }
