@@ -159,8 +159,10 @@ fun ArRealSceneView(
 
                 val arCommand = route.ar_command
                 if (arCommand != null) {
+                    // 미니맵 폴리라인은 T-Map 원본 route_line을 그대로 사용 (순서 보장).
+                    // 보간/턴포인트가 끼워넣어진 nodes는 AR 화살표·턴 감지용으로 별도 사용.
                     onRouteAvailable(
-                        nodes.map { it.lat to it.lng },
+                        arCommand.route_line.map { it.lat to it.lng },
                         arCommand.destination.lat,
                         arCommand.destination.lng,
                     )
