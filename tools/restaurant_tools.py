@@ -4,7 +4,10 @@ from datetime import datetime
 from schemas.restaurant import GeneralRestaurantDetail, GeneralRestaurantMenu
 
 _BASE = os.path.join(os.path.dirname(__file__), "../rag/data")
-GENERAL_PATH = os.path.join(_BASE, "myeongdong_general_restaurants.json")
+GENERAL_PATHS = [
+    os.path.join(_BASE, "myeongdong_general_restaurants.json"),
+    os.path.join(_BASE, "yongin_general_restaurants.json"),
+]
 HALAL_PATH = os.path.join(_BASE, "myeongdong_restaurants.json")
 
 _DAY_LABELS = {"mon": "월", "tue": "화", "wed": "수", "thu": "목", "fri": "금", "sat": "토", "sun": "일"}
@@ -40,34 +43,35 @@ def _load_json(path: str) -> list:
 
 
 def get_restaurant_detail(name: str) -> GeneralRestaurantDetail | None:
-    # 일반 식당 JSON 검색
-    for r in _load_json(GENERAL_PATH):
-        if r.get("name_ko") == name or r.get("name_en") == name:
-            return GeneralRestaurantDetail(
-                restaurant_id=r.get("restaurant_id", ""),
-                name_ko=r.get("name_ko", ""),
-                name_en=r.get("name_en", ""),
-                cuisine_type=r.get("cuisine_type", []),
-                food_keywords=r.get("food_keywords", []),
-                menu_examples=[
-                    GeneralRestaurantMenu(
-                        name_ko=m.get("name_ko", ""),
-                        name_en=m.get("name_en", ""),
-                        price_krw=m.get("price_krw", 0),
-                    )
-                    for m in r.get("menu_examples", [])
-                ],
-                short_description_ko=r.get("short_description_ko", ""),
-                address=r.get("address", ""),
-                phone=r.get("phone", ""),
-                opening_hours=_format_hours(r.get("opening_hours")),
-                break_time=_format_hours(r.get("break_time")),
-                last_order=_format_hours(r.get("last_order")),
-                latitude=r.get("latitude"),
-                longitude=r.get("longitude"),
-                source="general",
-                is_open_today=_is_open_today(r.get("opening_hours")),
-            )
+    # 일반 식당 JSON 검색 (지역별 파일 순회)
+    for path in GENERAL_PATHS:
+        for r in _load_json(path):
+            if r.get("name_ko") == name or r.get("name_en") == name:
+                return GeneralRestaurantDetail(
+                    restaurant_id=r.get("restaurant_id", ""),
+                    name_ko=r.get("name_ko", ""),
+                    name_en=r.get("name_en", ""),
+                    cuisine_type=r.get("cuisine_type", []),
+                    food_keywords=r.get("food_keywords", []),
+                    menu_examples=[
+                        GeneralRestaurantMenu(
+                            name_ko=m.get("name_ko", ""),
+                            name_en=m.get("name_en", ""),
+                            price_krw=m.get("price_krw", 0),
+                        )
+                        for m in r.get("menu_examples", [])
+                    ],
+                    short_description_ko=r.get("short_description_ko", ""),
+                    address=r.get("address", ""),
+                    phone=r.get("phone", ""),
+                    opening_hours=_format_hours(r.get("opening_hours")),
+                    break_time=_format_hours(r.get("break_time")),
+                    last_order=_format_hours(r.get("last_order")),
+                    latitude=r.get("latitude"),
+                    longitude=r.get("longitude"),
+                    source="general",
+                    is_open_today=_is_open_today(r.get("opening_hours")),
+                )
 
     # 할랄 식당 JSON 검색
     for r in _load_json(HALAL_PATH):

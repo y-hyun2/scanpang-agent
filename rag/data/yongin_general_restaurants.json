@@ -1,0 +1,42 @@
+[
+  {
+    "restaurant_id": "y00001",
+    "name_ko": "과시탐탐",
+    "name_en": "Gwasi Tamtam",
+    "area_major": "용인",
+    "cuisine_type": ["카페"],
+    "food_keywords": ["디저트", "커피", "생과일주스"],
+    "menu_examples": [
+      {
+        "name_ko": "아메리카노",
+        "name_en": "Americano",
+        "price_krw": 3500
+      },
+      {
+        "name_ko": "초코라떼",
+        "name_en": "Choco latte",
+        "price_krw": 4500
+      }
+    ],
+    "short_description_ko": "다양한 종류의 신선한 과일을 판매.",
+    "address": "경기 용인시 처인구 모현읍 외대로26번길 22",
+    "phone": "031-111-1111",
+    "opening_hours": {
+      "mon": "10:00-22:00",
+      "tue": "10:00-22:00",
+      "wed": "10:00-22:00",
+      "thu": "10:00-22:00",
+      "fri": "10:00-22:00",
+      "sat": "10:00-22:00",
+      "sun": "closed"
+    },
+    "break_time": {
+      "mon": null, "tue": null, "wed": null, "thu": null, "fri": null, "sat": null, "sun": null
+    },
+    "last_order": {
+      "mon": null, "tue": null, "wed": null, "thu": null, "fri": null, "sat": null, "sun": null
+    },
+    "latitude": 37.334532,
+    "longitude": 127.251291
+  }
+]
