@@ -210,7 +210,7 @@ fun ArRealSceneView(
 
             // 1) LOCALIZING + 정확도 확보 + 목적지 있음 → 백엔드 라우트 요청
             if (navState == NavigationState.LOCALIZING &&
-                pose.horizontalAccuracy < 20.0 &&
+                pose.horizontalAccuracy < 3.0 &&
                 targetDestination.isNotEmpty()
             ) {
                 mainViewModel.updateState(NavigationState.READY_TO_ROUTE)
