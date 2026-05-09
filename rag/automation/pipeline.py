@@ -117,8 +117,10 @@ async def process_one_building(ufid: str) -> dict:
     # ── 3) Kakao 건물 소속 매장 수집 (폴리곤+주소 이중 필터) ──────────────
     kakao_stores: list[dict] = []
     try:
-        # polygon_coords: PostGIS ST_AsGeoJSON이 [[lng,lat],...] 형태로 반환
+        # asyncpg가 json 표현식 결과를 문자열로 반환하는 경우 대비
         polygon_coords = building.get("polygon_coords") or []
+        if isinstance(polygon_coords, str):
+            polygon_coords = json.loads(polygon_coords)
         kakao_stores = await collect_stores_at_building(
             ufid=ufid,
             bld_polygon_coords=polygon_coords,
