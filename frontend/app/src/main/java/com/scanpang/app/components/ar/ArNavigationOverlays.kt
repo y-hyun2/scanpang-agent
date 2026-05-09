@@ -26,6 +26,7 @@ import androidx.compose.material.icons.automirrored.rounded.VolumeUp
 import androidx.compose.material.icons.rounded.ArrowUpward
 import androidx.compose.material.icons.rounded.CameraAlt
 import androidx.compose.material.icons.rounded.CheckCircle
+import androidx.compose.material.icons.rounded.Explore
 import androidx.compose.material.icons.rounded.Flag
 import androidx.compose.material.icons.rounded.Home
 import androidx.compose.material.icons.rounded.KeyboardArrowDown
@@ -189,6 +190,8 @@ fun ArNavDestinationPill(
 fun BoxScope.ArNavSideVolumeCamera(
     onVolumeClick: () -> Unit,
     onCameraClick: () -> Unit,
+    spaceAugmentOn: Boolean = false,
+    onSpaceAugmentToggle: () -> Unit = {},
 ) {
     Column(
         modifier = Modifier
@@ -210,6 +213,25 @@ fun BoxScope.ArNavSideVolumeCamera(
             contentDescription = "촬영",
             onClick = onCameraClick,
         )
+        // 공간증강 ON/OFF 토글 — ON일 때 primary 색 배경, OFF일 때 흰색
+        Surface(
+            modifier = Modifier
+                .size(ScanPangDimens.arNavTopFab40)
+                .clip(CircleShape)
+                .clickable(onClick = onSpaceAugmentToggle),
+            shape = CircleShape,
+            color = if (spaceAugmentOn) ScanPangColors.Primary else ScanPangColors.ArOverlayWhite80,
+            shadowElevation = ScanPangDimens.arPoiCardShadowElevation,
+        ) {
+            Box(contentAlignment = Alignment.Center) {
+                Icon(
+                    imageVector = Icons.Rounded.Explore,
+                    contentDescription = "공간증강",
+                    modifier = Modifier.size(ScanPangDimens.arNavTopFabIcon),
+                    tint = if (spaceAugmentOn) Color.White else ScanPangColors.OnSurfaceStrong,
+                )
+            }
+        }
     }
 }
 

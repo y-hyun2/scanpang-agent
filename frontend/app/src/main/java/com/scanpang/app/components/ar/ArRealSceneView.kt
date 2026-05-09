@@ -94,6 +94,10 @@ fun ArRealSceneView(
     onNavigationUpdate: (ArNavUiState) -> Unit = {},
     /** 라우트 응답 도착 시 한 번 호출. 미니맵 폴리라인/목적지 마커용. */
     onRouteAvailable: (routePoints: List<Pair<Double, Double>>, destinationLat: Double, destinationLng: Double) -> Unit = { _, _, _ -> },
+    /** 공간증강(주변 건물 인식) 활성 여부. true이면 5초마다 [onPlaceQueryRequest] 호출. */
+    spaceAugmentEnabled: Boolean = false,
+    /** 공간증강 쿼리 요청. 부모가 백엔드 호출(viewModel.queryPlace)을 처리. */
+    onPlaceQueryRequest: (heading: Double, lat: Double, lng: Double, alt: Double, pitch: Double) -> Unit = { _, _, _, _, _ -> },
 ) {
     val context = LocalContext.current
     val engine = rememberEngine()
@@ -156,6 +160,9 @@ fun ArRealSceneView(
     var spokenForTurnIndex by remember { mutableStateOf(-1) }     // 마지막으로 음성 출력한 turn index
     var hasSpokenDeparture by remember { mutableStateOf(false) }  // 출발 안내 출력 여부
     var hasSpokenArrival by remember { mutableStateOf(false) }    // 도착 안내 출력 여부
+
+    // 공간증강 쿼리 throttle용 — 5초 간격 보장
+    var lastPlaceQueryTime by remember { mutableStateOf(0L) }
 
     // AR 노드 + 라우트 상태
     val routeNodes = remember { mutableStateListOf<Node>() }
@@ -257,6 +264,19 @@ fun ArRealSceneView(
             val poseMatrix = FloatArray(16)
             frame.camera.pose.toMatrix(poseMatrix, 0)
             val isLookingDown = poseMatrix[9] > 0.5f
+
+            // 공간증강(주변 건물 인식) — 활성 시 5초마다 쿼리 발사
+            if (spaceAugmentEnabled && now - lastPlaceQueryTime > 5000) {
+                lastPlaceQueryTime = now
+                // pose의 quaternion에서 forward 벡터 분해 → pitch 계산 (ArExploreScreen과 동일)
+                val q = pose.eastUpSouthQuaternion
+                val fx = 2f * (q[0] * q[2] + q[3] * q[1])
+                val fy = 2f * (q[1] * q[2] - q[3] * q[0])
+                val fz = 1f - 2f * (q[0] * q[0] + q[1] * q[1])
+                val horiz = kotlin.math.sqrt(fx * fx + fz * fz)
+                val pitch = Math.toDegrees(kotlin.math.atan2(-fy.toDouble(), horiz.toDouble()))
+                onPlaceQueryRequest(pose.heading, lat, lng, pose.altitude, pitch)
+            }
 
             val navState = mainViewModel.navigationState.value
 
