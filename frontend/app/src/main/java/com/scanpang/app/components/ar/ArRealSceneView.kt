@@ -181,7 +181,8 @@ fun ArRealSceneView(
         if (route is NavRouteResponse) {
             val nodes = parseNavResponse(route)
             if (nodes.isNotEmpty()) {
-                clearArState(routeNodes, activeArNodes, activeModelNodes, renderedIndices, turnDirectionMap)
+                clearArState(routeNodes, activeArNodes, activeModelNodes, renderedIndices)
+                turnDirectionMap.clear()  // 새 라우트가 도착할 때만 이전 방향 정보 폐기
                 fullRouteNodes = nodes
                 majorPointIndices.clear()
                 nodes.forEachIndexed { i, n -> if (n.type != NodeType.PATH_POINT) majorPointIndices.add(i) }
@@ -231,7 +232,7 @@ fun ArRealSceneView(
     // 화면 종료 시 AR 리소스 정리
     DisposableEffect(Unit) {
         onDispose {
-            clearArState(routeNodes, activeArNodes, activeModelNodes, renderedIndices, turnDirectionMap)
+            clearArState(routeNodes, activeArNodes, activeModelNodes, renderedIndices)
         }
     }
 
@@ -307,7 +308,7 @@ fun ArRealSceneView(
 
                 // 도착 처리
                 if (tn.type == NodeType.END && dist <= 11.0f) {
-                    clearArState(routeNodes, activeArNodes, activeModelNodes, renderedIndices, turnDirectionMap)
+                    clearArState(routeNodes, activeArNodes, activeModelNodes, renderedIndices)
                     val arrivalSpeech = tn.speech.ifBlank { "목적지에 도착했습니다." }
                     if (!hasSpokenArrival) {
                         coroutineScope.launch {
@@ -400,7 +401,7 @@ fun ArRealSceneView(
 
                 // 8m 이내 → 다음 턴
                 if (dist <= 8.0f) {
-                    clearArState(routeNodes, activeArNodes, activeModelNodes, renderedIndices, turnDirectionMap)
+                    clearArState(routeNodes, activeArNodes, activeModelNodes, renderedIndices)
                     currentTargetPointIndex++
                 }
             }
@@ -427,20 +428,24 @@ fun ArRealSceneView(
     )
 }
 
-/** AR 노드 / 렌더 상태를 모두 초기화. (ARScene childNodes도 비움) */
+/**
+ * AR 렌더 상태(앵커·모델·렌더 인덱스)만 초기화.
+ *
+ * `turnDirectionMap`은 라우트 도착 시 사전 계산되는 메타데이터라 chunk 진행 시
+ * 보존되어야 함 (지우면 두 번째 턴부터 방향 정보 잃어 "직진" 폴백 발생).
+ * 새 라우트 도착 시에만 LaunchedEffect에서 명시적으로 별도 clear.
+ */
 private fun clearArState(
     routeNodes: SnapshotStateList<Node>,
     activeArNodes: MutableMap<Int, AnchorNode>,
     activeModelNodes: MutableMap<Int, ModelNode>,
     renderedIndices: MutableSet<Int>,
-    turnDirectionMap: MutableMap<Int, Boolean>,
 ) {
     routeNodes.clear()
     activeArNodes.values.forEach { runCatching { it.destroy() } }
     activeArNodes.clear()
     activeModelNodes.clear()
     renderedIndices.clear()
-    turnDirectionMap.clear()
 }
 
 /**
