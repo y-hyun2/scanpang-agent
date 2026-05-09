@@ -38,7 +38,7 @@ import java.util.Locale
 
 enum class NavigationState { INITIALIZING, LOCALIZING, READY_TO_ROUTE }
 enum class NodeType { START, END, TURN_POINT, PATH_POINT }
-data class ArRouteNode(val lat: Double, val lng: Double, val type: NodeType, val turnType: Int = 0, val isCalculated: Boolean = false)
+data class ArRouteNode(val lat: Double, val lng: Double, val type: NodeType, val turnType: Int = 0, val isCalculated: Boolean = false, val speech: String = "")
 
 @SuppressLint("SetTextI18n")
 class ArNavigationActivity : AppCompatActivity() {

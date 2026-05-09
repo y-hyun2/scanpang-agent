@@ -73,6 +73,9 @@ fun ArNavigationMapScreen(
     val isRouting = navUiState.phase == ArNavUiState.Phase.ROUTING || navUiState.phase == ArNavUiState.Phase.ARRIVED
     val currentInstruction = when {
         navUiState.isArrived -> navUiState.statusMessage
+        // LLM이 만든 풍부한 안내 문구가 있으면 우선 사용 (예: "GS25 명동점에서 우회전하세요.")
+        isRouting && navUiState.currentSpeech.isNotBlank() -> navUiState.currentSpeech
+        // 폴백: 단순 "좌회전 152m" 형식
         isRouting -> "${navUiState.direction} ${navUiState.currentDistanceM}m"
         else -> firstTurn?.let { it.speech.ifEmpty { it.description.ifEmpty { "직진" } } }
             ?: navUiState.statusMessage.ifEmpty { "위치 잡는 중..." }

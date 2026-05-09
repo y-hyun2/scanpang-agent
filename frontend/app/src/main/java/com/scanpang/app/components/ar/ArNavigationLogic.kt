@@ -50,14 +50,29 @@ internal fun parseNavResponse(response: NavRouteResponse): List<ArRouteNode> {
             }
         }
         if (bestIdx >= 0 && bestDist < 20f) {
-            parsedNodes[bestIdx] = ArRouteNode(tp.lat, tp.lng, NodeType.TURN_POINT, tp.turnType, isCalculated = false)
+            parsedNodes[bestIdx] = ArRouteNode(
+                tp.lat, tp.lng, NodeType.TURN_POINT, tp.turnType,
+                isCalculated = false, speech = tp.speech,
+            )
         } else {
-            parsedNodes.add(ArRouteNode(tp.lat, tp.lng, NodeType.TURN_POINT, tp.turnType, isCalculated = false))
+            parsedNodes.add(
+                ArRouteNode(
+                    tp.lat, tp.lng, NodeType.TURN_POINT, tp.turnType,
+                    isCalculated = false, speech = tp.speech,
+                ),
+            )
         }
     }
     if (parsedNodes.isNotEmpty()) {
         parsedNodes[0] = parsedNodes[0].copy(type = NodeType.START)
-        parsedNodes.add(ArRouteNode(arCommand.destination.lat, arCommand.destination.lng, NodeType.END))
+        // 도착 안내(EP) speech가 turn_points에 있으면 가져와서 END 노드에 부착
+        val epSpeech = arCommand.turn_points.firstOrNull { it.pointType == "EP" }?.speech.orEmpty()
+        parsedNodes.add(
+            ArRouteNode(
+                arCommand.destination.lat, arCommand.destination.lng, NodeType.END,
+                speech = epSpeech,
+            ),
+        )
     }
     return parsedNodes
 }

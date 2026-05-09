@@ -59,6 +59,12 @@ data class ArNavUiState(
     val showCompass: Boolean = false,
     /** 다음 턴 방향과 현재 heading의 각도차(deg). 양수=오른쪽, 음수=왼쪽. */
     val compassAngleDeg: Float = 0f,
+    /**
+     * 다음 턴 지점에 대한 LLM이 생성한 안내 문구.
+     * 예: "GS25 명동점에서 우회전하세요." / "남포면옥까지 152m, 약 3분 소요됩니다."
+     * 비어있으면 단순한 [direction] + 거리로 폴백.
+     */
+    val currentSpeech: String = "",
 ) {
     enum class Phase { LOCALIZING, ROUTING, ARRIVED }
 }
@@ -238,13 +244,15 @@ fun ArRealSceneView(
                 // 도착 처리
                 if (tn.type == NodeType.END && dist <= 11.0f) {
                     clearArState(routeNodes, activeArNodes, activeModelNodes, renderedIndices, turnDirectionMap)
+                    val arrivalSpeech = tn.speech.ifBlank { "🎉 목적지에 도착했습니다!" }
                     onNavigationUpdate(
                         ArNavUiState(
                             phase = ArNavUiState.Phase.ARRIVED,
                             isArrived = true,
-                            statusMessage = "🎉 목적지에 도착했습니다!",
+                            statusMessage = arrivalSpeech,
                             direction = "목적지",
                             turnDirection = TurnDirection.DESTINATION,
+                            currentSpeech = arrivalSpeech,
                         ),
                     )
                     return@ARScene
@@ -292,6 +300,7 @@ fun ArRealSceneView(
                         statusMessage = "${direction}까지 ${dist.toInt()}m",
                         showCompass = isLookingDown,
                         compassAngleDeg = compassAngle,
+                        currentSpeech = tn.speech,
                     ),
                 )
 
