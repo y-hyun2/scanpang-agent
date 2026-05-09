@@ -30,6 +30,10 @@ interface ScanPangApi {
     // ── Orchestrator ──
     @POST("ar/agent/chat")
     suspend fun agentChat(@Body request: AgentChatRequest): AgentChatResponse
+
+    // ── Restaurant Detail ──
+    @POST("restaurant/detail")
+    suspend fun getRestaurantDetail(@Body request: RestaurantDetailRequest): GeneralRestaurantDetail
 }
 
 // ── Navigation DTOs ──
@@ -282,4 +286,35 @@ data class AgentChatResponse(
     val source_agent: String = "",
     val raw_data: Map<String, Any> = emptyMap(),
     val session_id: String = "",
+)
+
+// ── Restaurant Detail DTOs ──
+
+data class RestaurantDetailRequest(
+    val name: String,
+)
+
+data class GeneralRestaurantMenu(
+    val name_ko: String = "",
+    val name_en: String = "",
+    val price_krw: Int = 0,
+)
+
+data class GeneralRestaurantDetail(
+    val restaurant_id: String = "",
+    val name_ko: String = "",
+    val name_en: String = "",
+    val cuisine_type: List<String> = emptyList(),
+    val food_keywords: List<String> = emptyList(),
+    val menu_examples: List<GeneralRestaurantMenu> = emptyList(),
+    val short_description_ko: String = "",
+    val address: String = "",
+    val phone: String = "",
+    val opening_hours: String = "",
+    val break_time: String = "",
+    val last_order: String = "",
+    val latitude: Double? = null,
+    val longitude: Double? = null,
+    val source: String = "general",
+    val is_open_today: Boolean = true,
 )

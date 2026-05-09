@@ -1,0 +1,160 @@
+[
+  {
+    "restaurant_id": "y00001",
+    "name_ko": "과시탐탐",
+    "name_en": "Gwasi Tamtam",
+    "area_major": "용인",
+    "cuisine_type": ["카페"],
+    "food_keywords": ["디저트", "커피", "생과일주스"],
+    "menu_examples": [
+      {
+        "name_ko": "아메리카노",
+        "name_en": "Americano",
+        "price_krw": 3500
+      },
+      {
+        "name_ko": "초코라떼",
+        "name_en": "Choco latte",
+        "price_krw": 4500
+      }
+    ],
+    "short_description_ko": "다양한 종류의 신선한 과일을 판매.",
+    "address": "경기 용인시 처인구 모현읍 외대로26번길 22",
+    "phone": "0507-1404-8948",
+    "opening_hours": {
+      "mon": "12:00-23:50",
+      "tue": "12:00-23:50",
+      "wed": "12:00-23:50",
+      "thu": "12:00-23:50",
+      "fri": "12:00-23:50",
+      "sat": "12:00-23:50",
+      "sun": "12:00-23:50"
+    },
+    "break_time": {
+      "mon": null, "tue": null, "wed": null, "thu": null, "fri": null, "sat": null, "sun": null
+    },
+    "last_order": {
+      "mon": null, "tue": null, "wed": null, "thu": null, "fri": null, "sat": null, "sun": null
+    },
+    "latitude": 37.334532,
+    "longitude": 127.251291
+  },
+  {
+    "restaurant_id": "y00002",
+    "name_ko": "용인면옥",
+    "name_en": "Yongin Myeonok",
+    "area_major": "용인",
+    "cuisine_type": ["냉면"],
+    "food_keywords": ["칡 물냉면", "칡 비빔냉면", "메밀 물냉면"],
+    "menu_examples": [
+      {
+        "name_ko": "칡 물냉면",
+        "name_en": "Arrowroot cold noodles",
+        "price_krw": 9500
+      },
+      {
+        "name_ko": "칡 비빔냉면",
+        "name_en": "Arrowroot ChocSpicy Mixed Cold Noodles",
+        "price_krw": 9500
+      }
+    ],
+    "short_description_ko": "깔끔한 육수와 속 꽉 찬 수제만두 세트.",
+    "address": "경기 용인시 처인구 모현읍 백옥대로 2410 왕산빌딩 1층",
+    "phone": "0507-1314-3815",
+    "opening_hours": {
+      "mon": "10:00-21:00",
+      "tue": "10:00-21:00",
+      "wed": "10:00-21:00",
+      "thu": "10:00-21:00",
+      "fri": "10:00-21:00",
+      "sat": "10:00-21:00",
+      "sun": "10:00-21:00"
+    },
+    "break_time": {
+      "mon": null, "tue": null, "wed": null, "thu": null, "fri": null, "sat": null, "sun": null
+    },
+    "last_order": {
+      "mon": null, "tue": null, "wed": null, "thu": null, "fri": null, "sat": null, "sun": null
+    },
+    "latitude": 37.338785,
+    "longitude": 127.250280
+  },
+  {"restaurant_id": "y00003",
+    "name_ko": "감성커피 용인외대점",
+    "name_en": "Gamsung Coffee",
+    "area_major": "용인",
+    "cuisine_type": ["카페"],
+    "food_keywords": ["아메리카노", "네스퀵 초코라떼", "감성라떼"],
+    "menu_examples": [
+      {
+        "name_ko": "아메리카노",
+        "name_en": "Americano",
+        "price_krw": 2000
+      },
+      {
+        "name_ko": "네스퀵 초코라떼",
+        "name_en": "Nesquik Choco Latte",
+        "price_krw": 2900
+      }
+    ],
+    "short_description_ko": "가성비 커피.",
+    "address": "경기 용인시 처인구 모현읍 외대로40번길 1 민영빌딩 1층",
+    "phone": "0507-1492-1471",
+    "opening_hours": {
+      "mon": "10:30-22:00",
+      "tue": "10:30-22:00",
+      "wed": "10:30-22:00",
+      "thu": "10:30-22:00",
+      "fri": "10:30-22:00",
+      "sat": "10:30-22:00",
+      "sun": "10:30-22:00"
+    },
+    "break_time": {
+      "mon": null, "tue": null, "wed": null, "thu": null, "fri": null, "sat": null, "sun": null
+    },
+    "last_order": {
+      "mon": null, "tue": null, "wed": null, "thu": null, "fri": null, "sat": null, "sun": null
+    },
+    "latitude": 37.335778,
+    "longitude": 127.253866
+  },
+  {"restaurant_id": "y00004",
+    "name_ko": "메건스",
+    "name_en": "Meghans",
+    "area_major": "용인",
+    "cuisine_type": ["카페"],
+    "food_keywords": ["아메리카노", "카페라떼", "쌍화차"],
+    "menu_examples": [
+      {
+        "name_ko": "아메리카노",
+        "name_en": "Americano",
+        "price_krw": 3900
+      },
+      {
+        "name_ko": "카페라떼",
+        "name_en": "Caffe Latte",
+        "price_krw": 4800
+      }
+    ],
+    "short_description_ko": "커피와 전통차가 매력적인 카페.",
+    "address": "경기 용인시 처인구 모현읍 외대로54번길 6 101호",
+    "phone": "0507-1422-2537",
+    "opening_hours": {
+      "mon": "10:00-21:00",
+      "tue": "10:00-21:00",
+      "wed": "10:00-21:00",
+      "thu": "10:00-21:00",
+      "fri": "10:00-21:00",
+      "sat": "10:00-21:00",
+      "sun": "10:00-21:00"
+    },
+    "break_time": {
+      "mon": null, "tue": null, "wed": null, "thu": null, "fri": null, "sat": null, "sun": null
+    },
+    "last_order": {
+      "mon": null, "tue": null, "wed": null, "thu": null, "fri": null, "sat": null, "sun": null
+    },
+    "latitude": 37.335210,
+    "longitude": 127.255047
+  }
+]
