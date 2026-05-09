@@ -17,6 +17,7 @@ from core.session_store import get_session_store
 from schemas.restaurant import RestaurantDetailRequest
 from tools.restaurant_tools import get_restaurant_detail
 from rag.automation.worker import start_worker, stop_worker
+from core.db import get_pool, close_pool
 
 app = FastAPI(title="ScanPang Navigation API")
 
@@ -24,12 +25,14 @@ app = FastAPI(title="ScanPang Navigation API")
 @app.on_event("startup")
 async def _startup():
     await get_session_store().connect()
+    await get_pool()
     await start_worker()
 
 
 @app.on_event("shutdown")
 async def _shutdown():
     await stop_worker()
+    await close_pool()
     await get_session_store().close()
 
 

@@ -1,6 +1,6 @@
 """
 pipeline.py
-ufid 하나를 받아 전체 자동화 파이프라인을 실행하고 ChromaDB place_info에 저장한다.
+ufid 하나를 받아 전체 자동화 파이프라인을 실행하고 Supabase place_info에 저장한다.
 각 단계 실패 시 partial 결과라도 저장하며 에러를 로그에 기록한다.
 """
 
@@ -9,10 +9,9 @@ import os
 from datetime import datetime, timezone
 from typing import Optional
 
-import chromadb
-from chromadb.utils.embedding_functions import DefaultEmbeddingFunction
 from dotenv import load_dotenv
 
+from core.db import get_pool
 from rag.automation.kakao_radius import collect_stores_at_building
 from rag.automation.llm_extractor import extract_stores
 from rag.automation.query_builder import build_queries
@@ -28,7 +27,6 @@ load_dotenv()
 
 _DATA_PATH = "rag/data/vworld_buildings.json"
 
-# 프로세스 내 VWorld 인덱스 캐시
 _ufid_index: Optional[dict[str, dict]] = None
 
 
@@ -50,19 +48,7 @@ def _get_ufid_index() -> dict[str, dict]:
     return _ufid_index
 
 
-def _get_place_collection():
-    client = chromadb.PersistentClient(path="./chroma_db")
-    return client.get_or_create_collection(
-        "place_info", embedding_function=DefaultEmbeddingFunction()
-    )
-
-
 def _confirmed_to_floor_info(confirmed: list[dict]) -> list[dict]:
-    """
-    validator confirmed 매장 → ChromaDB 기존 floor_info 포맷으로 변환.
-    {"floor": str, "stores": [str, ...]}
-    floor가 null인 매장은 "미확인" 버킷으로 분류.
-    """
     floor_map: dict[str, list[str]] = {}
     for store in confirmed:
         floor = store.get("floor") or "미확인"
@@ -72,7 +58,6 @@ def _confirmed_to_floor_info(confirmed: list[dict]) -> list[dict]:
         if name:
             floor_map.setdefault(floor, []).append(label)
 
-    # 층 정렬: B층 → 지하, 숫자 오름차순, 미확인 마지막
     def _sort_key(floor_str: str):
         if floor_str == "미확인":
             return (2, 0)
@@ -94,7 +79,7 @@ async def process_one_building(ufid: str) -> dict:
     ufid 하나에 대해 전체 자동화 파이프라인을 실행한다.
 
     단계: VWorld 조회 → Kakao 기본정보 → 반경 매장수집 → 쿼리빌드
-          → 검색수집 → LLM파싱 → 정부DB → 교차검증 → ChromaDB upsert
+          → 검색수집 → LLM파싱 → 정부DB → 교차검증 → Supabase upsert
 
     Returns:
         {"ufid": str, "name_ko": str, "status": "ok"|"partial"|"error",
@@ -133,8 +118,8 @@ async def process_one_building(ufid: str) -> dict:
         except Exception as e:
             print(f"[pipeline] fetch_kakao_info 실패: {e}")
 
-    addr  = kakao_info.get("addr", "")
-    phone = kakao_info.get("phone", "")
+    addr     = kakao_info.get("addr", "")
+    phone    = kakao_info.get("phone", "")
     category = kakao_info.get("category", "")
 
     # ── 3) Kakao 건물 소속 매장 수집 (폴리곤+주소 이중 필터) ──────────────
@@ -179,45 +164,45 @@ async def process_one_building(ufid: str) -> dict:
         print(f"[pipeline] 정부DB 조회 실패: {e}")
 
     # ── 8) 교차검증 ──────────────────────────────────────────────────────────
-    validation = cross_validate(extracted, govt_stores, kakao_stores)
-    confirmed      = validation["confirmed"]
-    coverage_rate  = validation["coverage_rate"]
+    validation    = cross_validate(extracted, govt_stores, kakao_stores)
+    confirmed     = validation["confirmed"]
+    coverage_rate = validation["coverage_rate"]
 
     result["confirmed_count"] = len(confirmed)
     result["coverage_rate"]   = coverage_rate
 
-    # ── 9) ChromaDB upsert ───────────────────────────────────────────────────
-    # 정부DB가 더 풍부하면 정부DB 기준, 없으면 confirmed 기준 floor_info 사용
-    if govt_stores:
-        floor_info_list = govt_stores
-    else:
-        floor_info_list = _confirmed_to_floor_info(confirmed)
+    # ── 9) Supabase upsert ───────────────────────────────────────────────────
+    floor_info_list = govt_stores if govt_stores else _confirmed_to_floor_info(confirmed)
 
     try:
-        collection = _get_place_collection()
-        doc_text   = " ".join(filter(None, [name_ko, category, addr]))
-        metadata   = {
-            "ufid":          ufid,
-            "name_ko":       name_ko,
-            "lat":           lat,
-            "lng":           lng,
-            "addr":          addr,
-            "phone":         phone,
-            "category":      category,
-            "floor_info":    json.dumps(floor_info_list, ensure_ascii=False),
-            "coverage_rate": coverage_rate,
-            "last_updated":  datetime.now(timezone.utc).isoformat(),
-            "source":        "automated",
-        }
-        collection.upsert(
-            ids=[ufid],
-            documents=[doc_text],
-            metadatas=[metadata],
-        )
-        print(f"[pipeline] ChromaDB upsert 완료: {ufid}")
+        pool = await get_pool()
+        async with pool.acquire() as conn:
+            await conn.execute(
+                """
+                INSERT INTO place_info
+                    (ufid, name_ko, lat, lng, addr, phone, category,
+                     floor_info, coverage_rate, last_updated, source)
+                VALUES ($1,$2,$3,$4,$5,$6,$7,$8::jsonb,$9,$10,$11)
+                ON CONFLICT (ufid) DO UPDATE SET
+                    name_ko       = EXCLUDED.name_ko,
+                    addr          = EXCLUDED.addr,
+                    phone         = EXCLUDED.phone,
+                    category      = EXCLUDED.category,
+                    floor_info    = EXCLUDED.floor_info,
+                    coverage_rate = EXCLUDED.coverage_rate,
+                    last_updated  = EXCLUDED.last_updated,
+                    source        = EXCLUDED.source
+                """,
+                ufid, name_ko, lat, lng, addr, phone, category,
+                json.dumps(floor_info_list, ensure_ascii=False),
+                coverage_rate,
+                datetime.now(timezone.utc),
+                "automated",
+            )
+        print(f"[pipeline] Supabase upsert 완료: {ufid}")
         result["status"] = "ok" if confirmed or govt_stores else "partial"
     except Exception as e:
-        result["error"] = f"ChromaDB upsert 실패: {e}"
+        result["error"] = f"Supabase upsert 실패: {e}"
         print(f"[pipeline] {result['error']}")
         result["status"] = "partial"
 

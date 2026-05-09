@@ -11,3 +11,4 @@ pydantic
 shapely
 redis>=5.0.0
 rapidfuzz
+asyncpg>=0.29.0
