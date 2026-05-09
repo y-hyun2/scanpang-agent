@@ -5,9 +5,7 @@ ufid 하나를 받아 전체 자동화 파이프라인을 실행하고 Supabase 
 """
 
 import json
-import os
 from datetime import datetime, timezone
-from typing import Optional
 
 from dotenv import load_dotenv
 
@@ -25,27 +23,22 @@ from rag.build_place_db import (
 
 load_dotenv()
 
-_DATA_PATH = "rag/data/vworld_buildings.json"
 
-_ufid_index: Optional[dict[str, dict]] = None
-
-
-def _get_ufid_index() -> dict[str, dict]:
-    global _ufid_index
-    if _ufid_index is not None:
-        return _ufid_index
-
-    if not os.path.exists(_DATA_PATH):
-        print(f"[pipeline] {_DATA_PATH} 없음")
-        _ufid_index = {}
-        return _ufid_index
-
-    with open(_DATA_PATH, "r", encoding="utf-8") as f:
-        data = json.load(f)
-
-    _ufid_index = {b["ufid"]: b for b in data.get("buildings", []) if b.get("ufid")}
-    print(f"[pipeline] VWorld 인덱스 로드: {len(_ufid_index)}개 건물")
-    return _ufid_index
+async def _fetch_building(ufid: str) -> dict | None:
+    """Supabase buildings 테이블에서 ufid로 건물 메타 + 폴리곤 좌표 조회."""
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        row = await conn.fetchrow(
+            """
+            SELECT ufid, bld_nm, grnd_flr, ugrnd_flr, height, usability,
+                   center_lat, center_lng,
+                   ST_AsGeoJSON(geom)::json -> 'coordinates' -> 0 AS polygon_coords
+            FROM buildings
+            WHERE ufid = $1
+            """,
+            ufid,
+        )
+    return dict(row) if row else None
 
 
 def _confirmed_to_floor_info(confirmed: list[dict]) -> list[dict]:
@@ -95,11 +88,10 @@ async def process_one_building(ufid: str) -> dict:
         "error":           None,
     }
 
-    # ── 1) VWorld 메타 조회 ──────────────────────────────────────────────────
-    index = _get_ufid_index()
-    building = index.get(ufid)
+    # ── 1) Supabase buildings 테이블에서 건물 메타 + 폴리곤 조회 ─────────────
+    building = await _fetch_building(ufid)
     if not building:
-        result["error"] = f"ufid {ufid} not found in vworld_buildings.json"
+        result["error"] = f"ufid {ufid} not found in buildings table"
         print(f"[pipeline] {result['error']}")
         return result
 
@@ -125,7 +117,8 @@ async def process_one_building(ufid: str) -> dict:
     # ── 3) Kakao 건물 소속 매장 수집 (폴리곤+주소 이중 필터) ──────────────
     kakao_stores: list[dict] = []
     try:
-        polygon_coords = json.loads(building.get("polygon_2d", "[]"))
+        # polygon_coords: PostGIS ST_AsGeoJSON이 [[lng,lat],...] 형태로 반환
+        polygon_coords = building.get("polygon_coords") or []
         kakao_stores = await collect_stores_at_building(
             ufid=ufid,
             bld_polygon_coords=polygon_coords,
