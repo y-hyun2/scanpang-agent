@@ -55,6 +55,8 @@ data class ArNavUiState(
     val nextDistanceM: Int = 0,
     val isArrived: Boolean = false,
     val turnDirection: TurnDirection = TurnDirection.STRAIGHT,
+    /** 다음의 다음 턴 방향 (서브 카드 아이콘용). */
+    val nextTurnDirection: TurnDirection = TurnDirection.STRAIGHT,
     /** 사용자가 폰을 아래로 내려다보고 있을 때만 true (점선 나침반 표시 조건). */
     val showCompass: Boolean = false,
     /** 다음 턴 방향과 현재 heading의 각도차(deg). 양수=오른쪽, 음수=왼쪽. */
@@ -162,6 +164,20 @@ fun ArRealSceneView(
                 nodes.forEachIndexed { i, n -> if (n.type != NodeType.PATH_POINT) majorPointIndices.add(i) }
                 currentTargetPointIndex = 1
                 lastChunkRenderTime = 0L
+
+                // 라우트 도착 시 모든 major point의 좌/우 방향을 사전 계산.
+                // turnDirectionMap에 키=major index, 값=true(우)/false(좌)/없음(직진)으로 저장.
+                // 이후 현재 턴/다음 턴 모두 같은 맵에서 즉시 조회 → 매 프레임 비용 0.
+                for ((mi, nodeIdx) in majorPointIndices.withIndex()) {
+                    val node = nodes[nodeIdx]
+                    if (node.type != NodeType.TURN_POINT) continue
+                    val isRight: Boolean? = when (node.turnType) {
+                        13, 19, 18 -> true
+                        12, 16, 17 -> false
+                        else -> calcTurnFromBearing(nodeIdx, node, nodes)
+                    }
+                    if (isRight != null) turnDirectionMap[mi] = isRight
+                }
 
                 val arCommand = route.ar_command
                 if (arCommand != null) {
@@ -275,12 +291,24 @@ fun ArRealSceneView(
                     else -> TurnDirection.STRAIGHT
                 }
 
-                // 다음 턴 이후의 거리 (preview용)
+                // 다음 턴 이후의 거리 + 방향 (preview용)
+                // 방향은 사전 계산된 turnDirectionMap에서 그대로 조회 → 메인 카드 / 3D 모델과 동일 소스.
                 var nextDist = 0
+                var nextTurnDir = TurnDirection.STRAIGHT
                 if (currentTargetPointIndex + 1 < majorPointIndices.size) {
-                    val nn = fullRouteNodes[majorPointIndices[currentTargetPointIndex + 1]]
+                    val nextMi = currentTargetPointIndex + 1
+                    val nn = fullRouteNodes[majorPointIndices[nextMi]]
                     Location.distanceBetween(tn.lat, tn.lng, nn.lat, nn.lng, distRes)
                     nextDist = distRes[0].toInt()
+                    nextTurnDir = when (nn.type) {
+                        NodeType.END -> TurnDirection.DESTINATION
+                        NodeType.TURN_POINT -> when (turnDirectionMap[nextMi]) {
+                            true -> TurnDirection.RIGHT
+                            false -> TurnDirection.LEFT
+                            null -> TurnDirection.STRAIGHT
+                        }
+                        else -> TurnDirection.STRAIGHT
+                    }
                 }
 
                 // 점선 나침반: 다음 턴 방향과 현재 heading의 각도차 (양수=오른쪽 회전 필요)
@@ -297,6 +325,7 @@ fun ArRealSceneView(
                         currentDistanceM = dist.toInt(),
                         nextDistanceM = nextDist,
                         turnDirection = turnDir,
+                        nextTurnDirection = nextTurnDir,
                         statusMessage = "${direction}까지 ${dist.toInt()}m",
                         showCompass = isLookingDown,
                         compassAngleDeg = compassAngle,

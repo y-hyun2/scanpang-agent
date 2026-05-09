@@ -92,6 +92,12 @@ fun ArNavigationMapScreen(
         TurnDirection.DESTINATION -> Icons.Rounded.Place
         TurnDirection.STRAIGHT -> Icons.Rounded.ArrowUpward
     }
+    val nextTurnIcon = when (navUiState.nextTurnDirection) {
+        TurnDirection.LEFT -> Icons.Rounded.TurnSharpLeft
+        TurnDirection.RIGHT -> Icons.Rounded.TurnSharpRight
+        TurnDirection.DESTINATION -> Icons.Rounded.Place
+        TurnDirection.STRAIGHT -> Icons.Rounded.ArrowUpward
+    }
     var activeTab by remember { mutableStateOf(NAV_TAB_MAP) }
     var aiQuery by remember { mutableStateOf("") }
     var bottomSheetExpanded by remember { mutableStateOf(true) }
@@ -116,6 +122,7 @@ fun ArNavigationMapScreen(
         ArNavActionCardCluster(
             showNextStep = showNextStep,
             nextDistance = nextDistance,
+            nextManeuverIcon = nextTurnIcon,
             currentManeuverIcon = turnIcon,
             currentDistance = currentDistance,
             currentInstruction = currentInstruction,
