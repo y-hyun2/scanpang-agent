@@ -15,7 +15,7 @@ from rag.automation.llm_extractor import extract_stores
 from rag.automation.query_builder import build_queries
 from rag.automation.search_collector import collect
 from rag.automation.validator import cross_validate
-from rag.build_place_db import (
+from rag.automation.govt_api import (
     fetch_building_key,
     fetch_kakao_info,
     fetch_floor_info,

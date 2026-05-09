@@ -1,12 +1,10 @@
 fastapi
 uvicorn[standard]
-chromadb
 openai
 python-dotenv
 httpx
 langchain-openai
 langgraph>=0.2.0
-sentence-transformers
 pydantic
 shapely
 redis>=5.0.0
