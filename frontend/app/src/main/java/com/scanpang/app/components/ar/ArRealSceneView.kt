@@ -30,6 +30,7 @@ import com.google.ar.core.TrackingState
 import com.hufs.arnavigation_com.ArRouteNode
 import com.hufs.arnavigation_com.NavigationState
 import com.hufs.arnavigation_com.NodeType
+import com.scanpang.app.ar.ArExploreTtsController
 import com.scanpang.app.ui.theme.ScanPangColors
 import com.scanpang.arnavigation.data.remote.dto.NavRouteResponse
 import com.scanpang.arnavigation.data.repository.RouteRepositoryImpl
@@ -44,6 +45,7 @@ import io.github.sceneview.node.Node
 import io.github.sceneview.rememberEngine
 import io.github.sceneview.rememberModelLoader
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 /** AR 길안내 화면이 외부에 노출하는 UI 상태. */
@@ -141,6 +143,20 @@ fun ArRealSceneView(
         }
     }
 
+    // TTS 컨트롤러 — 화면 진입 시 시작, 종료 시 shutdown
+    val ttsController = remember {
+        ArExploreTtsController(context, onPlayingChange = { /* 재생 상태 외부 노출 불필요 */ })
+    }
+    DisposableEffect(ttsController) {
+        ttsController.start()
+        onDispose { ttsController.shutdown() }
+    }
+
+    // 음성 안내 중복 방지용 상태
+    var spokenForTurnIndex by remember { mutableStateOf(-1) }     // 마지막으로 음성 출력한 turn index
+    var hasSpokenDeparture by remember { mutableStateOf(false) }  // 출발 안내 출력 여부
+    var hasSpokenArrival by remember { mutableStateOf(false) }    // 도착 안내 출력 여부
+
     // AR 노드 + 라우트 상태
     val routeNodes = remember { mutableStateListOf<Node>() }
     var fullRouteNodes by remember { mutableStateOf<List<ArRouteNode>>(emptyList()) }
@@ -189,6 +205,18 @@ fun ArRealSceneView(
                         arCommand.destination.lng,
                     )
                 }
+
+                // 출발 안내 음성 (route.speech) — 한 번만, 2초 지연 후 재생
+                if (!hasSpokenDeparture && route.speech.isNotBlank()) {
+                    val message = route.speech
+                    coroutineScope.launch {
+                        delay(2000)
+                        ttsController.speakIfEnabled(message, voiceOn = true)
+                    }
+                    hasSpokenDeparture = true
+                }
+                spokenForTurnIndex = -1
+                hasSpokenArrival = false
             }
         }
     }
@@ -260,7 +288,14 @@ fun ArRealSceneView(
                 // 도착 처리
                 if (tn.type == NodeType.END && dist <= 11.0f) {
                     clearArState(routeNodes, activeArNodes, activeModelNodes, renderedIndices, turnDirectionMap)
-                    val arrivalSpeech = tn.speech.ifBlank { "🎉 목적지에 도착했습니다!" }
+                    val arrivalSpeech = tn.speech.ifBlank { "목적지에 도착했습니다." }
+                    if (!hasSpokenArrival) {
+                        coroutineScope.launch {
+                            delay(2000)
+                            ttsController.speakIfEnabled(arrivalSpeech, voiceOn = true)
+                        }
+                        hasSpokenArrival = true
+                    }
                     onNavigationUpdate(
                         ArNavUiState(
                             phase = ArNavUiState.Phase.ARRIVED,
@@ -332,6 +367,16 @@ fun ArRealSceneView(
                         currentSpeech = tn.speech,
                     ),
                 )
+
+                // 새 턴에 대한 음성 안내 (currentTargetPointIndex가 바뀐 직후 한 번만, 2초 지연)
+                if (spokenForTurnIndex != currentTargetPointIndex && tn.speech.isNotBlank()) {
+                    val message = tn.speech
+                    coroutineScope.launch {
+                        delay(2000)
+                        ttsController.speakIfEnabled(message, voiceOn = true)
+                    }
+                    spokenForTurnIndex = currentTargetPointIndex
+                }
 
                 // 8m 이내 → 다음 턴
                 if (dist <= 8.0f) {
