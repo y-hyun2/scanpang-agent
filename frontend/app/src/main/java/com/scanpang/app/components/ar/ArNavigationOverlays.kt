@@ -14,15 +14,19 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.zIndex
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.VolumeUp
 import androidx.compose.material.icons.rounded.ArrowUpward
 import androidx.compose.material.icons.rounded.CameraAlt
 import androidx.compose.material.icons.rounded.CheckCircle
+import androidx.compose.material.icons.rounded.Explore
 import androidx.compose.material.icons.rounded.Flag
 import androidx.compose.material.icons.rounded.Home
 import androidx.compose.material.icons.rounded.KeyboardArrowDown
@@ -186,6 +190,8 @@ fun ArNavDestinationPill(
 fun BoxScope.ArNavSideVolumeCamera(
     onVolumeClick: () -> Unit,
     onCameraClick: () -> Unit,
+    spaceAugmentOn: Boolean = false,
+    onSpaceAugmentToggle: () -> Unit = {},
 ) {
     Column(
         modifier = Modifier
@@ -207,6 +213,25 @@ fun BoxScope.ArNavSideVolumeCamera(
             contentDescription = "촬영",
             onClick = onCameraClick,
         )
+        // 공간증강 ON/OFF 토글 — ON일 때 primary 색 배경, OFF일 때 흰색
+        Surface(
+            modifier = Modifier
+                .size(ScanPangDimens.arNavTopFab40)
+                .clip(CircleShape)
+                .clickable(onClick = onSpaceAugmentToggle),
+            shape = CircleShape,
+            color = if (spaceAugmentOn) ScanPangColors.Primary else ScanPangColors.ArOverlayWhite80,
+            shadowElevation = ScanPangDimens.arPoiCardShadowElevation,
+        ) {
+            Box(contentAlignment = Alignment.Center) {
+                Icon(
+                    imageVector = Icons.Rounded.Explore,
+                    contentDescription = "공간증강",
+                    modifier = Modifier.size(ScanPangDimens.arNavTopFabIcon),
+                    tint = if (spaceAugmentOn) Color.White else ScanPangColors.OnSurfaceStrong,
+                )
+            }
+        }
     }
 }
 
@@ -241,95 +266,98 @@ fun BoxScope.ArNavTurnBadge(
 fun BoxScope.ArNavActionCardCluster(
     showNextStep: Boolean,
     nextDistance: String,
+    nextManeuverIcon: ImageVector,
     currentManeuverIcon: ImageVector,
     currentDistance: String,
     currentInstruction: String,
 ) {
-    Box(
+    // 메인 카드는 본문 줄 수에 따라 자유 높이를 갖고, 서브 카드는 그 바로 밑에 살짝 겹쳐서 붙음.
+    // (zIndex로 메인 카드를 위로 올려, 겹치는 부분은 메인 카드가 가림)
+    Column(
         modifier = Modifier
             .align(Alignment.TopStart)
             .padding(
                 start = ScanPangDimens.arNavActionClusterStart,
                 top = ScanPangDimens.arNavActionClusterTop,
             )
-            .width(ScanPangDimens.arNavActionCardWidth)
-            .height(ScanPangDimens.arNavActionStackHeight),
+            .width(ScanPangDimens.arNavActionCardWidth),
     ) {
-            if (showNextStep) {
-                Row(
-                    modifier = Modifier
-                        .align(Alignment.BottomStart)
-                        .padding(start = ScanPangDimens.arNavNextStepOffsetStart)
-                        .width(ScanPangDimens.arNavNextStepWidth)
-                        .height(ScanPangDimens.arNavNextStepHeight)
-                        .clip(ScanPangShapes.arNavNextStepChip)
-                        .background(ScanPangColors.ArNavNextStepBackground),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(ScanPangSpacing.sm),
+        Surface(
+            modifier = Modifier.zIndex(1f),
+            shape = ScanPangShapes.radius16,
+            color = ScanPangColors.ArOverlayWhite93,
+            shadowElevation = ScanPangDimens.arPoiCardShadowElevation,
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(
+                        horizontal = ScanPangDimens.arNavActionCardPadH,
+                        vertical = ScanPangDimens.arNavActionCardPadV,
+                    ),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(ScanPangSpacing.md),
+            ) {
+                Surface(
+                    modifier = Modifier.size(ScanPangDimens.arNavActionIconSquare),
+                    shape = ScanPangShapes.radius14,
+                    color = ScanPangColors.Primary,
                 ) {
-                    Icon(
-                        imageVector = Icons.Rounded.ArrowUpward,
-                        contentDescription = null,
-                        modifier = Modifier
-                            .padding(start = ScanPangDimens.cardPadding)
-                            .size(ScanPangDimens.icon20),
-                        tint = ScanPangColors.ArNavNextStepTextMuted,
+                    Box(contentAlignment = Alignment.Center) {
+                        Icon(
+                            imageVector = currentManeuverIcon,
+                            contentDescription = null,
+                            modifier = Modifier.size(ScanPangDimens.arNavActionIconInner),
+                            tint = Color.White,
+                        )
+                    }
+                }
+                Column(
+                    verticalArrangement = Arrangement.spacedBy(ScanPangDimens.icon5),
+                ) {
+                    Text(
+                        text = currentDistance,
+                        style = ScanPangType.arNavDistance26,
+                        color = ScanPangColors.OnSurfaceStrong,
                     )
                     Text(
-                        text = nextDistance,
-                        style = ScanPangType.arNavNextDistance14,
-                        color = ScanPangColors.ArNavNextStepTextMuted,
+                        text = currentInstruction,
+                        style = ScanPangType.arNavStepCaption12,
+                        color = ScanPangColors.OnSurfaceMuted,
+                        maxLines = 3,
+                        overflow = TextOverflow.Ellipsis,
                     )
                 }
             }
-            Surface(
-                modifier = Modifier.align(Alignment.TopStart),
-                shape = ScanPangShapes.radius16,
-                color = ScanPangColors.ArOverlayWhite93,
-                shadowElevation = ScanPangDimens.arPoiCardShadowElevation,
+        }
+
+        if (showNextStep) {
+            Row(
+                modifier = Modifier
+                    .padding(start = ScanPangDimens.arNavNextStepOffsetStart)
+                    .offset(y = (-8).dp)
+                    .width(ScanPangDimens.arNavNextStepWidth)
+                    .height(ScanPangDimens.arNavNextStepHeight)
+                    .clip(ScanPangShapes.arNavNextStepChip)
+                    .background(ScanPangColors.ArNavNextStepBackground),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(ScanPangSpacing.sm),
             ) {
-                Row(
+                Icon(
+                    imageVector = nextManeuverIcon,
+                    contentDescription = null,
                     modifier = Modifier
-                        .width(ScanPangDimens.arNavActionCardWidth)
-                        .padding(
-                            horizontal = ScanPangDimens.arNavActionCardPadH,
-                            vertical = ScanPangDimens.arNavActionCardPadV,
-                        ),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(ScanPangSpacing.md),
-                ) {
-                    Surface(
-                        modifier = Modifier.size(ScanPangDimens.arNavActionIconSquare),
-                        shape = ScanPangShapes.radius14,
-                        color = ScanPangColors.Primary,
-                    ) {
-                        Box(contentAlignment = Alignment.Center) {
-                            Icon(
-                                imageVector = currentManeuverIcon,
-                                contentDescription = null,
-                                modifier = Modifier.size(ScanPangDimens.arNavActionIconInner),
-                                tint = Color.White,
-                            )
-                        }
-                    }
-                    Column(
-                        verticalArrangement = Arrangement.spacedBy(ScanPangDimens.icon5),
-                    ) {
-                        Text(
-                            text = currentDistance,
-                            style = ScanPangType.arNavDistance26,
-                            color = ScanPangColors.OnSurfaceStrong,
-                        )
-                        Text(
-                            text = currentInstruction,
-                            style = ScanPangType.arNavStepCaption12,
-                            color = ScanPangColors.OnSurfaceMuted,
-                            maxLines = 2,
-                            overflow = TextOverflow.Ellipsis,
-                        )
-                    }
-                }
+                        .padding(start = ScanPangDimens.cardPadding)
+                        .size(ScanPangDimens.icon20),
+                    tint = ScanPangColors.ArNavNextStepTextMuted,
+                )
+                Text(
+                    text = nextDistance,
+                    style = ScanPangType.arNavNextDistance14,
+                    color = ScanPangColors.ArNavNextStepTextMuted,
+                )
             }
+        }
     }
 }
 

@@ -30,6 +30,7 @@ import com.google.ar.core.TrackingState
 import com.hufs.arnavigation_com.ArRouteNode
 import com.hufs.arnavigation_com.NavigationState
 import com.hufs.arnavigation_com.NodeType
+import com.scanpang.app.ar.ArExploreTtsController
 import com.scanpang.app.ui.theme.ScanPangColors
 import com.scanpang.arnavigation.data.remote.dto.NavRouteResponse
 import com.scanpang.arnavigation.data.repository.RouteRepositoryImpl
@@ -44,6 +45,7 @@ import io.github.sceneview.node.Node
 import io.github.sceneview.rememberEngine
 import io.github.sceneview.rememberModelLoader
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 /** AR 길안내 화면이 외부에 노출하는 UI 상태. */
@@ -55,10 +57,18 @@ data class ArNavUiState(
     val nextDistanceM: Int = 0,
     val isArrived: Boolean = false,
     val turnDirection: TurnDirection = TurnDirection.STRAIGHT,
+    /** 다음의 다음 턴 방향 (서브 카드 아이콘용). */
+    val nextTurnDirection: TurnDirection = TurnDirection.STRAIGHT,
     /** 사용자가 폰을 아래로 내려다보고 있을 때만 true (점선 나침반 표시 조건). */
     val showCompass: Boolean = false,
     /** 다음 턴 방향과 현재 heading의 각도차(deg). 양수=오른쪽, 음수=왼쪽. */
     val compassAngleDeg: Float = 0f,
+    /**
+     * 다음 턴 지점에 대한 LLM이 생성한 안내 문구.
+     * 예: "GS25 명동점에서 우회전하세요." / "남포면옥까지 152m, 약 3분 소요됩니다."
+     * 비어있으면 단순한 [direction] + 거리로 폴백.
+     */
+    val currentSpeech: String = "",
 ) {
     enum class Phase { LOCALIZING, ROUTING, ARRIVED }
 }
@@ -84,6 +94,10 @@ fun ArRealSceneView(
     onNavigationUpdate: (ArNavUiState) -> Unit = {},
     /** 라우트 응답 도착 시 한 번 호출. 미니맵 폴리라인/목적지 마커용. */
     onRouteAvailable: (routePoints: List<Pair<Double, Double>>, destinationLat: Double, destinationLng: Double) -> Unit = { _, _, _ -> },
+    /** 공간증강(주변 건물 인식) 활성 여부. true이면 5초마다 [onPlaceQueryRequest] 호출. */
+    spaceAugmentEnabled: Boolean = false,
+    /** 공간증강 쿼리 요청. 부모가 백엔드 호출(viewModel.queryPlace)을 처리. */
+    onPlaceQueryRequest: (heading: Double, lat: Double, lng: Double, alt: Double, pitch: Double) -> Unit = { _, _, _, _, _ -> },
 ) {
     val context = LocalContext.current
     val engine = rememberEngine()
@@ -133,6 +147,23 @@ fun ArRealSceneView(
         }
     }
 
+    // TTS 컨트롤러 — 화면 진입 시 시작, 종료 시 shutdown
+    val ttsController = remember {
+        ArExploreTtsController(context, onPlayingChange = { /* 재생 상태 외부 노출 불필요 */ })
+    }
+    DisposableEffect(ttsController) {
+        ttsController.start()
+        onDispose { ttsController.shutdown() }
+    }
+
+    // 음성 안내 중복 방지용 상태
+    var spokenForTurnIndex by remember { mutableStateOf(-1) }     // 마지막으로 음성 출력한 turn index
+    var hasSpokenDeparture by remember { mutableStateOf(false) }  // 출발 안내 출력 여부
+    var hasSpokenArrival by remember { mutableStateOf(false) }    // 도착 안내 출력 여부
+
+    // 공간증강 쿼리 throttle용 — 5초 간격 보장
+    var lastPlaceQueryTime by remember { mutableStateOf(0L) }
+
     // AR 노드 + 라우트 상태
     val routeNodes = remember { mutableStateListOf<Node>() }
     var fullRouteNodes by remember { mutableStateOf<List<ArRouteNode>>(emptyList()) }
@@ -150,12 +181,27 @@ fun ArRealSceneView(
         if (route is NavRouteResponse) {
             val nodes = parseNavResponse(route)
             if (nodes.isNotEmpty()) {
-                clearArState(routeNodes, activeArNodes, activeModelNodes, renderedIndices, turnDirectionMap)
+                clearArState(routeNodes, activeArNodes, activeModelNodes, renderedIndices)
+                turnDirectionMap.clear()  // 새 라우트가 도착할 때만 이전 방향 정보 폐기
                 fullRouteNodes = nodes
                 majorPointIndices.clear()
                 nodes.forEachIndexed { i, n -> if (n.type != NodeType.PATH_POINT) majorPointIndices.add(i) }
                 currentTargetPointIndex = 1
                 lastChunkRenderTime = 0L
+
+                // 라우트 도착 시 모든 major point의 좌/우 방향을 사전 계산.
+                // turnDirectionMap에 키=major index, 값=true(우)/false(좌)/없음(직진)으로 저장.
+                // 이후 현재 턴/다음 턴 모두 같은 맵에서 즉시 조회 → 매 프레임 비용 0.
+                for ((mi, nodeIdx) in majorPointIndices.withIndex()) {
+                    val node = nodes[nodeIdx]
+                    if (node.type != NodeType.TURN_POINT) continue
+                    val isRight: Boolean? = when (node.turnType) {
+                        13, 19, 18 -> true
+                        12, 16, 17 -> false
+                        else -> calcTurnFromBearing(nodeIdx, node, nodes)
+                    }
+                    if (isRight != null) turnDirectionMap[mi] = isRight
+                }
 
                 val arCommand = route.ar_command
                 if (arCommand != null) {
@@ -167,6 +213,18 @@ fun ArRealSceneView(
                         arCommand.destination.lng,
                     )
                 }
+
+                // 출발 안내 음성 (route.speech) — 한 번만, 2초 지연 후 재생
+                if (!hasSpokenDeparture && route.speech.isNotBlank()) {
+                    val message = route.speech
+                    coroutineScope.launch {
+                        delay(2000)
+                        ttsController.speakIfEnabled(message, voiceOn = true)
+                    }
+                    hasSpokenDeparture = true
+                }
+                spokenForTurnIndex = -1
+                hasSpokenArrival = false
             }
         }
     }
@@ -174,7 +232,7 @@ fun ArRealSceneView(
     // 화면 종료 시 AR 리소스 정리
     DisposableEffect(Unit) {
         onDispose {
-            clearArState(routeNodes, activeArNodes, activeModelNodes, renderedIndices, turnDirectionMap)
+            clearArState(routeNodes, activeArNodes, activeModelNodes, renderedIndices)
         }
     }
 
@@ -208,6 +266,19 @@ fun ArRealSceneView(
             frame.camera.pose.toMatrix(poseMatrix, 0)
             val isLookingDown = poseMatrix[9] > 0.5f
 
+            // 공간증강(주변 건물 인식) — 활성 시 5초마다 쿼리 발사
+            if (spaceAugmentEnabled && now - lastPlaceQueryTime > 5000) {
+                lastPlaceQueryTime = now
+                // pose의 quaternion에서 forward 벡터 분해 → pitch 계산 (ArExploreScreen과 동일)
+                val q = pose.eastUpSouthQuaternion
+                val fx = 2f * (q[0] * q[2] + q[3] * q[1])
+                val fy = 2f * (q[1] * q[2] - q[3] * q[0])
+                val fz = 1f - 2f * (q[0] * q[0] + q[1] * q[1])
+                val horiz = kotlin.math.sqrt(fx * fx + fz * fz)
+                val pitch = Math.toDegrees(kotlin.math.atan2(-fy.toDouble(), horiz.toDouble()))
+                onPlaceQueryRequest(pose.heading, lat, lng, pose.altitude, pitch)
+            }
+
             val navState = mainViewModel.navigationState.value
 
             // 1) LOCALIZING + 정확도 확보 + 목적지 있음 → 백엔드 라우트 요청
@@ -237,14 +308,23 @@ fun ArRealSceneView(
 
                 // 도착 처리
                 if (tn.type == NodeType.END && dist <= 11.0f) {
-                    clearArState(routeNodes, activeArNodes, activeModelNodes, renderedIndices, turnDirectionMap)
+                    clearArState(routeNodes, activeArNodes, activeModelNodes, renderedIndices)
+                    val arrivalSpeech = tn.speech.ifBlank { "목적지에 도착했습니다." }
+                    if (!hasSpokenArrival) {
+                        coroutineScope.launch {
+                            delay(2000)
+                            ttsController.speakIfEnabled(arrivalSpeech, voiceOn = true)
+                        }
+                        hasSpokenArrival = true
+                    }
                     onNavigationUpdate(
                         ArNavUiState(
                             phase = ArNavUiState.Phase.ARRIVED,
                             isArrived = true,
-                            statusMessage = "🎉 목적지에 도착했습니다!",
+                            statusMessage = arrivalSpeech,
                             direction = "목적지",
                             turnDirection = TurnDirection.DESTINATION,
+                            currentSpeech = arrivalSpeech,
                         ),
                     )
                     return@ARScene
@@ -267,12 +347,24 @@ fun ArRealSceneView(
                     else -> TurnDirection.STRAIGHT
                 }
 
-                // 다음 턴 이후의 거리 (preview용)
+                // 다음 턴 이후의 거리 + 방향 (preview용)
+                // 방향은 사전 계산된 turnDirectionMap에서 그대로 조회 → 메인 카드 / 3D 모델과 동일 소스.
                 var nextDist = 0
+                var nextTurnDir = TurnDirection.STRAIGHT
                 if (currentTargetPointIndex + 1 < majorPointIndices.size) {
-                    val nn = fullRouteNodes[majorPointIndices[currentTargetPointIndex + 1]]
+                    val nextMi = currentTargetPointIndex + 1
+                    val nn = fullRouteNodes[majorPointIndices[nextMi]]
                     Location.distanceBetween(tn.lat, tn.lng, nn.lat, nn.lng, distRes)
                     nextDist = distRes[0].toInt()
+                    nextTurnDir = when (nn.type) {
+                        NodeType.END -> TurnDirection.DESTINATION
+                        NodeType.TURN_POINT -> when (turnDirectionMap[nextMi]) {
+                            true -> TurnDirection.RIGHT
+                            false -> TurnDirection.LEFT
+                            null -> TurnDirection.STRAIGHT
+                        }
+                        else -> TurnDirection.STRAIGHT
+                    }
                 }
 
                 // 점선 나침반: 다음 턴 방향과 현재 heading의 각도차 (양수=오른쪽 회전 필요)
@@ -289,15 +381,27 @@ fun ArRealSceneView(
                         currentDistanceM = dist.toInt(),
                         nextDistanceM = nextDist,
                         turnDirection = turnDir,
+                        nextTurnDirection = nextTurnDir,
                         statusMessage = "${direction}까지 ${dist.toInt()}m",
                         showCompass = isLookingDown,
                         compassAngleDeg = compassAngle,
+                        currentSpeech = tn.speech,
                     ),
                 )
 
+                // 새 턴에 대한 음성 안내 (currentTargetPointIndex가 바뀐 직후 한 번만, 2초 지연)
+                if (spokenForTurnIndex != currentTargetPointIndex && tn.speech.isNotBlank()) {
+                    val message = tn.speech
+                    coroutineScope.launch {
+                        delay(2000)
+                        ttsController.speakIfEnabled(message, voiceOn = true)
+                    }
+                    spokenForTurnIndex = currentTargetPointIndex
+                }
+
                 // 8m 이내 → 다음 턴
                 if (dist <= 8.0f) {
-                    clearArState(routeNodes, activeArNodes, activeModelNodes, renderedIndices, turnDirectionMap)
+                    clearArState(routeNodes, activeArNodes, activeModelNodes, renderedIndices)
                     currentTargetPointIndex++
                 }
             }
@@ -324,20 +428,24 @@ fun ArRealSceneView(
     )
 }
 
-/** AR 노드 / 렌더 상태를 모두 초기화. (ARScene childNodes도 비움) */
+/**
+ * AR 렌더 상태(앵커·모델·렌더 인덱스)만 초기화.
+ *
+ * `turnDirectionMap`은 라우트 도착 시 사전 계산되는 메타데이터라 chunk 진행 시
+ * 보존되어야 함 (지우면 두 번째 턴부터 방향 정보 잃어 "직진" 폴백 발생).
+ * 새 라우트 도착 시에만 LaunchedEffect에서 명시적으로 별도 clear.
+ */
 private fun clearArState(
     routeNodes: SnapshotStateList<Node>,
     activeArNodes: MutableMap<Int, AnchorNode>,
     activeModelNodes: MutableMap<Int, ModelNode>,
     renderedIndices: MutableSet<Int>,
-    turnDirectionMap: MutableMap<Int, Boolean>,
 ) {
     routeNodes.clear()
     activeArNodes.values.forEach { runCatching { it.destroy() } }
     activeArNodes.clear()
     activeModelNodes.clear()
     renderedIndices.clear()
-    turnDirectionMap.clear()
 }
 
 /**
