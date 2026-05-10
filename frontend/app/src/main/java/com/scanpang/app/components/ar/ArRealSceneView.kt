@@ -482,7 +482,7 @@ private fun renderNearbyArrows(
         val node = fullRouteNodes[i]
         if (node.type == NodeType.PATH_POINT) continue
 
-        val yOff = if (node.type == NodeType.TURN_POINT) 0.0 else 1.5
+        val yOff = if (node.type == NodeType.TURN_POINT) 0.5 else 1.5
         val anchor = earth.createAnchor(node.lat, node.lng, cameraAlt - yOff, 0f, 0f, 0f, 1f) ?: continue
         val anchorNode = AnchorNode(engine = engine, anchor = anchor)
         activeArNodes[i] = anchorNode
@@ -549,11 +549,11 @@ private fun resolveModelForNode(
                 12, 16 -> false
                 else -> calcTurnFromBearing(i, node, fullRouteNodes)
             }
+            val rotation = computeArrowRotation(i, node, fullRouteNodes)
             if (isRight == null) {
-                Triple(null, 0f, defaultScale)
+                Triple("models/straight.glb", rotation, turnScale)
             } else {
                 val mp = if (isRight) "models/right.glb" else "models/left.glb"
-                val rotation = computeArrowRotation(i, node, fullRouteNodes)
                 val mi = majorPointIndices.indexOf(i)
                 if (mi != -1) turnDirectionMap[mi] = isRight
                 Triple(mp, rotation, turnScale)

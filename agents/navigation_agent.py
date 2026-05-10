@@ -212,6 +212,8 @@ async def run_route_agent(req: RouteRequest) -> dict:
             "type": "start_navigation",
             "route_line": route["route_line"],
             "turn_points": enriched_turn_points,
+            # T-map raw GeoJSON features (프론트 parseTmapRoute용 — 원본 인터리브 순서 보존)
+            "tmap_features": route.get("tmap_features", []),
             "destination": {
                 "lat": dest.pns_lat,
                 "lng": dest.pns_lon,

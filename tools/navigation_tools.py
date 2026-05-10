@@ -238,6 +238,9 @@ async def get_pedestrian_route(
     return {
         "route_line": route_line,
         "turn_points": turn_points,
+        # 프론트엔드가 원본 parseTmapRoute 로직을 그대로 사용하기 위해 T-map raw GeoJSON
+        # features 배열을 통째로 보존 (Point/LineString이 시간 순서대로 인터리브된 형태).
+        "tmap_features": features,
         "total_distance_m": total_distance_m,
         "total_time_min": total_time_min,
     }
