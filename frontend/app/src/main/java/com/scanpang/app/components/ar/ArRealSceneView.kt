@@ -156,6 +156,10 @@ fun ArRealSceneView(
         onDispose { ttsController.shutdown() }
     }
 
+    // 화면이 dispose 됐는지 추적 — 비동기 코루틴이 destroy된 리소스에 접근하는 걸 방지.
+    // (홈/뒤로가기 시 모델 로드·TTS 코루틴이 늦게 완료돼 크래시 나는 케이스 차단)
+    val isMounted = remember { mutableStateOf(true) }
+
     // 음성 안내 중복 방지용 상태
     var spokenForTurnIndex by remember { mutableStateOf(-1) }     // 마지막으로 음성 출력한 turn index
     var hasSpokenDeparture by remember { mutableStateOf(false) }  // 출발 안내 출력 여부
@@ -219,7 +223,8 @@ fun ArRealSceneView(
                     val message = route.speech
                     coroutineScope.launch {
                         delay(2000)
-                        ttsController.speakIfEnabled(message, voiceOn = true)
+                        if (!isMounted.value) return@launch
+                        runCatching { ttsController.speakIfEnabled(message, voiceOn = true) }
                     }
                     hasSpokenDeparture = true
                 }
@@ -229,10 +234,17 @@ fun ArRealSceneView(
         }
     }
 
-    // 화면 종료 시 AR 리소스 정리
+    // 화면 종료 시 AR 리소스 정리 + mounted 플래그 false.
+    // dispose 경로에선 AnchorNode.destroy()를 호출하지 않음 — 그 시점엔 ARCore session이
+    // SceneView 내부에서 이미 정리됐을 수 있고, 그러면 ArAnchor_detach가 native NPE로
+    // SIGSEGV를 냄. SceneView가 lifecycle에서 anchor를 알아서 정리함.
     DisposableEffect(Unit) {
         onDispose {
-            clearArState(routeNodes, activeArNodes, activeModelNodes, renderedIndices)
+            isMounted.value = false
+            routeNodes.clear()
+            activeArNodes.clear()
+            activeModelNodes.clear()
+            renderedIndices.clear()
         }
     }
 
@@ -313,7 +325,8 @@ fun ArRealSceneView(
                     if (!hasSpokenArrival) {
                         coroutineScope.launch {
                             delay(2000)
-                            ttsController.speakIfEnabled(arrivalSpeech, voiceOn = true)
+                            if (!isMounted.value) return@launch
+                            runCatching { ttsController.speakIfEnabled(arrivalSpeech, voiceOn = true) }
                         }
                         hasSpokenArrival = true
                     }
@@ -394,7 +407,8 @@ fun ArRealSceneView(
                     val message = tn.speech
                     coroutineScope.launch {
                         delay(2000)
-                        ttsController.speakIfEnabled(message, voiceOn = true)
+                        if (!isMounted.value) return@launch
+                        runCatching { ttsController.speakIfEnabled(message, voiceOn = true) }
                     }
                     spokenForTurnIndex = currentTargetPointIndex
                 }
@@ -422,6 +436,7 @@ fun ArRealSceneView(
                     modelLoader = modelLoader,
                     routeNodes = routeNodes,
                     coroutineScope = coroutineScope,
+                    isMountedCheck = { isMounted.value },
                 )
             }
         },
@@ -465,6 +480,7 @@ private fun renderNearbyArrows(
     modelLoader: ModelLoader,
     routeNodes: SnapshotStateList<Node>,
     coroutineScope: CoroutineScope,
+    isMountedCheck: () -> Boolean,
 ) {
     if (earth.trackingState != TrackingState.TRACKING ||
         majorPointIndices.size < 2 ||
@@ -511,7 +527,9 @@ private fun renderNearbyArrows(
         if (modelPath != null) {
             coroutineScope.launch {
                 val instance = runCatching { modelLoader.loadModelInstance(modelPath) }.getOrNull()
-                if (instance != null) {
+                    ?: return@launch
+                if (!isMountedCheck()) return@launch
+                runCatching {
                     val modelNode = ModelNode(modelInstance = instance).apply {
                         this.scale = scale
                         this.rotation = Float3(0f, rotationY, 0f)
