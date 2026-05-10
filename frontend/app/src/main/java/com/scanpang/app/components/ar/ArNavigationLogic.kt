@@ -23,10 +23,18 @@ internal fun parseNavResponse(response: NavRouteResponse): List<ArRouteNode> {
     val parsedNodes = parseTmapFeatures(arCommand.tmap_features).toMutableList()
     if (parsedNodes.isEmpty()) return parsedNodes
 
-    // START / END 마킹 (원본 parseTmapRoute 동등)
+    // START 마킹
     parsedNodes[0] = parsedNodes[0].copy(type = NodeType.START)
-    parsedNodes[parsedNodes.size - 1] =
-        parsedNodes[parsedNodes.size - 1].copy(type = NodeType.END)
+
+    // END 마킹 — 좌표는 TMAP EP(도로 스냅) 대신 실제 POI 건물 좌표로 덮어씀.
+    // AR 도착 마커가 건물 위에 떨어지고, 도착 판정도 건물 11m 이내에서 발생.
+    val destLat = arCommand.destination.lat
+    val destLng = arCommand.destination.lng
+    parsedNodes[parsedNodes.size - 1] = parsedNodes[parsedNodes.size - 1].copy(
+        lat = destLat,
+        lng = destLng,
+        type = NodeType.END,
+    )
 
     // LLM speech 매칭: turn_points의 lat/lng로 가까운 ArRouteNode에 speech 주입
     arCommand.turn_points.forEach { tp ->

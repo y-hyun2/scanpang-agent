@@ -307,7 +307,7 @@ fun ArRealSceneView(
                 val dist = distRes[0]
 
                 // 도착 처리
-                if (tn.type == NodeType.END && dist <= 11.0f) {
+                if (tn.type == NodeType.END && dist <= 15.0f) {
                     clearArState(routeNodes, activeArNodes, activeModelNodes, renderedIndices)
                     val arrivalSpeech = tn.speech.ifBlank { "목적지에 도착했습니다." }
                     if (!hasSpokenArrival) {
@@ -473,14 +473,24 @@ private fun renderNearbyArrows(
 
     val startIdx = majorPointIndices[currentTargetPointIndex - 1]
     val endIdx = majorPointIndices[currentTargetPointIndex]
-    val cameraAlt = earth.cameraGeospatialPose.altitude
-    val cameraHeading = earth.cameraGeospatialPose.heading.toFloat()
+    val cameraPose = earth.cameraGeospatialPose
+    val cameraAlt = cameraPose.altitude
+    val cameraHeading = cameraPose.heading.toFloat()
 
     for (i in startIdx..endIdx) {
         if (renderedIndices.contains(i)) continue
-        renderedIndices.add(i)
         val node = fullRouteNodes[i]
-        if (node.type == NodeType.PATH_POINT) continue
+        if (node.type == NodeType.PATH_POINT) {
+            renderedIndices.add(i)
+            continue
+        }
+        // END 모델은 35m 이내에서만 렌더 — 그 밖이면 스킵하고 다음 사이클에 재확인
+        if (node.type == NodeType.END) {
+            val d = FloatArray(1)
+            Location.distanceBetween(cameraPose.latitude, cameraPose.longitude, node.lat, node.lng, d)
+            if (d[0] > 35f) continue
+        }
+        renderedIndices.add(i)
 
         val yOff = if (node.type == NodeType.TURN_POINT) 0.5 else 1.5
         val anchor = earth.createAnchor(node.lat, node.lng, cameraAlt - yOff, 0f, 0f, 0f, 1f) ?: continue
@@ -529,6 +539,7 @@ private fun resolveModelForNode(
 ): Triple<String?, Float, Float3> {
     val defaultScale = Float3(1f, 1f, 1f)
     val turnScale = Float3(2.5f, 2.5f, 2.5f)
+    val straightScale = Float3(2.0f, 2.0f, 2.0f)
 
     return when (node.type) {
         NodeType.START, NodeType.END -> Triple("models/map_pointer.glb", cameraHeading, defaultScale)
@@ -551,7 +562,7 @@ private fun resolveModelForNode(
             }
             val rotation = computeArrowRotation(i, node, fullRouteNodes)
             if (isRight == null) {
-                Triple("models/straight.glb", rotation, turnScale)
+                Triple("models/straight.glb", rotation, straightScale)
             } else {
                 val mp = if (isRight) "models/right.glb" else "models/left.glb"
                 val mi = majorPointIndices.indexOf(i)
