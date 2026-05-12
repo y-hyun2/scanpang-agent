@@ -160,7 +160,7 @@ async def process_one_building(ufid: str) -> dict:
     phone    = kakao_info.get("phone", "")
     category = kakao_info.get("category", "")
 
-    # ── 2.5) Naver Local 검색 (homepage 보완) ────────────────────────────────
+    # ── 2.5) Naver Local 검색 (phone·addr·homepage 보완) ────────────────────
     naver_local: dict = {}
     if bld_nm:
         try:
@@ -168,6 +168,9 @@ async def process_one_building(ufid: str) -> dict:
         except Exception as e:
             print(f"[pipeline] fetch_naver_local 실패: {e}")
 
+    # Naver 우선, Kakao 보완 (Naver가 직통번호·도로명주소 정확도 높음)
+    phone    = naver_local.get("phone", "")    or phone
+    addr     = naver_local.get("addr", "")     or addr
     homepage = naver_local.get("homepage", "") or kakao_info.get("homepage", "")
 
     # ── 3) Kakao 건물 소속 매장 수집 (폴리곤+주소 이중 필터) ──────────────
