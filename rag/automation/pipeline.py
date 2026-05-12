@@ -467,18 +467,19 @@ async def process_one_building(ufid: str) -> dict:
     naver_floor_info = _naver_places_to_floor_info(naver_addr_places)
 
     if homepage_floor_info:
-        # 1순위: 공식 홈페이지 (층-매장 구조 가장 정확)
+        # 1순위: 공식 홈페이지 LLM 추출 (층-매장 구조 가장 정확)
         floor_info_list = homepage_floor_info
         print(f"[pipeline] floor_info 출처: 홈페이지 ({len(homepage_floor_info)}개 층)")
-    elif naver_addr_places and govt_stores:
-        # 2순위: Naver 이름/카테고리 + 소상공인 층번호 하이브리드
-        enriched = _enrich_govt_with_confirmed(govt_stores, confirmed)
-        floor_info_list = _merge_naver_govt(naver_addr_places, enriched, kakao_stores)
     elif naver_floor_info:
-        # 3순위: Naver 주소에 층이 명시된 경우 (소상공인 없음)
+        # 2순위: Naver 주소에 층이 명시된 매장 (직접 등록 데이터 — 소상공인보다 신뢰)
         floor_info_list = naver_floor_info
         total = sum(len(f["stores"]) for f in naver_floor_info)
         print(f"[pipeline] floor_info 출처: 네이버 주소장소 ({len(naver_floor_info)}개 층, {total}개 매장)")
+    elif naver_addr_places and govt_stores:
+        # 3순위: Naver 이름/카테고리 + 소상공인 층번호 하이브리드
+        #         (Naver에 층 정보 없지만 소상공인 층번호로 보완)
+        enriched = _enrich_govt_with_confirmed(govt_stores, confirmed)
+        floor_info_list = _merge_naver_govt(naver_addr_places, enriched, kakao_stores)
     elif govt_stores:
         # 4순위: 소상공인 + Kakao 이름/카테고리
         enriched = _enrich_govt_with_confirmed(govt_stores, confirmed)
