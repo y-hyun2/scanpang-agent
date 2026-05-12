@@ -18,7 +18,12 @@ from rag.automation.llm_extractor import (
     extract_floor_info_from_homepage,
 )
 from rag.automation.query_builder import build_queries
-from rag.automation.search_collector import collect, fetch_naver_local, naver_image_search
+from rag.automation.search_collector import (
+    collect,
+    fetch_naver_local,
+    fetch_naver_address_places,
+    naver_image_search,
+)
 from rag.automation.validator import cross_validate
 from rag.automation.govt_api import (
     fetch_building_key,
@@ -44,6 +49,42 @@ async def _fetch_building(ufid: str) -> dict | None:
             ufid,
         )
     return dict(row) if row else None
+
+
+def _naver_places_to_floor_info(places: list[dict]) -> list[dict]:
+    """
+    fetch_naver_address_places 결과를 floor_info 형태로 변환한다.
+    floor 필드가 있는 매장은 해당 층에, 없는 매장은 '미확인'으로 묶는다.
+    floor 정보가 하나도 없으면 빈 리스트 반환 (층 구조가 의미없음).
+    """
+    floor_map: dict[str, list[dict]] = {}
+    for p in places:
+        name  = p.get("name", "").strip()
+        cat   = p.get("category", "")
+        floor = p.get("floor", "").strip()
+        if not name:
+            continue
+        floor_map.setdefault(floor or "미확인", []).append({"name": name, "category": cat})
+
+    # 층 정보가 전혀 없으면 (전부 '미확인') 빈 리스트로 처리
+    has_real_floor = any(k != "미확인" for k in floor_map)
+    if not has_real_floor:
+        return []
+
+    def _sort_key(f: str):
+        if f == "미확인":
+            return (2, 0)
+        s = f.upper().replace("층", "").replace("F", "").replace("B", "-").strip()
+        try:
+            n = int(s)
+            return (0, n) if n >= 0 else (1, abs(n))
+        except ValueError:
+            return (2, 0)
+
+    return [
+        {"floor": f, "stores": stores}
+        for f, stores in sorted(floor_map.items(), key=lambda x: _sort_key(x[0]))
+    ]
 
 
 def _confirmed_to_floor_info(confirmed: list[dict]) -> list[dict]:
@@ -236,6 +277,14 @@ async def process_one_building(ufid: str) -> dict:
         except Exception as e:
             print(f"[pipeline] crawl_homepage 실패: {e}")
 
+    # ── 2.8) 네이버 "이 주소의 장소" 수집 ───────────────────────────────────
+    naver_addr_places: list[dict] = []
+    if addr:
+        try:
+            naver_addr_places = await fetch_naver_address_places(addr)
+        except Exception as e:
+            print(f"[pipeline] fetch_naver_address_places 실패: {e}")
+
     # ── 3) Kakao 건물 소속 매장 수집 (폴리곤+주소 이중 필터) ──────────────
     kakao_stores: list[dict] = []
     try:
@@ -317,14 +366,24 @@ async def process_one_building(ufid: str) -> dict:
     result["confirmed_count"] = len(confirmed)
     result["coverage_rate"]   = coverage_rate
 
-    # ── 8.5) floor_info 우선순위: 홈페이지 > 정부DB(Kakao카테고리보완) > confirmed
+    # ── 8.5) floor_info 우선순위
+    # 1순위: 홈페이지 크롤 (층 구조 가장 정확)
+    # 2순위: 네이버 "이 주소의 장소" (층 정보가 주소에 명시된 경우)
+    # 3순위: 정부DB + Kakao 이름/카테고리 보완
+    # 4순위: LLM confirmed 매장
+    naver_floor_info = _naver_places_to_floor_info(naver_addr_places)
+
     if homepage_floor_info:
         floor_info_list = homepage_floor_info
         print(f"[pipeline] floor_info 출처: 홈페이지 ({len(homepage_floor_info)}개 층)")
+    elif naver_floor_info:
+        floor_info_list = naver_floor_info
+        total = sum(len(f["stores"]) for f in naver_floor_info)
+        print(f"[pipeline] floor_info 출처: 네이버 주소장소 ({len(naver_floor_info)}개 층, {total}개 매장)")
     elif govt_stores:
         enriched = _enrich_govt_with_confirmed(govt_stores, confirmed)
         floor_info_list = _enrich_govt_with_kakao(enriched, kakao_stores)
-        print(f"[pipeline] floor_info 출처: 정부DB+Kakao카테고리")
+        print(f"[pipeline] floor_info 출처: 정부DB+Kakao")
     else:
         floor_info_list = _confirmed_to_floor_info(confirmed)
         print(f"[pipeline] floor_info 출처: LLM confirmed")
