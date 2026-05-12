@@ -102,6 +102,63 @@ async def _fetch_kakao_web(
     return results
 
 
+async def fetch_naver_local(place_name: str) -> dict:
+    """네이버 지역 검색 API → name, addr, phone, category, homepage."""
+    if not _naver_available():
+        return {}
+    async with httpx.AsyncClient(timeout=10) as client:
+        try:
+            resp = await client.get(
+                "https://openapi.naver.com/v1/search/local.json",
+                headers={
+                    "X-Naver-Client-Id":     NAVER_CLIENT_ID,
+                    "X-Naver-Client-Secret": NAVER_CLIENT_SECRET,
+                },
+                params={"query": place_name, "display": 5},
+            )
+            resp.raise_for_status()
+            items = resp.json().get("items", [])
+        except Exception as e:
+            print(f"[search_collector] 네이버 local 실패 ({place_name!r}): {e}")
+            return {}
+
+    if not items:
+        return {}
+    matched = next(
+        (i for i in items if _strip_html(i.get("title", "")) == place_name),
+        items[0],
+    )
+    return {
+        "name":     _strip_html(matched.get("title", "")),
+        "addr":     matched.get("roadAddress", "") or matched.get("address", ""),
+        "phone":    matched.get("telephone", ""),
+        "category": matched.get("category", ""),
+        "homepage": matched.get("link", ""),
+    }
+
+
+async def naver_image_search(query: str) -> str:
+    """네이버 이미지 검색 API → 첫 번째 썸네일 URL (없으면 빈 문자열)."""
+    if not _naver_available():
+        return ""
+    async with httpx.AsyncClient(timeout=10) as client:
+        try:
+            resp = await client.get(
+                "https://openapi.naver.com/v1/search/image",
+                headers={
+                    "X-Naver-Client-Id":     NAVER_CLIENT_ID,
+                    "X-Naver-Client-Secret": NAVER_CLIENT_SECRET,
+                },
+                params={"query": query, "display": 1, "filter": "large"},
+            )
+            resp.raise_for_status()
+            items = resp.json().get("items", [])
+        except Exception as e:
+            print(f"[search_collector] 네이버 image 실패 ({query!r}): {e}")
+            return ""
+    return items[0].get("thumbnail", "") if items else ""
+
+
 async def collect(query_specs: list[dict]) -> list[dict]:
     """
     쿼리 스펙 리스트를 순회하며 각 엔진 API를 호출하고 결과를 정규화·병합한다.

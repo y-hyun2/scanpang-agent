@@ -11,9 +11,9 @@ from dotenv import load_dotenv
 
 from core.db import get_pool
 from rag.automation.kakao_radius import collect_stores_at_building
-from rag.automation.llm_extractor import extract_stores
+from rag.automation.llm_extractor import extract_stores, extract_building_info
 from rag.automation.query_builder import build_queries
-from rag.automation.search_collector import collect
+from rag.automation.search_collector import collect, fetch_naver_local, naver_image_search
 from rag.automation.validator import cross_validate
 from rag.automation.govt_api import (
     fetch_building_key,
@@ -42,14 +42,13 @@ async def _fetch_building(ufid: str) -> dict | None:
 
 
 def _confirmed_to_floor_info(confirmed: list[dict]) -> list[dict]:
-    floor_map: dict[str, list[str]] = {}
+    floor_map: dict[str, list[dict]] = {}
     for store in confirmed:
         floor = store.get("floor") or "미확인"
         name  = store.get("name", "").strip()
-        cat   = store.get("category", "")
-        label = f"{name} ({cat})" if cat else name
+        cat   = store.get("category") or ""
         if name:
-            floor_map.setdefault(floor, []).append(label)
+            floor_map.setdefault(floor, []).append({"name": name, "category": cat})
 
     def _sort_key(floor_str: str):
         if floor_str == "미확인":
@@ -65,6 +64,53 @@ def _confirmed_to_floor_info(confirmed: list[dict]) -> list[dict]:
         {"floor": f, "stores": stores}
         for f, stores in sorted(floor_map.items(), key=lambda x: _sort_key(x[0]))
     ]
+
+
+def _enrich_govt_with_confirmed(
+    govt_stores: list[dict],
+    confirmed: list[dict],
+) -> list[dict]:
+    """confirmed 중 govt_stores에 없는 매장을 층별로 병합한다."""
+    if not confirmed:
+        return govt_stores
+
+    try:
+        from rapidfuzz import fuzz as _fuzz
+        def _already_in(name: str, name_set: set[str]) -> bool:
+            n = name.lower()
+            return any(_fuzz.ratio(n, g) >= 70 for g in name_set)
+    except ImportError:
+        def _already_in(name: str, name_set: set[str]) -> bool:
+            return name.lower() in name_set
+
+    govt_name_set: set[str] = set()
+    for floor_item in govt_stores:
+        for store in floor_item.get("stores", []):
+            n = store.get("name", "") if isinstance(store, dict) else store.split("(")[0]
+            if n:
+                govt_name_set.add(n.strip().lower())
+
+    extra: dict[str, list] = {}
+    for store in confirmed:
+        name = store.get("name", "").strip()
+        if not name or _already_in(name, govt_name_set):
+            continue
+        floor = store.get("floor") or "미확인"
+        extra.setdefault(floor, []).append(
+            {"name": name, "category": store.get("category") or ""}
+        )
+
+    if not extra:
+        return govt_stores
+
+    result = [{"floor": f["floor"], "stores": list(f["stores"])} for f in govt_stores]
+    floor_idx = {f["floor"]: i for i, f in enumerate(result)}
+    for floor, stores in extra.items():
+        if floor in floor_idx:
+            result[floor_idx[floor]]["stores"].extend(stores)
+        else:
+            result.append({"floor": floor, "stores": stores})
+    return result
 
 
 async def process_one_building(ufid: str) -> dict:
@@ -114,6 +160,16 @@ async def process_one_building(ufid: str) -> dict:
     phone    = kakao_info.get("phone", "")
     category = kakao_info.get("category", "")
 
+    # ── 2.5) Naver Local 검색 (homepage 보완) ────────────────────────────────
+    naver_local: dict = {}
+    if bld_nm:
+        try:
+            naver_local = await fetch_naver_local(bld_nm)
+        except Exception as e:
+            print(f"[pipeline] fetch_naver_local 실패: {e}")
+
+    homepage = naver_local.get("homepage", "") or kakao_info.get("homepage", "")
+
     # ── 3) Kakao 건물 소속 매장 수집 (폴리곤+주소 이중 필터) ──────────────
     kakao_stores: list[dict] = []
     try:
@@ -148,6 +204,27 @@ async def process_one_building(ufid: str) -> dict:
     except Exception as e:
         print(f"[pipeline] extract_stores 실패: {e}")
 
+    # ── 6.5) LLM 건물 운영정보 추출 ─────────────────────────────────────────
+    bld_info: dict = {}
+    try:
+        bld_info = await extract_building_info(bld_nm, search_results)
+    except Exception as e:
+        print(f"[pipeline] extract_building_info 실패: {e}")
+
+    open_hours    = bld_info.get("open_hours", "")
+    closed_days   = bld_info.get("closed_days", "")
+    parking_info  = bld_info.get("parking_info", "")
+    admission_fee = bld_info.get("admission_fee", "")
+    homepage      = homepage or bld_info.get("homepage", "")
+
+    # ── 6.7) 네이버 이미지 검색 ─────────────────────────────────────────────
+    image_url = ""
+    if bld_nm:
+        try:
+            image_url = await naver_image_search(f"{bld_nm} 외관")
+        except Exception as e:
+            print(f"[pipeline] naver_image_search 실패: {e}")
+
     # ── 7) 정부 DB (소상공인 API) ────────────────────────────────────────────
     govt_stores: list[dict] = []
     try:
@@ -166,8 +243,11 @@ async def process_one_building(ufid: str) -> dict:
     result["confirmed_count"] = len(confirmed)
     result["coverage_rate"]   = coverage_rate
 
+    # ── 8.5) 정부DB에 confirmed 매장 병합 ───────────────────────────────────
+    enriched_govt = _enrich_govt_with_confirmed(govt_stores, confirmed) if govt_stores else []
+
     # ── 9) Supabase upsert ───────────────────────────────────────────────────
-    floor_info_list = govt_stores if govt_stores else _confirmed_to_floor_info(confirmed)
+    floor_info_list = enriched_govt if enriched_govt else _confirmed_to_floor_info(confirmed)
 
     try:
         pool = await get_pool()
@@ -176,8 +256,11 @@ async def process_one_building(ufid: str) -> dict:
                 """
                 INSERT INTO place_info
                     (ufid, name_ko, lat, lng, addr, phone, category,
-                     floor_info, coverage_rate, last_updated, source)
-                VALUES ($1,$2,$3,$4,$5,$6,$7,$8::jsonb,$9,$10,$11)
+                     floor_info, coverage_rate, last_updated, source,
+                     image_url, homepage, open_hours, closed_days,
+                     parking_info, admission_fee)
+                VALUES ($1,$2,$3,$4,$5,$6,$7,$8::jsonb,$9,$10,$11,
+                        $12,$13,$14,$15,$16,$17)
                 ON CONFLICT (ufid) DO UPDATE SET
                     name_ko       = EXCLUDED.name_ko,
                     addr          = EXCLUDED.addr,
@@ -186,13 +269,22 @@ async def process_one_building(ufid: str) -> dict:
                     floor_info    = EXCLUDED.floor_info,
                     coverage_rate = EXCLUDED.coverage_rate,
                     last_updated  = EXCLUDED.last_updated,
-                    source        = EXCLUDED.source
+                    source        = EXCLUDED.source,
+                    image_url     = EXCLUDED.image_url,
+                    homepage      = EXCLUDED.homepage,
+                    open_hours    = EXCLUDED.open_hours,
+                    closed_days   = EXCLUDED.closed_days,
+                    parking_info  = EXCLUDED.parking_info,
+                    admission_fee = EXCLUDED.admission_fee
                 """,
                 ufid, name_ko, lat, lng, addr, phone, category,
                 json.dumps(floor_info_list, ensure_ascii=False),
                 coverage_rate,
                 datetime.now(timezone.utc),
                 "automated",
+                image_url or None, homepage or None,
+                open_hours or None, closed_days or None,
+                parking_info or None, admission_fee or None,
             )
         print(f"[pipeline] Supabase upsert 완료: {ufid}")
         result["status"] = "ok" if confirmed or govt_stores else "partial"

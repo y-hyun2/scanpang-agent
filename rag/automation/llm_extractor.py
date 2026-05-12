@@ -70,6 +70,81 @@ def _validate_quote(verbatim_quote: str, raw_text: str) -> bool:
     return norm_quote in norm_text
 
 
+_BUILDING_INFO_SYSTEM_PROMPT = """\
+당신은 텍스트 파서입니다. 주어진 검색 결과에서 건물/장소의 운영 정보를 추출합니다.
+
+반드시 지켜야 할 규칙:
+1. 학습된 지식(훈련 데이터)은 절대 사용 금지. 오직 아래 입력 텍스트에 명시된 내용만 사용.
+2. 입력에 명시적으로 등장하는 정보만 출력. 추론 금지.
+3. 각 필드마다 _quote 필드 필수: 입력 텍스트에서 그대로 가져온 30자 이내 substring.
+4. 정보가 없으면 null.
+
+출력 형식 (JSON):
+{
+  "open_hours":        "운영시간" | null,
+  "open_hours_quote":  "verbatim_quote" | null,
+  "closed_days":       "휴무일" | null,
+  "closed_days_quote": "verbatim_quote" | null,
+  "parking_info":       "주차 정보" | null,
+  "parking_info_quote": "verbatim_quote" | null,
+  "admission_fee":       "입장료" | null,
+  "admission_fee_quote": "verbatim_quote" | null,
+  "homepage":       "공식 홈페이지 URL" | null,
+  "homepage_quote": "verbatim_quote" | null
+}
+"""
+
+_BUILDING_FIELDS = ("open_hours", "closed_days", "parking_info", "admission_fee", "homepage")
+
+
+async def extract_building_info(
+    building_name: str,
+    search_results: list[dict],
+) -> dict:
+    """
+    검색 결과에서 LLM으로 건물 운영정보를 추출하고 verbatim_quote로 검증한다.
+
+    Returns:
+        {open_hours, closed_days, parking_info, admission_fee, homepage}
+        verbatim_quote 검증 실패 필드는 빈 문자열.
+    """
+    if not search_results:
+        return {}
+
+    packed_text, raw_text = _pack_results(search_results)
+    building_label = building_name if building_name else "이름 없는 건물"
+    user_content = (
+        f"건물명: {building_label}\n\n"
+        f"=== 검색 결과 (이 텍스트만 참고) ===\n{packed_text}"
+    )
+
+    try:
+        response = await _client.chat.completions.create(
+            model="gpt-4o-mini",
+            temperature=0,
+            response_format={"type": "json_object"},
+            messages=[
+                {"role": "system", "content": _BUILDING_INFO_SYSTEM_PROMPT},
+                {"role": "user",   "content": user_content},
+            ],
+            max_tokens=800,
+        )
+        data = json.loads(response.choices[0].message.content)
+    except Exception as e:
+        print(f"[llm_extractor] extract_building_info 실패: {e}")
+        return {}
+
+    result: dict = {}
+    for field in _BUILDING_FIELDS:
+        value = data.get(field) or ""
+        quote = data.get(f"{field}_quote") or ""
+        result[field] = value if (value and _validate_quote(quote, raw_text)) else ""
+
+    print(f"[llm_extractor] building_info 추출: "
+          f"{[f for f in _BUILDING_FIELDS if result.get(f)]}")
+    return result
+
+
 async def extract_stores(
     building_name: str,
     search_results: list[dict],

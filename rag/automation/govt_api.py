@@ -98,8 +98,9 @@ async def fetch_floor_info(building_key: str) -> list:
         store_name = item.get("bizesNm", "").strip()
         biz_type   = item.get("indsMclsNm", "").strip()
         if store_name:
-            label = f"{store_name} ({biz_type})" if biz_type else store_name
-            floor_map.setdefault(floor, []).append(label)
+            floor_map.setdefault(floor, []).append(
+                {"name": store_name, "category": biz_type}
+            )
 
     def _sort_key(f: str):
         if f == "기타":

@@ -56,10 +56,13 @@ def cross_validate(
     # 정부 + Kakao 매장 이름 풀 (퍼지 매칭용)
     govt_names: list[str] = []
     for floor_item in govt_stores:
-        for store_label in floor_item.get("stores", []):
-            # "스타벅스 (카페)" 형태에서 이름만 추출
-            store_name = store_label.split("(")[0].strip()
-            govt_names.append(_normalize(store_name))
+        for store in floor_item.get("stores", []):
+            if isinstance(store, dict):
+                store_name = store.get("name", "")
+            else:
+                store_name = store.split("(")[0].strip()
+            if store_name:
+                govt_names.append(_normalize(store_name))
 
     kakao_names: list[str] = [
         _normalize(s.get("name", "")) for s in kakao_stores if s.get("name")
