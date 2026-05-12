@@ -21,6 +21,7 @@ import time
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from rag.automation.pipeline import process_one_building
+from core.db import get_pool
 
 MYEONGDONG_LAT = 37.5636
 MYEONGDONG_LNG = 126.9822
@@ -53,11 +54,47 @@ def get_top50(limit: int = 50) -> list[dict]:
     return candidates[:limit]
 
 
-async def run(limit: int, skip: int):
+async def _existing_ufids(ufids: list[str]) -> set[str]:
+    """주어진 ufid 중 place_info에 이미 채워진(=name_ko가 NULL이 아니고 floor_info가
+    있는) 것들의 집합을 반환. 빈 집합이면 모두 새로 처리.
+    name_ko가 빈 문자열인 경우(=공식건물명 없는 케이스)도 채워진 것으로 본다."""
+    if not ufids:
+        return set()
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        rows = await conn.fetch(
+            "SELECT ufid FROM place_info "
+            "WHERE ufid = ANY($1::text[]) "
+            "  AND name_ko IS NOT NULL "
+            "  AND floor_info IS NOT NULL "
+            "  AND jsonb_array_length(floor_info) > 0",
+            ufids,
+        )
+    return {r["ufid"] for r in rows}
+
+
+async def run(limit: int, skip: int, names: list[str], ufids: list[str], skip_existing: bool):
     buildings = get_top50(limit + skip)
     targets   = buildings[skip:]
 
-    print(f"\n처리 대상: {len(targets)}개 건물 (skip={skip}, limit={limit})\n")
+    # --name / --ufid 필터
+    if names:
+        targets = [b for b in targets
+                   if any(n.lower() in (b.get("bld_nm") or "").lower() for n in names)]
+    if ufids:
+        targets = [b for b in targets if b["ufid"] in ufids]
+
+    # --skip-existing: 이미 DB에 충분히 채워진 건물 제외
+    skipped_existing = 0
+    if skip_existing and targets:
+        done = await _existing_ufids([b["ufid"] for b in targets])
+        before = len(targets)
+        targets = [b for b in targets if b["ufid"] not in done]
+        skipped_existing = before - len(targets)
+
+    print(f"\n처리 대상: {len(targets)}개 건물 (skip={skip}, limit={limit}"
+          + (f", 이미 처리됨={skipped_existing}" if skipped_existing else "")
+          + ")\n")
 
     results = []
     t_start = time.time()
@@ -120,10 +157,14 @@ async def run(limit: int, skip: int):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--limit", type=int, default=50, help="처리할 건물 수 (기본 50)")
-    parser.add_argument("--skip",  type=int, default=0,  help="앞에서 건너뛸 수 (재시작용)")
+    parser.add_argument("--limit", type=int,   default=50, help="처리할 건물 수 (기본 50)")
+    parser.add_argument("--skip",  type=int,   default=0,  help="앞에서 건너뛸 수 (재시작용)")
+    parser.add_argument("--name",  type=str,   nargs="+",  help="건물명 부분일치 필터 (여러 개 가능)")
+    parser.add_argument("--ufid",  type=str,   nargs="+",  help="특정 ufid만 처리 (여러 개 가능)")
+    parser.add_argument("--skip-existing", action="store_true",
+                        help="place_info에 이미 채워진(name_ko·floor_info 있는) ufid는 건너뜀")
     args = parser.parse_args()
-    asyncio.run(run(args.limit, args.skip))
+    asyncio.run(run(args.limit, args.skip, args.name or [], args.ufid or [], args.skip_existing))
 
 
 if __name__ == "__main__":

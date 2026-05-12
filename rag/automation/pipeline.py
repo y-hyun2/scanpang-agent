@@ -24,6 +24,11 @@ from rag.automation.search_collector import (
     fetch_naver_address_places,
     naver_image_search,
 )
+from rag.automation.naver_map_scraper import (
+    fetch_address_places as fetch_naver_map_places,
+    fetch_place_detail as fetch_naver_place_detail,
+    reverse_geocode as naver_reverse_geocode,
+)
 from rag.automation.validator import cross_validate
 from rag.automation.govt_api import (
     fetch_building_key,
@@ -32,6 +37,25 @@ from rag.automation.govt_api import (
 )
 
 load_dotenv()
+
+
+# Naver Place API의 link 필드가 공식 홈페이지 대신 소셜 계정을 반환하는 경우가 잦다.
+# 다음 도메인이 포함되면 공식 홈페이지로 간주하지 않는다.
+_SOCIAL_URL_PATTERNS = (
+    "instagram.com", "facebook.com", "twitter.com", "x.com",
+    "youtube.com", "youtu.be",
+    "blog.naver.com", "cafe.naver.com", "post.naver.com",
+    "tiktok.com",
+    "pf.kakao.com", "kakao.com/o/",
+    "linktr.ee",
+)
+
+
+def _is_social_url(url: str) -> bool:
+    if not url:
+        return False
+    lower = url.lower()
+    return any(p in lower for p in _SOCIAL_URL_PATTERNS)
 
 
 async def _fetch_building(ufid: str) -> dict | None:
@@ -330,37 +354,84 @@ async def process_one_building(ufid: str) -> dict:
         print(f"[pipeline] {result['error']}")
         return result
 
-    bld_nm  = (building.get("bld_nm") or "").strip()
-    lat     = float(building.get("center_lat", 0))
-    lng     = float(building.get("center_lng", 0))
-    name_ko = bld_nm or "이름 없는 건물"
-    result["name_ko"] = name_ko
-    print(f"[pipeline] 건물: {name_ko!r}  ({lat:.5f}, {lng:.5f})")
+    vworld_bld_nm = (building.get("bld_nm") or "").strip()
+    lat = float(building.get("center_lat", 0))
+    lng = float(building.get("center_lng", 0))
 
-    # ── 2) Kakao 기본 정보 (주소·전화·카테고리) ──────────────────────────────
+    # ── 1.5) Naver Reverse Geocode (좌표 → 도로명주소 + 공식 건물명) ─────────
+    # VWorld 건물명/주소가 부정확하거나 비어있는 경우가 많아 좌표 기반으로 신뢰도 높은
+    # Naver 도로명주소와 공식 건물명을 먼저 확보한다.
+    naver_geo: dict = {}
+    try:
+        naver_geo = await naver_reverse_geocode(lat, lng)
+    except Exception as e:
+        print(f"[pipeline] naver_reverse_geocode 실패: {e}")
+
+    # 건물명 우선순위: 1) Naver 공식 → 2) VWorld → 3) 빈 문자열
+    bld_nm  = naver_geo.get("bld_nm", "") or vworld_bld_nm
+    name_ko = bld_nm
+    result["name_ko"] = name_ko
+    print(f"[pipeline] 건물: {name_ko!r}  ({lat:.5f}, {lng:.5f})  "
+          f"[naver={naver_geo.get('bld_nm', '')!r}, vworld={vworld_bld_nm!r}]")
+
+    # 주소 우선순위: Naver reverse geocode 결과를 1순위로 채택
+    addr = naver_geo.get("addr", "")
+
+    # ── 2) Kakao 기본 정보 (전화·카테고리 보완용) ────────────────────────────
+    # " 및 "로 연결된 복합 건물명(예: "롯데호텔 및 백화점")은 검색 키워드로 적합하지 않아
+    # Kakao/Naver 모두 미매칭된다. 첫 번째 이름으로만 시도한다.
+    search_nm = bld_nm.split(" 및 ")[0].strip() if bld_nm and " 및 " in bld_nm else bld_nm
+
     kakao_info: dict = {}
-    if bld_nm:
+    if search_nm:
         try:
-            kakao_info = await fetch_kakao_info(bld_nm)
+            kakao_info = await fetch_kakao_info(search_nm)
         except Exception as e:
             print(f"[pipeline] fetch_kakao_info 실패: {e}")
 
-    addr     = kakao_info.get("addr", "")
     phone    = kakao_info.get("phone", "")
     category = kakao_info.get("category", "")
+    # addr은 이미 reverse geocode로 채워졌으니 Kakao addr는 사용하지 않음
+    if not addr:
+        addr = kakao_info.get("addr", "")
 
-    # ── 2.5) Naver Local 검색 (phone·addr·homepage 보완) ────────────────────
+    # ── 2.5) Naver Local 검색 (phone·homepage 보완) ─────────────────────────
     naver_local: dict = {}
-    if bld_nm:
+    if search_nm:
         try:
-            naver_local = await fetch_naver_local(bld_nm)
+            naver_local = await fetch_naver_local(search_nm)
         except Exception as e:
             print(f"[pipeline] fetch_naver_local 실패: {e}")
 
-    # Naver 우선, Kakao 보완 (Naver가 직통번호·도로명주소 정확도 높음)
+    # Naver 우선, Kakao 보완 (Naver가 직통번호 정확도 높음). addr은 이미 확정.
     phone    = naver_local.get("phone", "")    or phone
-    addr     = naver_local.get("addr", "")     or addr
     homepage = naver_local.get("homepage", "") or kakao_info.get("homepage", "")
+
+    # ── 2.6) Naver Place 상세 정보 (가장 풍부한 단일 소스) ──────────────────
+    # map.naver.com에 건물명으로 검색 → 매칭되는 Naver Place 페이지에서
+    # 영업시간·휴무일·전화·편의시설·홈페이지를 한 번에 수집한다.
+    # 빌딩 자체가 Naver Place에 등록 안 된 경우(예: 작은 오피스 빌딩) 이름 매칭
+    # (fuzz partial_ratio < 60)에 걸려 빈 dict 반환 → 기존 LLM 추출이 fallback.
+    place_detail: dict = {}
+    if bld_nm:
+        place_query = f"{addr} {bld_nm}".strip() if addr else bld_nm
+        try:
+            place_detail = await fetch_naver_place_detail(
+                place_query, expected_name=bld_nm, expected_addr=addr,
+            )
+        except Exception as e:
+            print(f"[pipeline] fetch_naver_place_detail 실패: {e}")
+
+    if place_detail:
+        # phone/homepage가 비어있으면 Naver Place에서 보강
+        phone    = phone    or place_detail.get("phone", "")
+        homepage = homepage or place_detail.get("homepage", "")
+
+    # 소셜미디어·블로그 URL은 공식 홈페이지로 인정하지 않음 (Naver Place API가 종종
+    # Instagram/Facebook을 link로 반환함). 공식 페이지가 없으면 빈 문자열로 둔다.
+    if homepage and _is_social_url(homepage):
+        print(f"[pipeline] 소셜/블로그 URL이라 homepage에서 제외: {homepage}")
+        homepage = ""
 
     # ── 2.7) 공식 홈페이지 크롤 ─────────────────────────────────────────────
     homepage_text: str = ""
@@ -371,28 +442,66 @@ async def process_one_building(ufid: str) -> dict:
             print(f"[pipeline] crawl_homepage 실패: {e}")
 
     # ── 2.8) 네이버 "이 주소의 장소" 수집 ───────────────────────────────────
-    naver_addr_places: list[dict] = []
+    # 1순위: Naver Map 내부 API(`addressDetailPlace`) — UI에 표시되는 전체 매장
+    #        리스트(보통 50~100+개) 수집. Local Search OpenAPI의 5~15개 cap 우회.
+    # 2순위: Local Search OpenAPI에 주소로 검색 (내부 API 실패 시 fallback).
+    # 3순위: Local Search OpenAPI에 건물명으로 검색.
+    naver_raw: list[dict] = []
     if addr:
         try:
-            naver_addr_places = await fetch_naver_address_places(addr)
+            naver_raw = await fetch_naver_map_places(addr)
         except Exception as e:
-            print(f"[pipeline] fetch_naver_address_places 실패: {e}")
+            print(f"[pipeline] fetch_naver_map_places 실패: {e}")
+
+    if not naver_raw:
+        for _query in [q for q in (addr, bld_nm) if q]:
+            try:
+                naver_raw = await fetch_naver_address_places(_query)
+            except Exception as e:
+                print(f"[pipeline] fetch_naver_address_places 실패 ({_query!r}): {e}")
+            if naver_raw:
+                break
+
+    # 매장(store)과 편의시설(facility) 분리.
+    # kind 필드는 naver_map_scraper 결과에만 있으므로 없으면 store로 간주.
+    naver_addr_places: list[dict] = [p for p in naver_raw if p.get("kind", "store") == "store"]
+    naver_facilities: list[dict]  = [p for p in naver_raw if p.get("kind") == "facility"]
+    if naver_facilities:
+        print(f"[pipeline] 편의시설(화장실/엘리베이터 등) 분리 보관: {len(naver_facilities)}개")
+
+    # ── 2.9) 우선순위 1·2 조기 확정 ─────────────────────────────────────────
+    # 홈페이지 LLM 추출(1순위) 또는 Naver 층 명시 데이터(2순위)로 floor_info가
+    # 이미 채워질 수 있으면 Kakao radius·정부DB API 호출을 스킵해 시간 절약.
+    homepage_floor_info: list[dict] = []
+    if homepage_text:
+        try:
+            homepage_floor_info = await extract_floor_info_from_homepage(bld_nm, homepage_text)
+        except Exception as e:
+            print(f"[pipeline] extract_floor_info_from_homepage 실패: {e}")
+
+    naver_floor_info = _naver_places_to_floor_info(naver_addr_places)
+    floor_info_locked = bool(homepage_floor_info or naver_floor_info)
+    if floor_info_locked:
+        reason = "홈페이지 LLM" if homepage_floor_info else "Naver 주소장소(층 명시)"
+        print(f"[pipeline] floor_info {reason} 확정 → Kakao radius·정부DB 스킵")
 
     # ── 3) Kakao 건물 소속 매장 수집 (폴리곤+주소 이중 필터) ──────────────
+    # floor_info_locked 상태면 정부DB 보정용으로만 쓰이는 kakao_stores가 불필요.
     kakao_stores: list[dict] = []
-    try:
-        # asyncpg가 json 표현식 결과를 문자열로 반환하는 경우 대비
-        polygon_coords = building.get("polygon_coords") or []
-        if isinstance(polygon_coords, str):
-            polygon_coords = json.loads(polygon_coords)
-        kakao_stores = await collect_stores_at_building(
-            ufid=ufid,
-            bld_polygon_coords=polygon_coords,
-            bld_road_address=addr,
-            bld_name=bld_nm,
-        )
-    except Exception as e:
-        print(f"[pipeline] collect_stores_at_building 실패: {e}")
+    if not floor_info_locked:
+        try:
+            # asyncpg가 json 표현식 결과를 문자열로 반환하는 경우 대비
+            polygon_coords = building.get("polygon_coords") or []
+            if isinstance(polygon_coords, str):
+                polygon_coords = json.loads(polygon_coords)
+            kakao_stores = await collect_stores_at_building(
+                ufid=ufid,
+                bld_polygon_coords=polygon_coords,
+                bld_road_address=addr,
+                bld_name=bld_nm,
+            )
+        except Exception as e:
+            print(f"[pipeline] collect_stores_at_building 실패: {e}")
 
     # ── 4) 쿼리 스펙 생성 ────────────────────────────────────────────────────
     query_specs = build_queries(building, kakao_stores)
@@ -412,18 +521,29 @@ async def process_one_building(ufid: str) -> dict:
     except Exception as e:
         print(f"[pipeline] extract_stores 실패: {e}")
 
-    # ── 6.5) LLM 건물 운영정보 추출 ─────────────────────────────────────────
-    bld_info: dict = {}
-    try:
-        bld_info = await extract_building_info(bld_nm, search_results)
-    except Exception as e:
-        print(f"[pipeline] extract_building_info 실패: {e}")
+    # ── 6.5) LLM 건물 운영정보 추출 (Naver Place 미매칭 시 fallback) ────────
+    # ⓒ.6에서 Naver Place detail로 잡힌 경우 운영정보를 그대로 사용하고 LLM은 건너뜀.
+    # 그렇지 않은 경우(빌딩이 Naver Place에 없을 때)만 ⑥⑦ 검색 결과로 LLM 추출.
+    if place_detail:
+        open_hours    = place_detail.get("open_hours", "")
+        closed_days   = place_detail.get("closed_days", "")
+        # 편의시설 리스트에서 주차 관련 항목 → parking_info 텍스트로 합침
+        conv = place_detail.get("conveniences", []) or []
+        parking_terms = [c for c in conv if "주차" in c or "발렛" in c]
+        parking_info  = ", ".join(parking_terms) if parking_terms else ""
+        admission_fee = ""  # Naver Place에 별도 필드 없음
+    else:
+        bld_info: dict = {}
+        try:
+            bld_info = await extract_building_info(bld_nm, search_results)
+        except Exception as e:
+            print(f"[pipeline] extract_building_info 실패: {e}")
 
-    open_hours    = bld_info.get("open_hours", "")
-    closed_days   = bld_info.get("closed_days", "")
-    parking_info  = bld_info.get("parking_info", "")
-    admission_fee = bld_info.get("admission_fee", "")
-    homepage      = homepage or bld_info.get("homepage", "")
+        open_hours    = bld_info.get("open_hours", "")
+        closed_days   = bld_info.get("closed_days", "")
+        parking_info  = bld_info.get("parking_info", "")
+        admission_fee = bld_info.get("admission_fee", "")
+        homepage      = homepage or bld_info.get("homepage", "")
 
     # ── 6.7) 네이버 이미지 검색 ─────────────────────────────────────────────
     image_url = ""
@@ -434,22 +554,16 @@ async def process_one_building(ufid: str) -> dict:
             print(f"[pipeline] naver_image_search 실패: {e}")
 
     # ── 7) 정부 DB (소상공인 API) ────────────────────────────────────────────
+    # floor_info_locked 상태면 3·4순위 fallback이 발동될 일이 없어 정부DB 불필요.
     govt_stores: list[dict] = []
-    try:
-        building_key = await fetch_building_key(addr) if addr else None
-        if building_key:
-            govt_stores = await fetch_floor_info(building_key)
-            print(f"[pipeline] 정부DB: {sum(len(f['stores']) for f in govt_stores)}개 매장")
-    except Exception as e:
-        print(f"[pipeline] 정부DB 조회 실패: {e}")
-
-    # ── 7.5) 홈페이지 텍스트 → 층별 매장 추출 ──────────────────────────────
-    homepage_floor_info: list[dict] = []
-    if homepage_text:
+    if not floor_info_locked:
         try:
-            homepage_floor_info = await extract_floor_info_from_homepage(bld_nm, homepage_text)
+            building_key = await fetch_building_key(addr) if addr else None
+            if building_key:
+                govt_stores = await fetch_floor_info(building_key)
+                print(f"[pipeline] 정부DB: {sum(len(f['stores']) for f in govt_stores)}개 매장")
         except Exception as e:
-            print(f"[pipeline] extract_floor_info_from_homepage 실패: {e}")
+            print(f"[pipeline] 정부DB 조회 실패: {e}")
 
     # ── 8) 교차검증 ──────────────────────────────────────────────────────────
     validation    = cross_validate(extracted, govt_stores, kakao_stores)
@@ -464,8 +578,7 @@ async def process_one_building(ufid: str) -> dict:
     # 2순위: 네이버 "이 주소의 장소" (층 정보가 주소에 명시된 경우)
     # 3순위: 정부DB + Kakao 이름/카테고리 보완
     # 4순위: LLM confirmed 매장
-    naver_floor_info = _naver_places_to_floor_info(naver_addr_places)
-
+    # homepage_floor_info, naver_floor_info는 §2.9에서 이미 계산됨
     if homepage_floor_info:
         # 1순위: 공식 홈페이지 LLM 추출 (층-매장 구조 가장 정확)
         floor_info_list = homepage_floor_info
@@ -501,9 +614,9 @@ async def process_one_building(ufid: str) -> dict:
                     (ufid, name_ko, lat, lng, addr, phone, category,
                      floor_info, coverage_rate, last_updated, source,
                      image_url, homepage, open_hours, closed_days,
-                     parking_info, admission_fee)
+                     parking_info, admission_fee, facilities)
                 VALUES ($1,$2,$3,$4,$5,$6,$7,$8::jsonb,$9,$10,$11,
-                        $12,$13,$14,$15,$16,$17)
+                        $12,$13,$14,$15,$16,$17,$18::jsonb)
                 ON CONFLICT (ufid) DO UPDATE SET
                     name_ko       = EXCLUDED.name_ko,
                     addr          = EXCLUDED.addr,
@@ -518,7 +631,8 @@ async def process_one_building(ufid: str) -> dict:
                     open_hours    = EXCLUDED.open_hours,
                     closed_days   = EXCLUDED.closed_days,
                     parking_info  = EXCLUDED.parking_info,
-                    admission_fee = EXCLUDED.admission_fee
+                    admission_fee = EXCLUDED.admission_fee,
+                    facilities    = EXCLUDED.facilities
                 """,
                 ufid, name_ko, lat, lng, addr, phone, category,
                 json.dumps(floor_info_list, ensure_ascii=False),
@@ -528,9 +642,12 @@ async def process_one_building(ufid: str) -> dict:
                 image_url or None, homepage or None,
                 open_hours or None, closed_days or None,
                 parking_info or None, admission_fee or None,
+                json.dumps(naver_facilities, ensure_ascii=False) if naver_facilities else None,
             )
         print(f"[pipeline] Supabase upsert 완료: {ufid}")
-        result["status"] = "ok" if confirmed or govt_stores else "partial"
+        # floor_info가 어떤 소스로든 채워졌으면 성공으로 간주.
+        # floor_info_locked일 때 govt_stores가 비어있어도 1·2순위로 채워졌기 때문에 ok.
+        result["status"] = "ok" if floor_info_list else "partial"
     except Exception as e:
         result["error"] = f"Supabase upsert 실패: {e}"
         print(f"[pipeline] {result['error']}")
