@@ -30,6 +30,18 @@ fun BadgeDirection.icon(): ImageVector = when (this) {
 }
 
 /**
+ * 표지판 뒷면 — 물리적 거울상.
+ * 좌회전 화살표를 종이 뒤에서 보면 우회전으로 보이는 효과를 시뮬레이션.
+ * STRAIGHT / DESTINATION은 좌우 대칭이라 그대로.
+ */
+fun BadgeDirection.mirrored(): BadgeDirection = when (this) {
+    BadgeDirection.LEFT -> BadgeDirection.RIGHT
+    BadgeDirection.RIGHT -> BadgeDirection.LEFT
+    BadgeDirection.STRAIGHT -> BadgeDirection.STRAIGHT
+    BadgeDirection.DESTINATION -> BadgeDirection.DESTINATION
+}
+
+/**
  * AR scene 안의 ViewNode2에 입혀 3D 평면 빌보드로 렌더되는 Figma 스타일 배지.
  * 원형 + Material 아이콘. hufs-cdp의 ArNavTurnBadge와 동일한 룩.
  *

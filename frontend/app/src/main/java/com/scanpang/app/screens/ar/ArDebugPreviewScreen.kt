@@ -42,11 +42,13 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import androidx.navigation.NavController
+import com.google.android.filament.Material
 import com.google.ar.core.Config
 import com.google.ar.core.Pose
 import com.google.ar.core.TrackingState
 import com.scanpang.app.components.ar.ArInWorldBadgeContent
 import com.scanpang.app.components.ar.BadgeDirection
+import com.scanpang.app.components.ar.mirrored
 import dev.romainguy.kotlin.math.Float3
 import io.github.sceneview.ar.ARScene
 import io.github.sceneview.ar.node.AnchorNode
@@ -131,6 +133,7 @@ fun ArDebugPreviewScreen(navController: NavController, modifier: Modifier = Modi
     var currentAnchorNode by remember { mutableStateOf<AnchorNode?>(null) }
     var currentModelNode by remember { mutableStateOf<ModelNode?>(null) }
     var currentViewNode by remember { mutableStateOf<ViewNode2?>(null) }
+    var currentBackViewNode by remember { mutableStateOf<ViewNode2?>(null) }
 
     // 재배치 트리거
     var placeRequest by remember { mutableStateOf(0) }
@@ -152,40 +155,51 @@ fun ArDebugPreviewScreen(navController: NavController, modifier: Modifier = Modi
             node.scale = Float3(scale, scale, scale)
             node.rotation = Float3(pitchDeg, yawDeg, 90f)
         }
+        currentBackViewNode?.let { node ->
+            node.scale = Float3(scale, scale, scale)
+            node.rotation = Float3(pitchDeg, yawDeg + 180f, 90f)
+        }
     }
 
-    // 도착 애니메이션: "기울이고 다시 돌아오기" — 본 화면과 동일 패턴
-    // Phase 1: 0° → 90° X 기울임 (파란 카드, edge-on에서 안 보임)
-    // Phase 2: 90° → 0° 복귀 (초록 카드, 정면으로 돌아옴, 끝나는 자세 정상)
+    // 도착 애니메이션 — 핵심 아이디어:
+    //  1) 시작 시 뒷면 plane을 destroy (애니메이션 동안 겹침 가능성 자체 제거)
+    //  2) 앞면만 단독으로 0°→90°→swap→90°→0° 진행
+    //  3) 애니메이션 끝나고 뒷면 plane을 초록 거울상으로 재생성
     LaunchedEffect(isArrivedToggle) {
         if (!isArrivedToggle) return@LaunchedEffect
         val anchor = currentAnchorNode ?: return@LaunchedEffect
-        val oldChild = currentViewNode ?: return@LaunchedEffect
+        val oldFront = currentViewNode ?: return@LaunchedEffect
 
-        val baseYaw = oldChild.rotation.y
-        val baseRoll = oldChild.rotation.z
-        val basePitch = oldChild.rotation.x
+        // 1) 뒷면 즉시 제거 → 애니메이션 동안 단일 plane만 존재 = 겹침 불가능
+        currentBackViewNode?.let { oldBack ->
+            runCatching { anchor.removeChildNode(oldBack) }
+            runCatching { engine.renderableManager.destroy(oldBack.entity) }
+            runCatching { oldBack.destroy() }
+        }
+        currentBackViewNode = null
+
+        val frontYaw = oldFront.rotation.y
+        val baseRoll = oldFront.rotation.z
+        val basePitch = oldFront.rotation.x
 
         val phaseMs = 300L
         val tiltDeg = 90f
-        var currentChild = oldChild
+        var curFront = oldFront
 
-        // Phase 1: 파란 카드 기울이기
+        // Phase 1: 0° → 90°
         val t1 = System.currentTimeMillis()
         while (true) {
             val elapsed = System.currentTimeMillis() - t1
             val progress = (elapsed.toFloat() / phaseMs).coerceIn(0f, 1f)
             runCatching {
-                currentChild.rotation = Float3(basePitch + progress * tiltDeg, baseYaw, baseRoll)
+                curFront.rotation = Float3(basePitch + progress * tiltDeg, frontYaw, baseRoll)
             }
             if (progress >= 1f) break
             delay(16)
         }
 
-        // Swap: 90° edge-on에서 파랑 destroy → 초록 create
-        runCatching { engine.renderableManager.destroy(currentChild.entity) }
-        runCatching { currentChild.destroy() }
-        val greenChild = runCatching {
+        // Atomic swap: 파란 앞면 → 초록 앞면 (edge-on에서 거의 안 보임)
+        val newFront = runCatching {
             ViewNode2(
                 engine = engine,
                 windowManager = viewNodeManager,
@@ -193,39 +207,70 @@ fun ArDebugPreviewScreen(navController: NavController, modifier: Modifier = Modi
                 unlit = true,
             ) {
                 MaterialTheme {
-                    ArInWorldBadgeContent(
-                        direction = selectedDirection,
-                        isArrived = true,
-                    )
+                    ArInWorldBadgeContent(direction = selectedDirection, isArrived = true)
                 }
             }.apply {
-                this.rotation = Float3(basePitch + tiltDeg, baseYaw, baseRoll)
+                this.rotation = Float3(basePitch + tiltDeg, frontYaw, baseRoll)
                 this.scale = Float3(scale, scale, scale)
+            }.also { node ->
+                runCatching { node.materialInstance.setCullingMode(Material.CullingMode.BACK) }
             }
         }.getOrNull() ?: return@LaunchedEffect
-        anchor.addChildNode(greenChild)
-        currentViewNode = greenChild
-        currentChild = greenChild
 
-        // Phase 2: 초록 카드 정면으로 복귀
+        runCatching { anchor.removeChildNode(curFront) }
+        runCatching { engine.renderableManager.destroy(curFront.entity) }
+        runCatching { curFront.destroy() }
+        anchor.addChildNode(newFront)
+        currentViewNode = newFront
+        curFront = newFront
+
+        // Phase 2: 90° → 0°
         val t2 = System.currentTimeMillis()
         while (true) {
             val elapsed = System.currentTimeMillis() - t2
             val progress = (elapsed.toFloat() / phaseMs).coerceIn(0f, 1f)
             runCatching {
-                currentChild.rotation = Float3(basePitch + (1f - progress) * tiltDeg, baseYaw, baseRoll)
+                curFront.rotation = Float3(basePitch + (1f - progress) * tiltDeg, frontYaw, baseRoll)
             }
             if (progress >= 1f) break
             delay(16)
+        }
+
+        // 애니메이션 끝났으면 뒷면을 초록 거울상으로 재생성 (뒤로 돌아가도 정상 보이도록)
+        val newBack = runCatching {
+            ViewNode2(
+                engine = engine,
+                windowManager = viewNodeManager,
+                materialLoader = materialLoader,
+                unlit = true,
+            ) {
+                MaterialTheme {
+                    ArInWorldBadgeContent(direction = selectedDirection, isArrived = true)
+                }
+            }.apply {
+                this.rotation = Float3(basePitch, frontYaw + 180f, baseRoll)
+                this.scale = Float3(scale, scale, scale)
+            }.also { node ->
+                runCatching { node.materialInstance.setCullingMode(Material.CullingMode.BACK) }
+            }
+        }.getOrNull()
+        if (newBack != null) {
+            anchor.addChildNode(newBack)
+            currentBackViewNode = newBack
         }
     }
 
     DisposableEffect(Unit) {
         onDispose {
+            listOfNotNull(currentViewNode, currentBackViewNode).forEach { node ->
+                runCatching { engine.renderableManager.destroy(node.entity) }
+                runCatching { node.destroy() }
+            }
             routeNodes.clear()
             currentAnchorNode = null
             currentModelNode = null
             currentViewNode = null
+            currentBackViewNode = null
         }
     }
 
@@ -253,11 +298,16 @@ fun ArDebugPreviewScreen(navController: NavController, modifier: Modifier = Modi
                 val anchor = runCatching { session.createAnchor(targetPose) }.getOrNull()
                     ?: return@ARScene
 
-                // 기존 노드 제거
+                // 기존 노드 제거 — 앞면+뒷면 ViewNode2 destroy 후 anchor destroy
+                listOfNotNull(currentViewNode, currentBackViewNode).forEach { node ->
+                    runCatching { engine.renderableManager.destroy(node.entity) }
+                    runCatching { node.destroy() }
+                }
                 currentAnchorNode?.let { runCatching { it.destroy() } }
                 routeNodes.clear()
                 currentModelNode = null
                 currentViewNode = null
+                currentBackViewNode = null
 
                 val anchorNode = AnchorNode(engine = engine, anchor = anchor)
                 routeNodes.add(anchorNode)
@@ -285,19 +335,14 @@ fun ArDebugPreviewScreen(navController: NavController, modifier: Modifier = Modi
                         }
                     }
                     RenderMode.COMPOSE -> {
-                        // ViewNode2: Compose UI를 3D 평면 빌보드로 렌더 (Path A)
-                        // unlit=true — light estimation 꺼져있으므로 조명 곱셈 없이 색상 그대로
+                        // Back-to-back 두 평면 + 단면 강제 — 한쪽엔 정상, 반대쪽엔 거울상
                         runCatching {
-                            val viewNode = ViewNode2(
+                            val front = ViewNode2(
                                 engine = engine,
                                 windowManager = viewNodeManager,
                                 materialLoader = materialLoader,
                                 unlit = true,
                             ) {
-                                // 이 컴포저블은 ViewNode2 내부 composition에서 실행됨.
-                                // selectedDirection / isArrivedToggle을 baked-in으로 캡처.
-                                // (state subscription만으로는 SurfaceTexture 갱신이 안 돼서
-                                // 재배치 트리거로 새 ViewNode2를 만들어 baked-in 시킴.)
                                 MaterialTheme {
                                     ArInWorldBadgeContent(
                                         direction = selectedDirection,
@@ -307,10 +352,31 @@ fun ArDebugPreviewScreen(navController: NavController, modifier: Modifier = Modi
                             }.apply {
                                 this.scale = Float3(currentScale, currentScale, currentScale)
                                 this.rotation = Float3(currentPitch, currentYaw, 90f)
-                                // pxPerUnits 기본 250 — 120dp 배지가 약 1.4m 폭. scale 슬라이더로 조절.
                             }
-                            anchorNode.addChildNode(viewNode)
-                            currentViewNode = viewNode
+                            runCatching { front.materialInstance.setCullingMode(Material.CullingMode.BACK) }
+                            anchorNode.addChildNode(front)
+                            currentViewNode = front
+                        }
+                        runCatching {
+                            val back = ViewNode2(
+                                engine = engine,
+                                windowManager = viewNodeManager,
+                                materialLoader = materialLoader,
+                                unlit = true,
+                            ) {
+                                MaterialTheme {
+                                    ArInWorldBadgeContent(
+                                        direction = selectedDirection,
+                                        isArrived = isArrivedToggle,
+                                    )
+                                }
+                            }.apply {
+                                this.scale = Float3(currentScale, currentScale, currentScale)
+                                this.rotation = Float3(currentPitch, currentYaw + 180f, 90f)
+                            }
+                            runCatching { back.materialInstance.setCullingMode(Material.CullingMode.BACK) }
+                            anchorNode.addChildNode(back)
+                            currentBackViewNode = back
                         }
                     }
                 }

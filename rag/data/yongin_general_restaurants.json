@@ -156,5 +156,44 @@
     },
     "latitude": 37.335210,
     "longitude": 127.255047
+  },
+  {"restaurant_id": "y00005",
+    "name_ko": "엠제이헤어샵",
+    "name_en": "Meghans",
+    "area_major": "용인",
+    "cuisine_type": ["미용실"],
+    "food_keywords": ["아메리카노", "카페라떼", "쌍화차"],
+    "menu_examples": [
+      {
+        "name_ko": "아메리카노",
+        "name_en": "Americano",
+        "price_krw": 3900
+      },
+      {
+        "name_ko": "카페라떼",
+        "name_en": "Caffe Latte",
+        "price_krw": 4800
+      }
+    ],
+    "short_description_ko": "커피와 전통차가 매력적인 카페.",
+    "address": "경기 용인시 처인구 모현읍 외대로54번길 6 101호",
+    "phone": "0507-1422-2537",
+    "opening_hours": {
+      "mon": "10:00-21:00",
+      "tue": "10:00-21:00",
+      "wed": "10:00-21:00",
+      "thu": "10:00-21:00",
+      "fri": "10:00-21:00",
+      "sat": "10:00-21:00",
+      "sun": "10:00-21:00"
+    },
+    "break_time": {
+      "mon": null, "tue": null, "wed": null, "thu": null, "fri": null, "sat": null, "sun": null
+    },
+    "last_order": {
+      "mon": null, "tue": null, "wed": null, "thu": null, "fri": null, "sat": null, "sun": null
+    },
+    "latitude": 37.340105,
+    "longitude": 127.253664
   }
 ]
