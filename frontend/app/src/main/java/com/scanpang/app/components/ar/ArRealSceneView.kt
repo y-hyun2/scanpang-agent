@@ -239,12 +239,27 @@ fun ArRealSceneView(
     }
 
     // 화면 종료 시 AR 리소스 정리 + mounted 플래그 false.
-    // dispose 경로에선 AnchorNode.destroy()를 호출하지 않음 — 그 시점엔 ARCore session이
-    // SceneView 내부에서 이미 정리됐을 수 있고, 그러면 ArAnchor_detach가 native NPE로
-    // SIGSEGV를 냄. SceneView가 lifecycle에서 anchor를 알아서 정리함.
+    //
+    // 정리 순서:
+    //  1. ViewNode2 child들 명시 destroy — Filament texture/stream/material 해제.
+    //     이걸 안 하면 engine 정리 시 libfilament-jni가 PreconditionPanic으로 SIGABRT.
+    //  2. AnchorNode.destroy()는 호출 안 함 — ARCore session이 SceneView 내부에서
+    //     이미 정리됐을 수 있어 ArAnchor_detach가 native NPE(SIGSEGV)를 냄.
+    //     SceneView가 자체 lifecycle에서 anchor 정리해줌.
     DisposableEffect(Unit) {
         onDispose {
             isMounted.value = false
+            // ViewNode2 명시적 정리.
+            // ⚠️ SceneView 2.3.3의 ViewNode2.destroy()는 순서 버그가 있어 그냥 호출하면
+            //   "destroying MaterialInstance which is still in use by Renderable" Filament panic.
+            //   우회: Renderable component를 먼저 destroy해서 material binding을 풀고
+            //   그 다음 ViewNode2.destroy() 호출 (material → texture → stream 순으로 정리).
+            activeChildNodes.values.forEach { node ->
+                if (node is ViewNode2) {
+                    runCatching { engine.renderableManager.destroy(node.entity) }
+                    runCatching { node.destroy() }
+                }
+            }
             routeNodes.clear()
             activeArNodes.clear()
             activeChildNodes.clear()
