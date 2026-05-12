@@ -36,6 +36,7 @@ import com.scanpang.app.screens.SubwayDetailScreen
 import com.scanpang.app.screens.TouristSpotDetailScreen
 import com.scanpang.app.screens.SearchDefaultScreen
 import com.scanpang.app.screens.SearchResultsScreen
+import com.scanpang.app.screens.ar.ArDebugPreviewScreen
 import com.scanpang.app.screens.ar.ArExploreScreen
 import com.scanpang.app.screens.ar.ArNavigationMapScreen
 
@@ -86,6 +87,7 @@ object AppRoutes {
     const val PharmacyDetail = "pharmacy_detail"
     const val ArExplore = "ar_explore"
     const val ArNavMap = "ar_nav_map"
+    const val ArDebugPreview = "ar_debug_preview"
     fun arNavMapRoute(destName: String = ""): String {
         val encoded = URLEncoder.encode(destName, StandardCharsets.UTF_8.name())
         return "$ArNavMap/$encoded"
@@ -155,6 +157,7 @@ fun AppNavHost(
         composable(AppRoutes.HospitalDetail) { HospitalDetailScreen(navController = navController) }
         composable(AppRoutes.PharmacyDetail) { PharmacyDetailScreen(navController = navController) }
         composable(AppRoutes.ArExplore) { ArExploreScreen(navController = navController) }
+        composable(AppRoutes.ArDebugPreview) { ArDebugPreviewScreen(navController = navController) }
         composable(AppRoutes.ArNavMap) { ArNavigationMapScreen(navController = navController, destinationName = "") }
         composable(
             route = "${AppRoutes.ArNavMap}/{destName}",

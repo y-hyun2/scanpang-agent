@@ -36,15 +36,17 @@ import com.scanpang.arnavigation.data.remote.dto.NavRouteResponse
 import com.scanpang.arnavigation.data.repository.RouteRepositoryImpl
 import com.scanpang.arnavigation.presentation.MainViewModel
 import com.scanpang.arnavigation.presentation.MainViewModelFactory
+import androidx.compose.material3.MaterialTheme
 import dev.romainguy.kotlin.math.Float3
 import io.github.sceneview.ar.ARScene
 import io.github.sceneview.ar.node.AnchorNode
-import io.github.sceneview.loaders.ModelLoader
-import io.github.sceneview.node.ModelNode
+import io.github.sceneview.loaders.MaterialLoader
 import io.github.sceneview.node.Node
+import io.github.sceneview.node.ViewNode2
 import io.github.sceneview.rememberEngine
+import io.github.sceneview.rememberMaterialLoader
 import io.github.sceneview.rememberModelLoader
-import kotlinx.coroutines.CoroutineScope
+import io.github.sceneview.rememberViewNodeManager
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
@@ -102,6 +104,8 @@ fun ArRealSceneView(
     val context = LocalContext.current
     val engine = rememberEngine()
     val modelLoader = rememberModelLoader(engine)
+    val materialLoader = rememberMaterialLoader(engine)
+    val viewNodeManager = rememberViewNodeManager()
     val coroutineScope = rememberCoroutineScope()
 
     // 권한
@@ -175,7 +179,7 @@ fun ArRealSceneView(
     var currentTargetPointIndex by remember { mutableStateOf(1) }
     val renderedIndices = remember { mutableSetOf<Int>() }
     val activeArNodes = remember { mutableMapOf<Int, AnchorNode>() }
-    val activeModelNodes = remember { mutableMapOf<Int, ModelNode>() }
+    val activeChildNodes = remember { mutableMapOf<Int, Node>() }
     val turnDirectionMap = remember { mutableMapOf<Int, Boolean>() }
     var lastChunkRenderTime by remember { mutableStateOf(0L) }
 
@@ -185,7 +189,7 @@ fun ArRealSceneView(
         if (route is NavRouteResponse) {
             val nodes = parseNavResponse(route)
             if (nodes.isNotEmpty()) {
-                clearArState(routeNodes, activeArNodes, activeModelNodes, renderedIndices)
+                clearArState(routeNodes, activeArNodes, activeChildNodes, renderedIndices)
                 turnDirectionMap.clear()  // 새 라우트가 도착할 때만 이전 방향 정보 폐기
                 fullRouteNodes = nodes
                 majorPointIndices.clear()
@@ -243,7 +247,7 @@ fun ArRealSceneView(
             isMounted.value = false
             routeNodes.clear()
             activeArNodes.clear()
-            activeModelNodes.clear()
+            activeChildNodes.clear()
             renderedIndices.clear()
         }
     }
@@ -252,6 +256,8 @@ fun ArRealSceneView(
         modifier = modifier.fillMaxSize(),
         engine = engine,
         modelLoader = modelLoader,
+        materialLoader = materialLoader,
+        viewNodeWindowManager = viewNodeManager,
         childNodes = routeNodes,
         planeRenderer = false,
         sessionConfiguration = { _, config ->
@@ -320,7 +326,7 @@ fun ArRealSceneView(
 
                 // 도착 처리
                 if (tn.type == NodeType.END && dist <= 15.0f) {
-                    clearArState(routeNodes, activeArNodes, activeModelNodes, renderedIndices)
+                    clearArState(routeNodes, activeArNodes, activeChildNodes, renderedIndices)
                     val arrivalSpeech = tn.speech.ifBlank { "목적지에 도착했습니다." }
                     if (!hasSpokenArrival) {
                         coroutineScope.launch {
@@ -415,7 +421,7 @@ fun ArRealSceneView(
 
                 // 8m 이내 → 다음 턴
                 if (dist <= 8.0f) {
-                    clearArState(routeNodes, activeArNodes, activeModelNodes, renderedIndices)
+                    clearArState(routeNodes, activeArNodes, activeChildNodes, renderedIndices)
                     currentTargetPointIndex++
                 }
             }
@@ -430,13 +436,12 @@ fun ArRealSceneView(
                     currentTargetPointIndex = currentTargetPointIndex,
                     renderedIndices = renderedIndices,
                     activeArNodes = activeArNodes,
-                    activeModelNodes = activeModelNodes,
+                    activeChildNodes = activeChildNodes,
                     turnDirectionMap = turnDirectionMap,
                     engine = engine,
-                    modelLoader = modelLoader,
+                    materialLoader = materialLoader,
+                    viewNodeWindowManager = viewNodeManager,
                     routeNodes = routeNodes,
-                    coroutineScope = coroutineScope,
-                    isMountedCheck = { isMounted.value },
                 )
             }
         },
@@ -453,19 +458,21 @@ fun ArRealSceneView(
 private fun clearArState(
     routeNodes: SnapshotStateList<Node>,
     activeArNodes: MutableMap<Int, AnchorNode>,
-    activeModelNodes: MutableMap<Int, ModelNode>,
+    activeChildNodes: MutableMap<Int, Node>,
     renderedIndices: MutableSet<Int>,
 ) {
     routeNodes.clear()
     activeArNodes.values.forEach { runCatching { it.destroy() } }
     activeArNodes.clear()
-    activeModelNodes.clear()
+    activeChildNodes.clear()
     renderedIndices.clear()
 }
 
 /**
  * 현재 chunk 구간(이전 major point ~ 다음 major point) 안의 노드들을
- * Geospatial 앵커 + 3D 모델 노드로 변환해 ARScene에 추가.
+ * Geospatial 앵커 + Compose 배지(ViewNode2)로 변환해 ARScene에 추가.
+ *
+ * Path A: Compose UI를 3D 평면 빌보드로 렌더 (.glb 사용 안 함).
  */
 private fun renderNearbyArrows(
     earth: Earth,
@@ -474,13 +481,12 @@ private fun renderNearbyArrows(
     currentTargetPointIndex: Int,
     renderedIndices: MutableSet<Int>,
     activeArNodes: MutableMap<Int, AnchorNode>,
-    activeModelNodes: MutableMap<Int, ModelNode>,
+    activeChildNodes: MutableMap<Int, Node>,
     turnDirectionMap: MutableMap<Int, Boolean>,
     engine: Engine,
-    modelLoader: ModelLoader,
+    materialLoader: MaterialLoader,
+    viewNodeWindowManager: ViewNode2.WindowManager,
     routeNodes: SnapshotStateList<Node>,
-    coroutineScope: CoroutineScope,
-    isMountedCheck: () -> Boolean,
 ) {
     if (earth.trackingState != TrackingState.TRACKING ||
         majorPointIndices.size < 2 ||
@@ -491,7 +497,6 @@ private fun renderNearbyArrows(
     val endIdx = majorPointIndices[currentTargetPointIndex]
     val cameraPose = earth.cameraGeospatialPose
     val cameraAlt = cameraPose.altitude
-    val cameraHeading = cameraPose.heading.toFloat()
 
     for (i in startIdx..endIdx) {
         if (renderedIndices.contains(i)) continue
@@ -500,7 +505,7 @@ private fun renderNearbyArrows(
             renderedIndices.add(i)
             continue
         }
-        // END 모델은 35m 이내에서만 렌더 — 그 밖이면 스킵하고 다음 사이클에 재확인
+        // END 배지는 35m 이내에서만 렌더 — 그 밖이면 스킵하고 다음 사이클에 재확인
         if (node.type == NodeType.END) {
             val d = FloatArray(1)
             Location.distanceBetween(cameraPose.latitude, cameraPose.longitude, node.lat, node.lng, d)
@@ -514,83 +519,79 @@ private fun renderNearbyArrows(
         activeArNodes[i] = anchorNode
         routeNodes.add(anchorNode)
 
-        // 모델 경로 + 회전 결정
-        val (modelPath, rotationY, scale) = resolveModelForNode(
+        val direction = resolveBadgeDirection(
             node = node,
             i = i,
             fullRouteNodes = fullRouteNodes,
             majorPointIndices = majorPointIndices,
             turnDirectionMap = turnDirectionMap,
-            cameraHeading = cameraHeading,
-        )
+        ) ?: continue
 
-        if (modelPath != null) {
-            coroutineScope.launch {
-                val instance = runCatching { modelLoader.loadModelInstance(modelPath) }.getOrNull()
-                    ?: return@launch
-                if (!isMountedCheck()) return@launch
-                runCatching {
-                    val modelNode = ModelNode(modelInstance = instance).apply {
-                        this.scale = scale
-                        this.rotation = Float3(0f, rotationY, 0f)
-                    }
-                    anchorNode.addChildNode(modelNode)
-                    activeModelNodes[i] = modelNode
+        val rotationY = computeArrowRotation(i, node, fullRouteNodes)
+
+        // ViewNode2: Compose UI를 3D 평면 빌보드로 렌더.
+        // unlit=true — Geospatial 씬에 광원이 없으므로 색상 그대로 출력.
+        runCatching {
+            val viewNode = ViewNode2(
+                engine = engine,
+                windowManager = viewNodeWindowManager,
+                materialLoader = materialLoader,
+                unlit = true,
+            ) {
+                MaterialTheme {
+                    ArInWorldBadgeContent(direction = direction)
                 }
+            }.apply {
+                // Z(roll) 0° — 회전 baseline 없음. 진입 방향(rotationY)만 적용.
+                this.rotation = Float3(0f, rotationY, 0f)
             }
+            anchorNode.addChildNode(viewNode)
+            activeChildNodes[i] = viewNode
         }
     }
 }
 
 /**
- * 노드 타입과 turnType에 따라 (모델 경로, Y축 회전, 스케일)을 계산.
- * turnDirectionMap에 좌/우 정보를 기록.
- * 모델 경로가 null이면 화살표를 그리지 않고 앵커만 추가됨.
+ * 노드 타입과 turnType에 따라 배지 방향을 결정. turnDirectionMap에 좌/우 정보 기록.
+ * null이면 배지를 그리지 않음.
  */
-private fun resolveModelForNode(
+private fun resolveBadgeDirection(
     node: ArRouteNode,
     i: Int,
     fullRouteNodes: List<ArRouteNode>,
     majorPointIndices: List<Int>,
     turnDirectionMap: MutableMap<Int, Boolean>,
-    cameraHeading: Float,
-): Triple<String?, Float, Float3> {
-    val defaultScale = Float3(1f, 1f, 1f)
-    val turnScale = Float3(2.5f, 2.5f, 2.5f)
-    val straightScale = Float3(2.0f, 2.0f, 2.0f)
-
-    return when (node.type) {
-        NodeType.START, NodeType.END -> Triple("models/map_pointer.glb", cameraHeading, defaultScale)
-
-        NodeType.TURN_POINT -> {
-            // 측면 분기 (turnType 17/18) 처리
-            if (node.turnType == 17 || node.turnType == 18) {
-                val mp = if (node.turnType == 17) "models/left_arrow.glb" else "models/right_arrow.glb"
-                val rotation = computeArrowRotation(i, node, fullRouteNodes)
-                val mi = majorPointIndices.indexOf(i)
-                if (mi != -1) turnDirectionMap[mi] = (node.turnType == 18)
-                return Triple(mp, rotation, turnScale)
-            }
-
+): BadgeDirection? = when (node.type) {
+    NodeType.START, NodeType.END -> BadgeDirection.DESTINATION
+    NodeType.TURN_POINT -> {
+        // 측면 분기 (turnType 17/18) 처리
+        if (node.turnType == 17 || node.turnType == 18) {
+            val mi = majorPointIndices.indexOf(i)
+            if (mi != -1) turnDirectionMap[mi] = (node.turnType == 18)
+            if (node.turnType == 18) BadgeDirection.RIGHT else BadgeDirection.LEFT
+        } else {
             // 일반 좌/우/직진 결정
             val isRight: Boolean? = when (node.turnType) {
                 13, 19 -> true
                 12, 16 -> false
                 else -> calcTurnFromBearing(i, node, fullRouteNodes)
             }
-            val rotation = computeArrowRotation(i, node, fullRouteNodes)
-            if (isRight == null) {
-                Triple("models/straight.glb", rotation, straightScale)
-            } else {
-                val mp = if (isRight) "models/right.glb" else "models/left.glb"
-                val mi = majorPointIndices.indexOf(i)
-                if (mi != -1) turnDirectionMap[mi] = isRight
-                Triple(mp, rotation, turnScale)
+            when (isRight) {
+                true -> {
+                    val mi = majorPointIndices.indexOf(i)
+                    if (mi != -1) turnDirectionMap[mi] = true
+                    BadgeDirection.RIGHT
+                }
+                false -> {
+                    val mi = majorPointIndices.indexOf(i)
+                    if (mi != -1) turnDirectionMap[mi] = false
+                    BadgeDirection.LEFT
+                }
+                null -> BadgeDirection.STRAIGHT
             }
         }
-
-        else -> Triple(null, 0f, defaultScale)
     }
+    else -> null
 }
 
 /** 진입 방향에 화살표가 정렬되도록 Y축 회전을 계산 (이전 비-turn 노드 → 현재 노드 bearing + 180°). */
