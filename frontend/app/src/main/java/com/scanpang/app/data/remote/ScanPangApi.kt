@@ -143,9 +143,14 @@ data class ArOverlay(
     val is_estimated: Boolean = false,
 )
 
+data class StoreItem(
+    val name: String = "",
+    val category: String = "",
+)
+
 data class FloorInfo(
     val floor: String = "",
-    val stores: List<String> = emptyList(),
+    val stores: List<StoreItem> = emptyList(),
 )
 
 data class Docent(

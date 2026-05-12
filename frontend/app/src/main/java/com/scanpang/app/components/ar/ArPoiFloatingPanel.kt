@@ -138,7 +138,7 @@ fun ArPoiFloatingDetailOverlay(
                     label = fi.floor,
                     storeCount = fi.stores.size,
                     categoryLabel = "",
-                    stores = fi.stores.map { ArFloorStoreLine(it, "", false) },
+                    stores = fi.stores.map { ArFloorStoreLine(it.name, it.category, false) },
                 )
             }
         } else {

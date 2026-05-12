@@ -13,9 +13,14 @@ class PlaceRequest(BaseModel):
     language: str = "ko"
 
 
+class StoreItem(BaseModel):
+    name: str = ""
+    category: str = ""
+
+
 class FloorInfo(BaseModel):
-    floor: Optional[str] = None          # null 허용: 층 정보가 명시되지 않은 매장
-    stores: List[str]
+    floor: Optional[str] = None
+    stores: List[StoreItem] = []
 
 
 class ArOverlay(BaseModel):
