@@ -156,6 +156,10 @@ fun ArRealSceneView(
         onDispose { ttsController.shutdown() }
     }
 
+    // 화면이 dispose 됐는지 추적 — 비동기 코루틴이 destroy된 리소스에 접근하는 걸 방지.
+    // (홈/뒤로가기 시 모델 로드·TTS 코루틴이 늦게 완료돼 크래시 나는 케이스 차단)
+    val isMounted = remember { mutableStateOf(true) }
+
     // 음성 안내 중복 방지용 상태
     var spokenForTurnIndex by remember { mutableStateOf(-1) }     // 마지막으로 음성 출력한 turn index
     var hasSpokenDeparture by remember { mutableStateOf(false) }  // 출발 안내 출력 여부
@@ -219,7 +223,8 @@ fun ArRealSceneView(
                     val message = route.speech
                     coroutineScope.launch {
                         delay(2000)
-                        ttsController.speakIfEnabled(message, voiceOn = true)
+                        if (!isMounted.value) return@launch
+                        runCatching { ttsController.speakIfEnabled(message, voiceOn = true) }
                     }
                     hasSpokenDeparture = true
                 }
@@ -229,10 +234,17 @@ fun ArRealSceneView(
         }
     }
 
-    // 화면 종료 시 AR 리소스 정리
+    // 화면 종료 시 AR 리소스 정리 + mounted 플래그 false.
+    // dispose 경로에선 AnchorNode.destroy()를 호출하지 않음 — 그 시점엔 ARCore session이
+    // SceneView 내부에서 이미 정리됐을 수 있고, 그러면 ArAnchor_detach가 native NPE로
+    // SIGSEGV를 냄. SceneView가 lifecycle에서 anchor를 알아서 정리함.
     DisposableEffect(Unit) {
         onDispose {
-            clearArState(routeNodes, activeArNodes, activeModelNodes, renderedIndices)
+            isMounted.value = false
+            routeNodes.clear()
+            activeArNodes.clear()
+            activeModelNodes.clear()
+            renderedIndices.clear()
         }
     }
 
@@ -307,13 +319,14 @@ fun ArRealSceneView(
                 val dist = distRes[0]
 
                 // 도착 처리
-                if (tn.type == NodeType.END && dist <= 11.0f) {
+                if (tn.type == NodeType.END && dist <= 15.0f) {
                     clearArState(routeNodes, activeArNodes, activeModelNodes, renderedIndices)
                     val arrivalSpeech = tn.speech.ifBlank { "목적지에 도착했습니다." }
                     if (!hasSpokenArrival) {
                         coroutineScope.launch {
                             delay(2000)
-                            ttsController.speakIfEnabled(arrivalSpeech, voiceOn = true)
+                            if (!isMounted.value) return@launch
+                            runCatching { ttsController.speakIfEnabled(arrivalSpeech, voiceOn = true) }
                         }
                         hasSpokenArrival = true
                     }
@@ -394,7 +407,8 @@ fun ArRealSceneView(
                     val message = tn.speech
                     coroutineScope.launch {
                         delay(2000)
-                        ttsController.speakIfEnabled(message, voiceOn = true)
+                        if (!isMounted.value) return@launch
+                        runCatching { ttsController.speakIfEnabled(message, voiceOn = true) }
                     }
                     spokenForTurnIndex = currentTargetPointIndex
                 }
@@ -422,6 +436,7 @@ fun ArRealSceneView(
                     modelLoader = modelLoader,
                     routeNodes = routeNodes,
                     coroutineScope = coroutineScope,
+                    isMountedCheck = { isMounted.value },
                 )
             }
         },
@@ -465,6 +480,7 @@ private fun renderNearbyArrows(
     modelLoader: ModelLoader,
     routeNodes: SnapshotStateList<Node>,
     coroutineScope: CoroutineScope,
+    isMountedCheck: () -> Boolean,
 ) {
     if (earth.trackingState != TrackingState.TRACKING ||
         majorPointIndices.size < 2 ||
@@ -473,16 +489,26 @@ private fun renderNearbyArrows(
 
     val startIdx = majorPointIndices[currentTargetPointIndex - 1]
     val endIdx = majorPointIndices[currentTargetPointIndex]
-    val cameraAlt = earth.cameraGeospatialPose.altitude
-    val cameraHeading = earth.cameraGeospatialPose.heading.toFloat()
+    val cameraPose = earth.cameraGeospatialPose
+    val cameraAlt = cameraPose.altitude
+    val cameraHeading = cameraPose.heading.toFloat()
 
     for (i in startIdx..endIdx) {
         if (renderedIndices.contains(i)) continue
-        renderedIndices.add(i)
         val node = fullRouteNodes[i]
-        if (node.type == NodeType.PATH_POINT) continue
+        if (node.type == NodeType.PATH_POINT) {
+            renderedIndices.add(i)
+            continue
+        }
+        // END 모델은 35m 이내에서만 렌더 — 그 밖이면 스킵하고 다음 사이클에 재확인
+        if (node.type == NodeType.END) {
+            val d = FloatArray(1)
+            Location.distanceBetween(cameraPose.latitude, cameraPose.longitude, node.lat, node.lng, d)
+            if (d[0] > 35f) continue
+        }
+        renderedIndices.add(i)
 
-        val yOff = if (node.type == NodeType.TURN_POINT) 0.0 else 1.5
+        val yOff = if (node.type == NodeType.TURN_POINT) 0.5 else 1.5
         val anchor = earth.createAnchor(node.lat, node.lng, cameraAlt - yOff, 0f, 0f, 0f, 1f) ?: continue
         val anchorNode = AnchorNode(engine = engine, anchor = anchor)
         activeArNodes[i] = anchorNode
@@ -501,7 +527,9 @@ private fun renderNearbyArrows(
         if (modelPath != null) {
             coroutineScope.launch {
                 val instance = runCatching { modelLoader.loadModelInstance(modelPath) }.getOrNull()
-                if (instance != null) {
+                    ?: return@launch
+                if (!isMountedCheck()) return@launch
+                runCatching {
                     val modelNode = ModelNode(modelInstance = instance).apply {
                         this.scale = scale
                         this.rotation = Float3(0f, rotationY, 0f)
@@ -529,6 +557,7 @@ private fun resolveModelForNode(
 ): Triple<String?, Float, Float3> {
     val defaultScale = Float3(1f, 1f, 1f)
     val turnScale = Float3(2.5f, 2.5f, 2.5f)
+    val straightScale = Float3(2.0f, 2.0f, 2.0f)
 
     return when (node.type) {
         NodeType.START, NodeType.END -> Triple("models/map_pointer.glb", cameraHeading, defaultScale)
@@ -549,11 +578,11 @@ private fun resolveModelForNode(
                 12, 16 -> false
                 else -> calcTurnFromBearing(i, node, fullRouteNodes)
             }
+            val rotation = computeArrowRotation(i, node, fullRouteNodes)
             if (isRight == null) {
-                Triple(null, 0f, defaultScale)
+                Triple("models/straight.glb", rotation, straightScale)
             } else {
                 val mp = if (isRight) "models/right.glb" else "models/left.glb"
-                val rotation = computeArrowRotation(i, node, fullRouteNodes)
                 val mi = majorPointIndices.indexOf(i)
                 if (mi != -1) turnDirectionMap[mi] = isRight
                 Triple(mp, rotation, turnScale)
