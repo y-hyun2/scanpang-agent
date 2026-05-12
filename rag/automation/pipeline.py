@@ -162,6 +162,99 @@ def _enrich_govt_with_kakao(
     return result
 
 
+def _merge_naver_govt(
+    naver_places: list[dict],
+    govt_stores: list[dict],
+    kakao_stores: list[dict],
+) -> list[dict]:
+    """
+    Naver 주소장소(이름/카테고리 정확) + 소상공인 API(층 번호 정확)를 하이브리드 병합.
+
+    규칙:
+    - 소상공인 각 매장에 Naver 매장명이 fuzzy 매칭(partial_ratio >= 75)되면
+      → Naver 이름/카테고리로 교체, 층은 소상공인 유지
+    - Naver에만 있고 소상공인에 없는 매장
+      → Naver 주소에 층 명시된 경우 해당 층에, 없으면 '미확인'에 추가
+    - 소상공인에만 있고 Naver에 없는 매장
+      → Kakao 이름/카테고리 보완 후 유지
+    """
+    if not govt_stores and not naver_places:
+        return []
+
+    try:
+        from rapidfuzz import fuzz as _fuzz
+        def _match(a: str, b: str) -> int:
+            return _fuzz.partial_ratio(a.lower().replace(" ", ""), b.lower().replace(" ", ""))
+    except ImportError:
+        def _match(a: str, b: str) -> int:
+            return 100 if a.lower() in b.lower() or b.lower() in a.lower() else 0
+
+    # Naver 이름 → (name, category, floor) 맵
+    naver_lookup = [
+        (p["name"], p.get("category", ""), p.get("floor", ""))
+        for p in naver_places if p.get("name")
+    ]
+    # Kakao 이름 → category 맵
+    kakao_map = {ks["name"].lower().replace(" ", ""): ks.get("category", "")
+                 for ks in kakao_stores if ks.get("name")}
+
+    def _best_naver(govt_name: str) -> tuple[str, str]:
+        best_score, best_name, best_cat = 0, "", ""
+        for n_name, n_cat, _ in naver_lookup:
+            score = _match(govt_name, n_name)
+            if score > best_score:
+                best_score, best_name, best_cat = score, n_name, n_cat
+        return (best_name, best_cat) if best_score >= 75 else ("", "")
+
+    def _best_kakao_cat(name: str) -> str:
+        best_score, best_cat = 0, ""
+        for k, v in kakao_map.items():
+            score = _match(name, k)
+            if score > best_score:
+                best_score, best_cat = score, v
+        return best_cat if best_score >= 75 else ""
+
+    # ── 소상공인 기반 병합 ──
+    result = []
+    matched_naver_names: set[str] = set()
+    naver_replaced = 0
+
+    for floor_item in govt_stores:
+        new_stores = []
+        for store in floor_item.get("stores", []):
+            govt_name = store.get("name", "") if isinstance(store, dict) else store.split("(")[0]
+            orig_cat  = store.get("category", "") if isinstance(store, dict) else ""
+            n_name, n_cat = _best_naver(govt_name)
+            if n_name:
+                new_stores.append({"name": n_name, "category": n_cat or orig_cat or _best_kakao_cat(n_name)})
+                matched_naver_names.add(n_name)
+                naver_replaced += 1
+            else:
+                kakao_cat = _best_kakao_cat(govt_name)
+                new_stores.append({"name": govt_name, "category": kakao_cat or orig_cat})
+        result.append({"floor": floor_item["floor"], "stores": new_stores})
+
+    # ── Naver에만 있는 매장 추가 ──
+    floor_idx = {f["floor"]: i for i, f in enumerate(result)}
+    naver_only = 0
+    for n_name, n_cat, n_floor in naver_lookup:
+        if n_name in matched_naver_names:
+            continue
+        target_floor = n_floor or "미확인"
+        store_obj = {"name": n_name, "category": n_cat or _best_kakao_cat(n_name)}
+        if target_floor in floor_idx:
+            result[floor_idx[target_floor]]["stores"].append(store_obj)
+        else:
+            result.append({"floor": target_floor, "stores": [store_obj]})
+            floor_idx[target_floor] = len(result) - 1
+        naver_only += 1
+
+    total = sum(len(f["stores"]) for f in result)
+    print(f"[pipeline] 하이브리드 병합: 총 {total}개 "
+          f"(Naver교체={naver_replaced}, Naver전용추가={naver_only})")
+    return result
+
+
 def _enrich_govt_with_confirmed(
     govt_stores: list[dict],
     confirmed: list[dict],
@@ -374,17 +467,25 @@ async def process_one_building(ufid: str) -> dict:
     naver_floor_info = _naver_places_to_floor_info(naver_addr_places)
 
     if homepage_floor_info:
+        # 1순위: 공식 홈페이지 (층-매장 구조 가장 정확)
         floor_info_list = homepage_floor_info
         print(f"[pipeline] floor_info 출처: 홈페이지 ({len(homepage_floor_info)}개 층)")
+    elif naver_addr_places and govt_stores:
+        # 2순위: Naver 이름/카테고리 + 소상공인 층번호 하이브리드
+        enriched = _enrich_govt_with_confirmed(govt_stores, confirmed)
+        floor_info_list = _merge_naver_govt(naver_addr_places, enriched, kakao_stores)
     elif naver_floor_info:
+        # 3순위: Naver 주소에 층이 명시된 경우 (소상공인 없음)
         floor_info_list = naver_floor_info
         total = sum(len(f["stores"]) for f in naver_floor_info)
         print(f"[pipeline] floor_info 출처: 네이버 주소장소 ({len(naver_floor_info)}개 층, {total}개 매장)")
     elif govt_stores:
+        # 4순위: 소상공인 + Kakao 이름/카테고리
         enriched = _enrich_govt_with_confirmed(govt_stores, confirmed)
         floor_info_list = _enrich_govt_with_kakao(enriched, kakao_stores)
         print(f"[pipeline] floor_info 출처: 정부DB+Kakao")
     else:
+        # 5순위: LLM confirmed
         floor_info_list = _confirmed_to_floor_info(confirmed)
         print(f"[pipeline] floor_info 출처: LLM confirmed")
 
