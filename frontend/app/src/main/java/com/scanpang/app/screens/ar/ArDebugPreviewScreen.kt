@@ -57,6 +57,7 @@ import io.github.sceneview.rememberEngine
 import io.github.sceneview.rememberMaterialLoader
 import io.github.sceneview.rememberModelLoader
 import io.github.sceneview.rememberViewNodeManager
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 private val MODELS = listOf(
@@ -121,6 +122,8 @@ fun ArDebugPreviewScreen(navController: NavController, modifier: Modifier = Modi
 
     // Compose 모드 선택
     var selectedDirection by remember { mutableStateOf(BadgeDirection.RIGHT) }
+    // 도착 상태 토글 — DESTINATION 배지를 초록 체크로 전환 확인용
+    var isArrivedToggle by remember { mutableStateOf(false) }
     // ViewNode2 한 번 만들면 content composable이 selectedDirection을 구독해 자동 recompose
 
     // 현재 노드 핸들
@@ -148,6 +151,72 @@ fun ArDebugPreviewScreen(navController: NavController, modifier: Modifier = Modi
         currentViewNode?.let { node ->
             node.scale = Float3(scale, scale, scale)
             node.rotation = Float3(pitchDeg, yawDeg, 90f)
+        }
+    }
+
+    // 도착 애니메이션: "기울이고 다시 돌아오기" — 본 화면과 동일 패턴
+    // Phase 1: 0° → 90° X 기울임 (파란 카드, edge-on에서 안 보임)
+    // Phase 2: 90° → 0° 복귀 (초록 카드, 정면으로 돌아옴, 끝나는 자세 정상)
+    LaunchedEffect(isArrivedToggle) {
+        if (!isArrivedToggle) return@LaunchedEffect
+        val anchor = currentAnchorNode ?: return@LaunchedEffect
+        val oldChild = currentViewNode ?: return@LaunchedEffect
+
+        val baseYaw = oldChild.rotation.y
+        val baseRoll = oldChild.rotation.z
+        val basePitch = oldChild.rotation.x
+
+        val phaseMs = 300L
+        val tiltDeg = 90f
+        var currentChild = oldChild
+
+        // Phase 1: 파란 카드 기울이기
+        val t1 = System.currentTimeMillis()
+        while (true) {
+            val elapsed = System.currentTimeMillis() - t1
+            val progress = (elapsed.toFloat() / phaseMs).coerceIn(0f, 1f)
+            runCatching {
+                currentChild.rotation = Float3(basePitch + progress * tiltDeg, baseYaw, baseRoll)
+            }
+            if (progress >= 1f) break
+            delay(16)
+        }
+
+        // Swap: 90° edge-on에서 파랑 destroy → 초록 create
+        runCatching { engine.renderableManager.destroy(currentChild.entity) }
+        runCatching { currentChild.destroy() }
+        val greenChild = runCatching {
+            ViewNode2(
+                engine = engine,
+                windowManager = viewNodeManager,
+                materialLoader = materialLoader,
+                unlit = true,
+            ) {
+                MaterialTheme {
+                    ArInWorldBadgeContent(
+                        direction = selectedDirection,
+                        isArrived = true,
+                    )
+                }
+            }.apply {
+                this.rotation = Float3(basePitch + tiltDeg, baseYaw, baseRoll)
+                this.scale = Float3(scale, scale, scale)
+            }
+        }.getOrNull() ?: return@LaunchedEffect
+        anchor.addChildNode(greenChild)
+        currentViewNode = greenChild
+        currentChild = greenChild
+
+        // Phase 2: 초록 카드 정면으로 복귀
+        val t2 = System.currentTimeMillis()
+        while (true) {
+            val elapsed = System.currentTimeMillis() - t2
+            val progress = (elapsed.toFloat() / phaseMs).coerceIn(0f, 1f)
+            runCatching {
+                currentChild.rotation = Float3(basePitch + (1f - progress) * tiltDeg, baseYaw, baseRoll)
+            }
+            if (progress >= 1f) break
+            delay(16)
         }
     }
 
@@ -226,9 +295,14 @@ fun ArDebugPreviewScreen(navController: NavController, modifier: Modifier = Modi
                                 unlit = true,
                             ) {
                                 // 이 컴포저블은 ViewNode2 내부 composition에서 실행됨.
-                                // selectedDirection State를 읽으면 자동 recompose.
+                                // selectedDirection / isArrivedToggle을 baked-in으로 캡처.
+                                // (state subscription만으로는 SurfaceTexture 갱신이 안 돼서
+                                // 재배치 트리거로 새 ViewNode2를 만들어 baked-in 시킴.)
                                 MaterialTheme {
-                                    ArInWorldBadgeContent(direction = selectedDirection)
+                                    ArInWorldBadgeContent(
+                                        direction = selectedDirection,
+                                        isArrived = isArrivedToggle,
+                                    )
                                 }
                             }.apply {
                                 this.scale = Float3(currentScale, currentScale, currentScale)
@@ -362,11 +436,36 @@ fun ArDebugPreviewScreen(navController: NavController, modifier: Modifier = Modi
                             BadgeDirection.entries.forEach { dir ->
                                 FilterChip(
                                     selected = selectedDirection == dir,
-                                    onClick = { selectedDirection = dir },  // ViewNode2 안의 Compose가 자동 recompose
+                                    onClick = {
+                                        selectedDirection = dir
+                                        placeRequest = 1
+                                    },
                                     label = { Text(dir.name) },
                                     modifier = Modifier.padding(end = 6.dp),
                                 )
                             }
+                        }
+                        // 도착 상태 토글 — DESTINATION일 때만 의미 있음
+                        Row(
+                            modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                        ) {
+                            FilterChip(
+                                selected = !isArrivedToggle,
+                                onClick = {
+                                    isArrivedToggle = false
+                                    placeRequest = 1  // 즉시 파란으로 재생성
+                                },
+                                label = { Text("안내 중 (파란 핀)") },
+                                modifier = Modifier.padding(end = 6.dp),
+                            )
+                            FilterChip(
+                                selected = isArrivedToggle,
+                                onClick = {
+                                    isArrivedToggle = true
+                                    // 애니메이션은 LaunchedEffect(isArrivedToggle)에서 실행
+                                },
+                                label = { Text("도착 (초록 체크)") },
+                            )
                         }
                     }
                 }

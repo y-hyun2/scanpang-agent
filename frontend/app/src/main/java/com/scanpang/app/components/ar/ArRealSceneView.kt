@@ -172,6 +172,9 @@ fun ArRealSceneView(
     // 공간증강 쿼리 throttle용 — 5초 간격 보장
     var lastPlaceQueryTime by remember { mutableStateOf(0L) }
 
+    // 도착 상태 — ViewNode2 안의 Compose가 구독해서 배지를 초록 체크로 자동 전환
+    val isArrivedState = remember { mutableStateOf(false) }
+
     // AR 노드 + 라우트 상태
     val routeNodes = remember { mutableStateListOf<Node>() }
     var fullRouteNodes by remember { mutableStateOf<List<ArRouteNode>>(emptyList()) }
@@ -191,6 +194,7 @@ fun ArRealSceneView(
             if (nodes.isNotEmpty()) {
                 clearArState(routeNodes, activeArNodes, activeChildNodes, renderedIndices)
                 turnDirectionMap.clear()  // 새 라우트가 도착할 때만 이전 방향 정보 폐기
+                isArrivedState.value = false  // 새 라우트 시작 — 도착 상태 리셋
                 fullRouteNodes = nodes
                 majorPointIndices.clear()
                 nodes.forEachIndexed { i, n -> if (n.type != NodeType.PATH_POINT) majorPointIndices.add(i) }
@@ -339,9 +343,102 @@ fun ArRealSceneView(
                 Location.distanceBetween(lat, lng, tn.lat, tn.lng, distRes)
                 val dist = distRes[0]
 
-                // 도착 처리
-                if (tn.type == NodeType.END && dist <= 15.0f) {
-                    clearArState(routeNodes, activeArNodes, activeChildNodes, renderedIndices)
+                // 도착 처리 — 모든 active 배지에 180° X 회전 + 120°에서 파랑→초록 swap 병렬 애니메이션
+                if (tn.type == NodeType.END && dist <= 20.0f && !isArrivedState.value) {
+                    isArrivedState.value = true
+
+                    // 현재 활성 배지들의 (key, anchor, oldChild, direction) 스냅샷
+                    // 애니메이션 중 컬렉션 변경에 대비해 별도 리스트로 복사
+                    data class AnimTarget(
+                        val key: Int,
+                        val anchor: AnchorNode,
+                        val oldChild: ViewNode2,
+                        val direction: BadgeDirection,
+                    )
+                    val targets = activeChildNodes.entries.mapNotNull { (k, ch) ->
+                        if (ch !is ViewNode2) return@mapNotNull null
+                        val anc = activeArNodes[k] ?: return@mapNotNull null
+                        // direction 추론: END는 DESTINATION, 그 외 turn point는 turnDirectionMap 조회
+                        val node = fullRouteNodes.getOrNull(k) ?: return@mapNotNull null
+                        val mi = majorPointIndices.indexOf(k)
+                        val dir = when (node.type) {
+                            NodeType.START, NodeType.END -> BadgeDirection.DESTINATION
+                            NodeType.TURN_POINT -> {
+                                if (node.turnType == 17) BadgeDirection.LEFT
+                                else if (node.turnType == 18) BadgeDirection.RIGHT
+                                else when (turnDirectionMap[mi]) {
+                                    true -> BadgeDirection.RIGHT
+                                    false -> BadgeDirection.LEFT
+                                    null -> BadgeDirection.STRAIGHT
+                                }
+                            }
+                            else -> return@mapNotNull null
+                        }
+                        AnimTarget(k, anc, ch, dir)
+                    }
+
+                    // 각 타겟마다 병렬로 "기울이고 다시 돌아오기" 애니메이션
+                    // Phase 1 (300ms): 0° → 90° X 기울이기 (파란 카드, edge-on에서 안 보임)
+                    // Phase 2 (300ms): 90° → 0° (초록 카드로 swap 후 정면으로 복귀)
+                    // 결과: 총 180° 시각 움직임, 끝나는 자세는 정상 방향(정면).
+                    targets.forEach { tgt ->
+                        val baseYaw = tgt.oldChild.rotation.y
+                        val basePitch = tgt.oldChild.rotation.x
+                        coroutineScope.launch {
+                            val phaseMs = 300L
+                            val tiltDeg = 90f
+                            var currentChild: ViewNode2 = tgt.oldChild
+
+                            // Phase 1: 파란 카드 기울이기
+                            val t1 = System.currentTimeMillis()
+                            while (isMounted.value) {
+                                val elapsed = System.currentTimeMillis() - t1
+                                val progress = (elapsed.toFloat() / phaseMs).coerceIn(0f, 1f)
+                                runCatching {
+                                    currentChild.rotation = Float3(basePitch + progress * tiltDeg, baseYaw, 0f)
+                                }
+                                if (progress >= 1f) break
+                                delay(16)
+                            }
+
+                            // Swap: edge-on(90°) 시점에서 파랑 destroy → 초록 create
+                            runCatching { engine.renderableManager.destroy(currentChild.entity) }
+                            runCatching { currentChild.destroy() }
+                            val greenChild = runCatching {
+                                ViewNode2(
+                                    engine = engine,
+                                    windowManager = viewNodeManager,
+                                    materialLoader = materialLoader,
+                                    unlit = true,
+                                ) {
+                                    MaterialTheme {
+                                        ArInWorldBadgeContent(
+                                            direction = tgt.direction,
+                                            isArrived = true,
+                                        )
+                                    }
+                                }.apply {
+                                    this.rotation = Float3(basePitch + tiltDeg, baseYaw, 0f)
+                                }
+                            }.getOrNull() ?: return@launch
+                            tgt.anchor.addChildNode(greenChild)
+                            activeChildNodes[tgt.key] = greenChild
+                            currentChild = greenChild
+
+                            // Phase 2: 초록 카드 정면으로 복귀
+                            val t2 = System.currentTimeMillis()
+                            while (isMounted.value) {
+                                val elapsed = System.currentTimeMillis() - t2
+                                val progress = (elapsed.toFloat() / phaseMs).coerceIn(0f, 1f)
+                                runCatching {
+                                    currentChild.rotation = Float3(basePitch + (1f - progress) * tiltDeg, baseYaw, 0f)
+                                }
+                                if (progress >= 1f) break
+                                delay(16)
+                            }
+                        }
+                    }
+
                     val arrivalSpeech = tn.speech.ifBlank { "목적지에 도착했습니다." }
                     if (!hasSpokenArrival) {
                         coroutineScope.launch {
@@ -457,6 +554,7 @@ fun ArRealSceneView(
                     materialLoader = materialLoader,
                     viewNodeWindowManager = viewNodeManager,
                     routeNodes = routeNodes,
+                    isArrivedState = isArrivedState,
                 )
             }
         },
@@ -502,6 +600,7 @@ private fun renderNearbyArrows(
     materialLoader: MaterialLoader,
     viewNodeWindowManager: ViewNode2.WindowManager,
     routeNodes: SnapshotStateList<Node>,
+    isArrivedState: androidx.compose.runtime.State<Boolean>,
 ) {
     if (earth.trackingState != TrackingState.TRACKING ||
         majorPointIndices.size < 2 ||
@@ -520,11 +619,11 @@ private fun renderNearbyArrows(
             renderedIndices.add(i)
             continue
         }
-        // END 배지는 35m 이내에서만 렌더 — 그 밖이면 스킵하고 다음 사이클에 재확인
+        // END 배지는 50m 이내에서만 렌더 — 그 밖이면 스킵하고 다음 사이클에 재확인
         if (node.type == NodeType.END) {
             val d = FloatArray(1)
             Location.distanceBetween(cameraPose.latitude, cameraPose.longitude, node.lat, node.lng, d)
-            if (d[0] > 35f) continue
+            if (d[0] > 50f) continue
         }
         renderedIndices.add(i)
 
@@ -546,6 +645,9 @@ private fun renderNearbyArrows(
 
         // ViewNode2: Compose UI를 3D 평면 빌보드로 렌더.
         // unlit=true — Geospatial 씬에 광원이 없으므로 색상 그대로 출력.
+        // DESTINATION 배지만 isArrivedState를 구독 — 도착 시 초록 체크로 자동 전환.
+        // 다른 방향은 정적 — 불필요한 recompose 방지.
+        val isDestination = direction == BadgeDirection.DESTINATION
         runCatching {
             val viewNode = ViewNode2(
                 engine = engine,
@@ -554,7 +656,10 @@ private fun renderNearbyArrows(
                 unlit = true,
             ) {
                 MaterialTheme {
-                    ArInWorldBadgeContent(direction = direction)
+                    ArInWorldBadgeContent(
+                        direction = direction,
+                        isArrived = if (isDestination) isArrivedState.value else false,
+                    )
                 }
             }.apply {
                 // Z(roll) 0° — 회전 baseline 없음. 진입 방향(rotationY)만 적용.

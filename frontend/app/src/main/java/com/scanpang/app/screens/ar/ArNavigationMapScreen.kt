@@ -158,9 +158,16 @@ fun ArNavigationMapScreen(
                 navController.navigate(AppRoutes.ArExplore) { launchSingleTop = true }
             },
             destinationPill = {
+                // 도착 시: 파란 "X 안내 중" → 초록 "X 도착" (Figma 디자인)
                 ArNavDestinationPill(
-                    text = "$displayDestinationName 안내 중",
-                    containerColor = ScanPangColors.Primary,
+                    text = if (navUiState.isArrived)
+                        "$displayDestinationName 도착"
+                    else
+                        "$displayDestinationName 안내 중",
+                    containerColor = if (navUiState.isArrived)
+                        ScanPangColors.Success
+                    else
+                        ScanPangColors.Primary,
                 )
             },
         )
