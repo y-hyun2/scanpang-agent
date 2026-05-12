@@ -187,6 +187,14 @@ async def collect_stores_at_building(
         print("[kakao_radius] KAKAO_REST_API_KEY 없음 — 매장 수집 건너뜀")
         return []
 
+    # MultiPolygon 대응: coordinates -> 0 결과가 [[[lng,lat],...], ...] (링 배열)이면
+    # 외곽 링([[lng,lat],...])만 추출해 [[lng,lat],...] 형태로 정규화
+    if (bld_polygon_coords
+            and isinstance(bld_polygon_coords[0], list)
+            and bld_polygon_coords[0]
+            and isinstance(bld_polygon_coords[0][0], list)):
+        bld_polygon_coords = bld_polygon_coords[0]
+
     # 폴리곤 객체화 (없으면 None — 주소 필터만으로 동작)
     polygon: Optional[Polygon] = None
     if bld_polygon_coords and len(bld_polygon_coords) >= 3:
