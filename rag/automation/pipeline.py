@@ -11,7 +11,12 @@ from dotenv import load_dotenv
 
 from core.db import get_pool
 from rag.automation.kakao_radius import collect_stores_at_building
-from rag.automation.llm_extractor import extract_stores, extract_building_info
+from rag.automation.homepage_crawler import crawl_homepage
+from rag.automation.llm_extractor import (
+    extract_stores,
+    extract_building_info,
+    extract_floor_info_from_homepage,
+)
 from rag.automation.query_builder import build_queries
 from rag.automation.search_collector import collect, fetch_naver_local, naver_image_search
 from rag.automation.validator import cross_validate
@@ -64,6 +69,38 @@ def _confirmed_to_floor_info(confirmed: list[dict]) -> list[dict]:
         {"floor": f, "stores": stores}
         for f, stores in sorted(floor_map.items(), key=lambda x: _sort_key(x[0]))
     ]
+
+
+def _enrich_govt_categories(
+    govt_stores: list[dict],
+    kakao_stores: list[dict],
+) -> list[dict]:
+    """소상공인 API의 부정확한 SIC 카테고리를 Kakao 카테고리로 교체한다."""
+    if not govt_stores or not kakao_stores:
+        return govt_stores
+
+    try:
+        from rapidfuzz import fuzz as _fuzz
+        def _kakao_cat(name: str) -> str:
+            best_score, best_cat = 0, ""
+            for ks in kakao_stores:
+                score = _fuzz.partial_ratio(name.lower(), ks.get("name", "").lower())
+                if score > best_score:
+                    best_score, best_cat = score, ks.get("category", "")
+            return best_cat if best_score >= 75 else ""
+    except ImportError:
+        return govt_stores
+
+    result = []
+    for floor_item in govt_stores:
+        new_stores = []
+        for store in floor_item.get("stores", []):
+            name = store.get("name", "") if isinstance(store, dict) else store.split("(")[0]
+            orig_cat = store.get("category", "") if isinstance(store, dict) else ""
+            kakao_cat = _kakao_cat(name)
+            new_stores.append({"name": name, "category": kakao_cat or orig_cat})
+        result.append({"floor": floor_item["floor"], "stores": new_stores})
+    return result
 
 
 def _enrich_govt_with_confirmed(
@@ -173,6 +210,14 @@ async def process_one_building(ufid: str) -> dict:
     addr     = naver_local.get("addr", "")     or addr
     homepage = naver_local.get("homepage", "") or kakao_info.get("homepage", "")
 
+    # ── 2.7) 공식 홈페이지 크롤 ─────────────────────────────────────────────
+    homepage_text: str = ""
+    if homepage:
+        try:
+            homepage_text = await crawl_homepage(homepage) or ""
+        except Exception as e:
+            print(f"[pipeline] crawl_homepage 실패: {e}")
+
     # ── 3) Kakao 건물 소속 매장 수집 (폴리곤+주소 이중 필터) ──────────────
     kakao_stores: list[dict] = []
     try:
@@ -238,6 +283,14 @@ async def process_one_building(ufid: str) -> dict:
     except Exception as e:
         print(f"[pipeline] 정부DB 조회 실패: {e}")
 
+    # ── 7.5) 홈페이지 텍스트 → 층별 매장 추출 ──────────────────────────────
+    homepage_floor_info: list[dict] = []
+    if homepage_text:
+        try:
+            homepage_floor_info = await extract_floor_info_from_homepage(bld_nm, homepage_text)
+        except Exception as e:
+            print(f"[pipeline] extract_floor_info_from_homepage 실패: {e}")
+
     # ── 8) 교차검증 ──────────────────────────────────────────────────────────
     validation    = cross_validate(extracted, govt_stores, kakao_stores)
     confirmed     = validation["confirmed"]
@@ -246,11 +299,19 @@ async def process_one_building(ufid: str) -> dict:
     result["confirmed_count"] = len(confirmed)
     result["coverage_rate"]   = coverage_rate
 
-    # ── 8.5) 정부DB에 confirmed 매장 병합 ───────────────────────────────────
-    enriched_govt = _enrich_govt_with_confirmed(govt_stores, confirmed) if govt_stores else []
+    # ── 8.5) floor_info 우선순위: 홈페이지 > 정부DB(Kakao카테고리보완) > confirmed
+    if homepage_floor_info:
+        floor_info_list = homepage_floor_info
+        print(f"[pipeline] floor_info 출처: 홈페이지 ({len(homepage_floor_info)}개 층)")
+    elif govt_stores:
+        enriched = _enrich_govt_with_confirmed(govt_stores, confirmed)
+        floor_info_list = _enrich_govt_categories(enriched, kakao_stores)
+        print(f"[pipeline] floor_info 출처: 정부DB+Kakao카테고리")
+    else:
+        floor_info_list = _confirmed_to_floor_info(confirmed)
+        print(f"[pipeline] floor_info 출처: LLM confirmed")
 
     # ── 9) Supabase upsert ───────────────────────────────────────────────────
-    floor_info_list = enriched_govt if enriched_govt else _confirmed_to_floor_info(confirmed)
 
     try:
         pool = await get_pool()
