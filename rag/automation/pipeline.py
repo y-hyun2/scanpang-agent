@@ -71,35 +71,53 @@ def _confirmed_to_floor_info(confirmed: list[dict]) -> list[dict]:
     ]
 
 
-def _enrich_govt_categories(
+def _enrich_govt_with_kakao(
     govt_stores: list[dict],
     kakao_stores: list[dict],
 ) -> list[dict]:
-    """소상공인 API의 부정확한 SIC 카테고리를 Kakao 카테고리로 교체한다."""
+    """
+    소상공인 API 매장명·카테고리를 Kakao 공식 매장명·카테고리로 교체한다.
+    매칭 기준: partial_ratio >= 75 (짧은 쪽이 긴 이름에 포함되는 형태 허용).
+    매칭되지 않은 매장은 소상공인 원본 유지.
+    """
     if not govt_stores or not kakao_stores:
         return govt_stores
 
     try:
         from rapidfuzz import fuzz as _fuzz
-        def _kakao_cat(name: str) -> str:
-            best_score, best_cat = 0, ""
-            for ks in kakao_stores:
-                score = _fuzz.partial_ratio(name.lower(), ks.get("name", "").lower())
-                if score > best_score:
-                    best_score, best_cat = score, ks.get("category", "")
-            return best_cat if best_score >= 75 else ""
     except ImportError:
         return govt_stores
 
+    def _best_kakao(govt_name: str) -> tuple[str, str]:
+        """(kakao_name, kakao_category) 반환. 미매칭이면 ("", "")."""
+        best_score, best_name, best_cat = 0, "", ""
+        gn = govt_name.lower().replace(" ", "")
+        for ks in kakao_stores:
+            kn = ks.get("name", "").lower().replace(" ", "")
+            score = _fuzz.partial_ratio(gn, kn)
+            if score > best_score:
+                best_score = score
+                best_name  = ks.get("name", "")
+                best_cat   = ks.get("category", "")
+        return (best_name, best_cat) if best_score >= 75 else ("", "")
+
     result = []
+    replaced = 0
     for floor_item in govt_stores:
         new_stores = []
         for store in floor_item.get("stores", []):
-            name = store.get("name", "") if isinstance(store, dict) else store.split("(")[0]
-            orig_cat = store.get("category", "") if isinstance(store, dict) else ""
-            kakao_cat = _kakao_cat(name)
-            new_stores.append({"name": name, "category": kakao_cat or orig_cat})
+            govt_name = store.get("name", "") if isinstance(store, dict) else store.split("(")[0]
+            orig_cat  = store.get("category", "") if isinstance(store, dict) else ""
+            kakao_name, kakao_cat = _best_kakao(govt_name)
+            if kakao_name:
+                new_stores.append({"name": kakao_name, "category": kakao_cat or orig_cat})
+                replaced += 1
+            else:
+                new_stores.append({"name": govt_name, "category": orig_cat})
         result.append({"floor": floor_item["floor"], "stores": new_stores})
+
+    total = sum(len(f["stores"]) for f in result)
+    print(f"[pipeline] Kakao 매장명/카테고리 교체: {replaced}/{total}개")
     return result
 
 
@@ -305,7 +323,7 @@ async def process_one_building(ufid: str) -> dict:
         print(f"[pipeline] floor_info 출처: 홈페이지 ({len(homepage_floor_info)}개 층)")
     elif govt_stores:
         enriched = _enrich_govt_with_confirmed(govt_stores, confirmed)
-        floor_info_list = _enrich_govt_categories(enriched, kakao_stores)
+        floor_info_list = _enrich_govt_with_kakao(enriched, kakao_stores)
         print(f"[pipeline] floor_info 출처: 정부DB+Kakao카테고리")
     else:
         floor_info_list = _confirmed_to_floor_info(confirmed)
