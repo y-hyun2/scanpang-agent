@@ -159,7 +159,7 @@ CATEGORY_SOURCES: dict[str, list[str]] = {
     "bank":              ["kakao"],
     "atm":               ["kakao"],
     "exchange":          ["koreaexim"],     # 한국수출입은행 환율 API
-    "subway":            ["seoul_metro"],   # 서울교통공사 OpenAPI
+    "subway":            ["tago_subway"],   # 국토교통부 TAGO 지하철정보
     "restroom":          ["seoul_openapi"], # OA-22586
     "locker":            ["seoul_openapi"], # OA-22731
     "prayer_room":       ["static_json"],   # prayer_rooms.json

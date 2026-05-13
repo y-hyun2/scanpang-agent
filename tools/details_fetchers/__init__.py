@@ -42,7 +42,7 @@ _FETCHER_BY_SOURCE: dict[str, Callable[..., Awaitable[dict]]] = {
     "tour_api":      tour_api.fetch,
     "kakao":         kakao_basic.fetch,
     "seoul_openapi": seoul_openapi.fetch,
-    "seoul_metro":   seoul_metro.fetch,
+    "tago_subway":   seoul_metro.fetch,
     "koreaexim":     koreaexim.fetch,
     "static_json":   static_json.fetch,
 }
