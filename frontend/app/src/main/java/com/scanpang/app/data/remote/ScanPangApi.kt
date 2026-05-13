@@ -1,7 +1,9 @@
 package com.scanpang.app.data.remote
 
 import retrofit2.http.Body
+import retrofit2.http.GET
 import retrofit2.http.POST
+import retrofit2.http.Query
 
 interface ScanPangApi {
 
@@ -34,6 +36,13 @@ interface ScanPangApi {
     // ── Restaurant Detail ──
     @POST("restaurant/detail")
     suspend fun getRestaurantDetail(@Body request: RestaurantDetailRequest): GeneralRestaurantDetail
+
+    // ── Spatial: H3 청크 단위 건물 ──
+    @GET("buildings")
+    suspend fun getBuildings(
+        @Query("lat") lat: Double,
+        @Query("lng") lng: Double,
+    ): BuildingsChunkResponse
 }
 
 // ── Navigation DTOs ──
@@ -120,6 +129,7 @@ data class PlaceQueryRequest(
     val user_lng: Double = 0.0,
     val user_alt: Double = 0.0,
     val pitch: Double = 0.0,
+    val bd_mgt_sn: String? = null,
     val user_message: String = "",
     val language: String = "ko",
 )
@@ -322,4 +332,27 @@ data class GeneralRestaurantDetail(
     val longitude: Double? = null,
     val source: String = "general",
     val is_open_today: Boolean = true,
+)
+
+// ── Spatial DTOs ──
+
+data class GeoJsonMultiPolygon(
+    val type: String = "MultiPolygon",
+    val coordinates: List<List<List<List<Double>>>> = emptyList(),  // [polygons][rings][points][lng, lat]
+)
+
+data class Building(
+    val ufid: String = "",
+    val bd_mgt_sn: String?,
+    val bld_nm: String? = null,
+    val render_height: Double = 0.0,
+    val h3_index_10: String = "",
+    val geom: GeoJsonMultiPolygon = GeoJsonMultiPolygon(),
+)
+
+data class BuildingsChunkResponse(
+    val center_cell: String = "",
+    val cells_queried: List<String> = emptyList(),
+    val count: Int = 0,
+    val buildings: List<Building> = emptyList(),
 )

@@ -11,3 +11,5 @@ redis>=5.0.0
 rapidfuzz
 asyncpg>=0.29.0
 playwright
+h3>=4.1
+cachetools>=5.5

@@ -7,7 +7,7 @@ from dotenv import load_dotenv
 
 from core.db import get_pool
 from schemas.place import PlaceRequest
-from tools.building_raycast import find_building_by_raycast
+from tools.building_raycast import find_building_by_raycast,  fetch_building_by_bd_mgt_sn
 
 load_dotenv()
 
@@ -109,14 +109,17 @@ def generate_follow_ups(user_message: str, place_data: dict) -> list[str]:
 # ── Main agent ────────────────────────────────────────────────────────────────
 
 async def run_place_insight_agent(req: PlaceRequest) -> dict:
-    # 1) VWorld 레이캐스팅 → 바라보는 건물
-    vworld_meta = find_building_by_raycast(
-        user_lat=req.user_lat,
-        user_lng=req.user_lng,
-        heading=req.heading,
-        user_alt=req.user_alt,
-        pitch=req.pitch,
-    )
+    # 1) 바라보는 건물 식별 — bd_mgt_sn 있으면 DB lookup, 없으면 raycasting
+    if req.bd_mgt_sn:
+        vworld_meta = fetch_building_by_bd_mgt_sn(req.bd_mgt_sn)
+    else:
+        vworld_meta = find_building_by_raycast(
+            user_lat=req.user_lat,
+            user_lng=req.user_lng,
+            heading=req.heading,
+            user_alt=req.user_alt,
+            pitch=req.pitch,
+        )
 
     place_data          = {}
     bld_name_from_vworld = ""

@@ -53,6 +53,16 @@ class ScanPangViewModel : ViewModel() {
     private val _convenienceResult = MutableStateFlow<ConvenienceResponse?>(null)
     val convenienceResult: StateFlow<ConvenienceResponse?> = _convenienceResult
 
+    // ── Spatial: H3 청크 ──
+    private val _buildingsChunk = MutableStateFlow<List<Building>>(emptyList())
+    val buildingsChunk: StateFlow<List<Building>> = _buildingsChunk
+
+    private val _currentH3Cell = MutableStateFlow<String?>(null)
+    val currentH3Cell: StateFlow<String?> = _currentH3Cell
+
+    private val _buildingsCache = MutableStateFlow<Map<String, Building>>(emptyMap())
+    val buildingsCache: StateFlow<Map<String, Building>> = _buildingsCache.asStateFlow()
+
     // ── Halal API ──
 
     fun loadPrayerTimesAndQibla(lat: Double = 37.5636, lng: Double = 126.9822) {
@@ -200,4 +210,49 @@ class ScanPangViewModel : ViewModel() {
             }
         }
     }
+
+    // ── Spatial API ──
+
+    private var lastFetchLat: Double = 0.0
+    private var lastFetchLng: Double = 0.0
+
+    fun updateLocationForChunk(lat: Double, lng: Double) {
+        // 50m 미만 이동 시 페치 스킵 (네트워크 절약)
+        if (lastFetchLat != 0.0) {
+            val r = FloatArray(1)
+            Location.distanceBetween(lastFetchLat, lastFetchLng, lat, lng, r)
+            if (r[0] < 50f) return
+        }
+        lastFetchLat = lat
+        lastFetchLng = lng
+
+        viewModelScope.launch {
+            try {
+                Log.d("ScanPangVM", "fetchBuildings START lat=$lat, lng=$lng")
+                val response = api.getBuildings(lat, lng)
+
+                // [핵심] 누적 캐시 — 셀 바뀌어도 기존 건물 보존, 새 거 추가
+                val newCache = _buildingsCache.value.toMutableMap()
+                response.buildings.forEach { b ->
+                    val key = b.ufid ?: "${b.h3_index_10}_${b.hashCode()}"
+                    newCache[key] = b
+                }
+                _buildingsCache.value = newCache
+
+                _buildingsChunk.value = response.buildings    // 호환용 — 다른 곳서 쓸 수 있음
+                _currentH3Cell.value = response.center_cell
+
+                val namedCount = response.buildings.count { it.bld_nm != null }
+                Log.d("ScanPangVM", buildString {
+                    append("✓ H3 청크 페치 완료\n")
+                    append("   이번 페치: ${response.count}개 (이름 있음: ${namedCount}개)\n")
+                    append("   누적 캐시 총 ${newCache.size}개\n")
+                    append("   중심 셀: ${response.center_cell}")
+                })
+            } catch (e: Exception) {
+                Log.e("ScanPangVM", "fetchBuildings FAILED for lat=$lat, lng=$lng", e)
+            }
+        }
+    }
+
 }

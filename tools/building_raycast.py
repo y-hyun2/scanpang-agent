@@ -210,6 +210,24 @@ def find_building_by_raycast(
         _print_debug_geojson(user_lat, user_lng, user_lng + dlng, user_lat + dlat, None)
     return best
 
+def fetch_building_by_bd_mgt_sn(bd_mgt_sn: str) -> Optional[dict]:
+    """
+    raycasting 대신 bd_mgt_sn으로 직접 JSON 인덱스 검색.
+    클라이언트가 이미 정면 건물을 식별한 경우 사용 (옵션 B 경로).
+    반환 형식은 find_building_by_raycast와 동일.
+    """
+    _load_index()
+    if not _buildings:
+        return None
+
+    for entry in _buildings:
+        if entry["meta"].get("bd_mgt_sn") == bd_mgt_sn:
+            name = entry["meta"].get("bld_nm") or "(이름 없음)"
+            print(f"[BdMgtSnLookup] 매칭: {name!r} bd_mgt_sn={bd_mgt_sn}")
+            return entry["meta"]
+
+    print(f"[BdMgtSnLookup] 매칭 실패: bd_mgt_sn={bd_mgt_sn}")
+    return None
 
 def _print_debug_geojson(
     user_lat: float, user_lng: float,

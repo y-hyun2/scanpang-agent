@@ -21,6 +21,8 @@ from core.db import get_pool, close_pool
 
 app = FastAPI(title="ScanPang Navigation API")
 
+app.include_router(h3_buildings_router)
+
 
 @app.on_event("startup")
 async def _startup():

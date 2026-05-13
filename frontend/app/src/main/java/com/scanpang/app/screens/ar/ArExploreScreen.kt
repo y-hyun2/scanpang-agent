@@ -114,6 +114,9 @@ import kotlin.math.sqrt
 import kotlin.math.atan2
 import kotlin.math.cos
 import kotlin.math.sin
+import com.scanpang.app.data.remote.Building
+import com.scanpang.app.data.remote.GeoJsonMultiPolygon
+import kotlin.math.abs
 
 private data class ArSearchHit(
     val title: String,
@@ -131,6 +134,15 @@ private data class DynamicPoi(
     val arOverlay: ArOverlay? = null,
     val docent: Docent? = null,
     val isPending: Boolean = false,
+)
+
+private data class BuildingCandidate(
+    val b: Building,
+    val centerLat: Double,
+    val centerLng: Double,
+    val dist: Float,
+    val centerBearing: Double,      // 사용자 → 건물 중심 방향 (0~360°)
+    val angularHalfWidth: Double,   // 사용자 위치에서 건물이 차지하는 시야각의 절반
 )
 
 /**
@@ -205,8 +217,8 @@ fun ArExploreScreen(
         scope.launch {
             val reply = sendVoiceMessage(text, agentService)
             chatMessages = chatMessages +
-                ArAgentChatMessage(text = text, isUser = true) +
-                ArAgentChatMessage(text = reply, isUser = false)
+                    ArAgentChatMessage(text = text, isUser = true) +
+                    ArAgentChatMessage(text = reply, isUser = false)
             chatInput = ""
             ttsController.speakIfEnabled(reply, isTtsOn)
         }
@@ -280,11 +292,12 @@ fun ArExploreScreen(
     var currentPitch by remember { mutableStateOf(0.0) }
     var currentLat by remember { mutableStateOf(0.0) }
     var currentLng by remember { mutableStateOf(0.0) }
-    var lastQueryTime by remember { mutableStateOf(0L) }
 
     val geospatialAnchors = remember { mutableStateMapOf<String, Anchor>() }
     var anchorScreenPositions by remember { mutableStateOf<Map<String, Offset>>(emptyMap()) }
     val dynamicPois = remember { mutableStateListOf<DynamicPoi>() }
+    var lastProcessedChunkCell by remember { mutableStateOf<String?>(null) }
+    var lastVisibilityCalcTime by remember { mutableStateOf(0L) }
 
     // 화면 크기 (앵커 → 화면 좌표 투영용)
     val configuration = LocalConfiguration.current
@@ -338,6 +351,18 @@ fun ArExploreScreen(
 
                     if (pose.horizontalAccuracy < 1.5) hasAchievedHighAccuracy = true
 
+                    // 10초마다 상태 종합 로그
+                    if (System.currentTimeMillis() % 10000 < 100) {
+                        Log.d("SCANPANG_AR", buildString {
+                            append("━━━━━━━━━━ AR 상태 ━━━━━━━━━━\n")
+                            append("  VPS 오차: ${"%.2f".format(pose.horizontalAccuracy)}m  (high=$hasAchievedHighAccuracy)\n")
+                            append("  위치: lat=${"%.6f".format(currentLat)}, lng=${"%.6f".format(currentLng)}\n")
+                            append("  방향: heading=${"%.1f".format(currentHeading)}°, pitch=${"%.1f".format(currentPitch)}°\n")
+                            append("  H3 셀: ${viewModel.currentH3Cell.value ?: "(아직 로드 안 됨)"}\n")
+                            append("  청크 내 건물: ${viewModel.buildingsChunk.value.size}개")
+                        })
+                    }
+
                     // ARCore 위치를 채팅 에이전트에 실시간 반영 → /ar/agent/chat 호출 시 정확한 위치 전달
                     agentService.updatePosition(currentLat, currentLng, currentHeading)
 
@@ -355,59 +380,117 @@ fun ArExploreScreen(
                             dynamicPois[i] = dynamicPois[i].copy(distance = results[0])
                         }
 
-                        // 5초 간격 자동 쿼리
-                        val now = System.currentTimeMillis()
-                        if (now - lastQueryTime > 5000 && !isFrozen) {
-                            lastQueryTime = now
-                            scope.launch {
-                                try {
-                                    val response = api.queryPlace(
-                                        PlaceQueryRequest(
-                                            heading = currentHeading,
-                                            user_lat = currentLat,
-                                            user_lng = currentLng,
-                                            user_alt = currentAltitude,
-                                            pitch = currentPitch,
-                                        ),
-                                    )
-                                    val overlay = response.ar_overlay ?: return@launch
-                                    if (overlay.name.isEmpty()) return@launch
+                        // H3 청크 갱신
+                        viewModel.updateLocationForChunk(currentLat, currentLng)
 
-                                    // 중복 체크
-                                    val alreadyExists = dynamicPois.any { it.name == overlay.name }
-                                    if (alreadyExists) return@launch
+                        val now2 = System.currentTimeMillis()
+                        if (now2 - lastVisibilityCalcTime > 1000) {
+                            lastVisibilityCalcTime = now2
 
-                                    // 앵커 생성 — 사용자 바라보는 방향 ~50m 앞
-                                    val headingRad = Math.toRadians(currentHeading)
-                                    val offsetDist = 0.00045 // ~50m in degrees
-                                    val anchorLat = currentLat + offsetDist * cos(headingRad)
-                                    val anchorLng = currentLng + offsetDist * sin(headingRad)
+                            val cache = viewModel.buildingsCache.value
+                            if (cache.isNotEmpty()) {
+                                // 100m 이내 후보 추출
+                                val candidates = cache.values
+                                    .mapNotNull { b ->
+                                        val center = computeCentroid(b.geom) ?: return@mapNotNull null
+                                        val footprint = computeAngularFootprint(b.geom, currentLat, currentLng) ?: return@mapNotNull null
+                                        val r = FloatArray(1)
+                                        Location.distanceBetween(currentLat, currentLng, center.first, center.second, r)
+                                        val dist = r[0]
+                                        if (dist >= 100f) return@mapNotNull null
 
-                                    val newId = "poi_${System.currentTimeMillis()}"
-                                    val anchor = earth.createAnchor(
-                                        anchorLat, anchorLng, currentAltitude,
-                                        0f, 0f, 0f, 1f,
-                                    )
-                                    geospatialAnchors[newId] = anchor
+                                        BuildingCandidate(
+                                            b = b,
+                                            centerLat = center.first,
+                                            centerLng = center.second,
+                                            dist = dist,
+                                            centerBearing = footprint.first,
+                                            angularHalfWidth = footprint.second,
+                                        )
+                                    }
+                                    .sortedBy { it.dist }
 
-                                    Location.distanceBetween(
-                                        currentLat, currentLng, anchorLat, anchorLng, results,
-                                    )
-                                    dynamicPois.add(
-                                        DynamicPoi(
-                                            id = newId,
-                                            name = overlay.name,
-                                            category = overlay.category,
-                                            distance = results[0],
-                                            latitude = anchorLat,
-                                            longitude = anchorLng,
-                                            arOverlay = overlay,
-                                            docent = response.docent,
-                                        ),
-                                    )
-                                } catch (e: Exception) {
-                                    Log.e("ArExplore", "자동 쿼리 실패: ${e.message}")
+                                // Occlusion 완화 — 거리 차 15m 이상 + footprint 70% 안에 들어갈 때만 가려진 걸로
+                                // Occlusion 필터링 — angular footprint 겹침 비율 60% 이상이면 가려진 걸로
+                                val occludedRanges = mutableListOf<Triple<Double, Double, Float>>()
+                                val visibleCandidates = mutableListOf<BuildingCandidate>()
+                                for (cand in candidates) {
+                                    val candWidth = cand.angularHalfWidth * 2.0
+
+                                    val isOccluded = occludedRanges.any { (occCenter, occHalf, occDist) ->
+                                        // 거리 차 5m 미만이면 옆에 나란히 있는 거 — 가린다고 판단 안 함
+                                        if (cand.dist - occDist < 5f) return@any false
+
+                                        // 두 angular range의 겹침 계산
+                                        val occMin = occCenter - occHalf
+                                        val occMax = occCenter + occHalf
+                                        val candMin = cand.centerBearing - cand.angularHalfWidth
+                                        val candMax = cand.centerBearing + cand.angularHalfWidth
+
+                                        val overlapMin = kotlin.math.max(occMin, candMin)
+                                        val overlapMax = kotlin.math.min(occMax, candMax)
+                                        val overlap = kotlin.math.max(0.0, overlapMax - overlapMin)
+
+                                        // candidate footprint의 60% 이상이 가려졌으면 occluded
+                                        candWidth > 0 && (overlap / candWidth) > 0.6
+                                    }
+
+                                    if (!isOccluded) {
+                                        occludedRanges.add(Triple(cand.centerBearing, cand.angularHalfWidth, cand.dist))
+                                        visibleCandidates.add(cand)
+                                    }
+                                    if (visibleCandidates.size >= 30) break
                                 }
+
+                                // 새 visible ID 집합
+                                val newVisibleIds = visibleCandidates.map { cand ->
+                                    "building_${cand.b.ufid ?: cand.b.h3_index_10}_${cand.b.hashCode()}"
+                                }.toSet()
+
+                                // 더 이상 visible 아닌 건물 라벨 제거 (멀어진 건물, 새로 가려진 건물)
+                                val currentBuildingIds = dynamicPois.filter { it.id.startsWith("building_") }.map { it.id }
+                                val toRemove = currentBuildingIds.filter { it !in newVisibleIds }
+                                toRemove.forEach { id ->
+                                    geospatialAnchors[id]?.detach()
+                                    geospatialAnchors.remove(id)
+                                }
+                                dynamicPois.removeAll { it.id.startsWith("building_") && it.id !in newVisibleIds }
+
+                                // 새로 visible된 건물만 앵커 생성 (이미 있는 건 건드리지 않음)
+                                val existingIds = dynamicPois.map { it.id }.toSet()
+                                visibleCandidates.forEach { cand ->
+                                    val id = "building_${cand.b.ufid ?: cand.b.h3_index_10}_${cand.b.hashCode()}"
+                                    if (id !in existingIds) {
+                                        try {
+                                            // 중심 라벨 anchor — 건물 정중앙
+                                            val labelAltitude = currentAltitude + (cand.b.render_height / 2.0)
+                                            val anchor = earth.createAnchor(
+                                                cand.centerLat, cand.centerLng, labelAltitude,
+                                                0f, 0f, 0f, 1f,
+                                            )
+                                            geospatialAnchors[id] = anchor
+                                            dynamicPois.add(
+                                                DynamicPoi(
+                                                    id = id,
+                                                    name = cand.b.bld_nm ?: "이름 없는 건물",
+                                                    category = "건물",
+                                                    distance = cand.dist,
+                                                    latitude = cand.centerLat,
+                                                    longitude = cand.centerLng,
+                                                ),
+                                            )
+                                        } catch (e: Exception) {
+                                            Log.e("ArExplore", "건물 앵커 실패 ${cand.b.bld_nm}: ${e.message}")
+                                        }
+                                    }
+                                }
+
+                                Log.d("ArExplore",
+                                    "visibility 갱신: 표시 ${visibleCandidates.size}개 " +
+                                            "(캐시 ${cache.size}, 100m 이내 ${candidates.size}, " +
+                                            "occlusion ${candidates.size - visibleCandidates.size}개 제외, " +
+                                            "추가 ${visibleCandidates.size - existingIds.count { it.startsWith("building_") }}, " +
+                                            "제거 ${toRemove.size})")
                             }
                         }
                     } else {
@@ -518,17 +601,12 @@ fun ArExploreScreen(
 
             // ── 동적 마커 + 사이드 컬럼 ──
             Box(modifier = Modifier.fillMaxSize()) {
+
                 ArDynamicPoiMarkers(
                     dynamicPois = dynamicPois,
                     anchorScreenPositions = anchorScreenPositions,
-                    onPoiClick = { poi ->
-                        selectedPoi = poi.name
-                        selectedPoiOverlay = poi.arOverlay
-                        selectedPoiDocent = poi.docent
-                        activeDetailTab = ArPoiTabBuilding
-                        selectedStore = null
-                    },
                 )
+
                 ArExploreSideColumn(
                     onTtsClick = {
                         isTtsOn = !isTtsOn
@@ -559,8 +637,8 @@ fun ArExploreScreen(
                         scope.launch {
                             val reply = agentService.sendMessage(q)
                             chatMessages = chatMessages +
-                                ArAgentChatMessage(text = q, isUser = true) +
-                                ArAgentChatMessage(text = reply, isUser = false)
+                                    ArAgentChatMessage(text = q, isUser = true) +
+                                    ArAgentChatMessage(text = reply, isUser = false)
                             chatInput = ""
                             ttsController.speakIfEnabled(reply, isTtsOn)
                         }
@@ -880,25 +958,21 @@ fun ArExploreScreen(
 private fun BoxScope.ArDynamicPoiMarkers(
     dynamicPois: List<DynamicPoi>,
     anchorScreenPositions: Map<String, Offset>,
-    onPoiClick: (DynamicPoi) -> Unit,
+    // onPoiClick 파라미터 제거
 ) {
     dynamicPois.forEach { poi ->
         val screenPos = anchorScreenPositions[poi.id] ?: return@forEach
         val xPx = screenPos.x.roundToInt()
         val yPx = screenPos.y.roundToInt()
 
-        Box(
-            modifier = Modifier.offset { IntOffset(xPx, yPx) },
-        ) {
+        Box(modifier = Modifier.offset { IntOffset(xPx, yPx) }) {
             ArPoiCard(
                 title = if (poi.isPending) "분석 중..." else poi.name,
                 subtitle = buildString {
                     if (poi.category.isNotEmpty()) append("${poi.category} · ")
                     append("${"%.0f".format(poi.distance)}m")
                 },
-                onClick = if (!poi.isPending) {
-                    { onPoiClick(poi) }
-                } else null,
+                onClick = null,   // ← null로 두면 ArPoiCard가 클릭 안 됨
             )
         }
     }
@@ -1059,4 +1133,59 @@ private fun buildFilterPillLabel(selected: Set<String>): String {
     if (list.isEmpty()) return ""
     if (list.size == 1) return list[0]
     return "${list[0]} 외 ${list.size - 1}개"
+}
+
+/**
+ * GeoJSON MultiPolygon의 첫 번째 polygon 외곽 ring의 vertex 평균 = 단순 중심점.
+ * 작은 건물엔 충분히 정확. L자/중정형은 약간 오차 있을 수 있지만 라벨용으로 OK.
+ */
+private fun computeCentroid(geom: GeoJsonMultiPolygon): Pair<Double, Double>? {
+    val polygon = geom.coordinates.firstOrNull() ?: return null
+    val ring = polygon.firstOrNull() ?: return null
+    if (ring.isEmpty()) return null
+
+    var sumLat = 0.0
+    var sumLng = 0.0
+    for (point in ring) {
+        sumLng += point[0]  // GeoJSON: [lng, lat] 순서
+        sumLat += point[1]
+    }
+    val n = ring.size
+    return Pair(sumLat / n, sumLng / n)
+}
+
+/**
+ * 사용자 위치 기준, 건물 polygon이 차지하는 시야각(angular footprint).
+ * 반환: (centerBearing 0~360°, halfWidth°)
+ * Occlusion 판정에 사용 — 가까운 A의 footprint 범위 안에 들어가는 멀리 있는 B는 가려진 걸로.
+ */
+private fun computeAngularFootprint(
+    geom: GeoJsonMultiPolygon,
+    userLat: Double,
+    userLng: Double,
+): Pair<Double, Double>? {
+    val polygon = geom.coordinates.firstOrNull() ?: return null
+    val ring = polygon.firstOrNull() ?: return null
+    if (ring.size < 3) return null
+
+    val bearings = ring.map { point ->
+        val r = FloatArray(3)
+        Location.distanceBetween(userLat, userLng, point[1], point[0], r)
+        ((r[1] + 360f) % 360f).toDouble()
+    }
+
+    val minB = bearings.min()
+    val maxB = bearings.max()
+    val range = maxB - minB
+
+    return if (range > 180.0) {
+        // 0/360 경계 가로지름 → wrap-around 보정
+        val wrapped = bearings.map { if (it < 180) it + 360 else it }
+        val wMin = wrapped.min()
+        val wMax = wrapped.max()
+        val center = ((wMin + wMax) / 2.0) % 360.0
+        Pair(center, (wMax - wMin) / 2.0)
+    } else {
+        Pair((minB + maxB) / 2.0, range / 2.0)
+    }
 }
