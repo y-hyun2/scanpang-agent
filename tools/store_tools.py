@@ -40,11 +40,20 @@ def _is_social_url(url: str) -> bool:
     return any(p in lower for p in _SOCIAL_URL_PATTERNS)
 
 
-async def get_store_detail(place_id: str, store_name: str) -> dict:
+async def get_store_detail(
+    place_id: str,
+    store_name: str,
+    lat: float | None = None,
+    lng: float | None = None,
+) -> dict:
     """
     Args:
-        place_id:   건물 ufid (place_info FK)
+        place_id:   건물 ufid (place_info FK). outdoor 진입 시나리오에서는
+                    `__outdoor__` 같은 sentinel 또는 임의 키 허용.
         store_name: 매장명
+        lat, lng:   (선택) 진입점이 GPS 또는 AR 마커 좌표를 들고 들어올 때 override.
+                    None이면 place_info에서 건물 좌표 조회 (기존 시나리오 a).
+                    AR 스캔/카테고리 필터 마커 탭(시나리오 b/c)는 마커 좌표 전달.
 
     Returns:
         store_details row dict. 모든 fetcher 실패 시 최소 정보만.
@@ -60,13 +69,18 @@ async def get_store_detail(place_id: str, store_name: str) -> dict:
     if row:
         return _row_to_dict(row)
 
-    # ── ② 건물 좌표 + floor (있으면) 조회 ───────────────────────────────────
-    async with pool.acquire() as conn:
-        coord = await conn.fetchrow(
-            "SELECT lat, lng FROM place_info WHERE ufid = $1", place_id
-        )
-    lat = float(coord["lat"]) if coord and coord["lat"] is not None else _DEFAULT_LAT
-    lng = float(coord["lng"]) if coord and coord["lng"] is not None else _DEFAULT_LNG
+    # ── ② 좌표 결정 ─────────────────────────────────────────────────────────
+    # lat/lng가 인자로 들어오면 그대로 사용 (마커/GPS 진입).
+    # 아니면 place_info에서 건물 좌표 조회 (시나리오 a).
+    if lat is None or lng is None:
+        async with pool.acquire() as conn:
+            coord = await conn.fetchrow(
+                "SELECT lat, lng FROM place_info WHERE ufid = $1", place_id
+            )
+        lat = float(coord["lat"]) if coord and coord["lat"] is not None else _DEFAULT_LAT
+        lng = float(coord["lng"]) if coord and coord["lng"] is not None else _DEFAULT_LNG
+    else:
+        lat, lng = float(lat), float(lng)
 
     # ── ③ Kakao Local 1차 — category_name 확보용 (분류 입력) ─────────────────
     kakao = await check_kakao_open_status(store_name, lat, lng) or {}
