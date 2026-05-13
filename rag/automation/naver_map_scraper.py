@@ -309,7 +309,12 @@ async def fetch_place_detail(
                     return {}
 
                 await asyncio.sleep(1.5)
-                m = re.search(r"/place/(\d+)", entry_frame.url)
+                # Naver Place URL은 카테고리별로 path가 다름:
+                #   일반 매장:    pcmap.place.naver.com/place/{id}/home
+                #   음식점/카페:  pcmap.place.naver.com/restaurant/{id}/home
+                #   카페 변형:     pcmap.place.naver.com/cafe/{id}/home
+                #   숙박:         pcmap.place.naver.com/accommodation/{id}/home
+                m = re.search(r"/(?:place|restaurant|cafe|accommodation|attraction)/(\d+)", entry_frame.url)
                 place_id = m.group(1) if m else None
                 if not place_id:
                     print(f"[naver_map_scraper] place_id 추출 실패 ({query!r}, url={entry_frame.url!r})")
@@ -320,9 +325,18 @@ async def fetch_place_detail(
                 )
                 import json as _json
                 apollo = _json.loads(apollo_json or "{}")
-                base = apollo.get(f"PlaceDetailBase:{place_id}") or {}
+                # Apollo state 키도 카테고리별로 prefix 다름. PlaceDetailBase,
+                # RestaurantDetailBase, AccommodationDetailBase 등 순회.
+                base = {}
+                for prefix in ("PlaceDetailBase", "RestaurantDetailBase",
+                               "CafeDetailBase", "AccommodationDetailBase",
+                               "AttractionDetailBase"):
+                    candidate = apollo.get(f"{prefix}:{place_id}")
+                    if candidate:
+                        base = candidate
+                        break
                 if not base:
-                    print(f"[naver_map_scraper] PlaceDetailBase:{place_id} 비어있음 (Apollo 키 {len(apollo)}개)")
+                    print(f"[naver_map_scraper] DetailBase:{place_id} 비어있음 (Apollo 키 {len(apollo)}개)")
                     return {}
 
                 name = base.get("name", "") or ""
@@ -407,17 +421,23 @@ async def fetch_place_detail(
                             return (clone.innerText || '').trim().replace(/\s+/g, ' ');
                         };
 
-                        // 영업시간 블록(div.O8qbU)을 우선 식별 — 못 찾으면 em "영업" 부모로 fallback.
-                        let bizBlock = document.querySelector('div.O8qbU');
+                        // ── 영업시간 영역 식별 ──
+                        // div.O8qbU는 매장에 따라 주소 블록이기도 함. 그래서 우선
+                        // "em 안에 '영업' 텍스트가 있는" 요소의 부모를 찾고, 그것의
+                        // 가장 가까운 div.O8qbU/li/div 조상을 영업시간 블록으로 본다.
+                        let bizBlock = null;
+                        const ems = Array.from(document.querySelectorAll('em'));
+                        const bizEm = ems.find(e => /영업/.test(e.textContent || ''));
+                        if (bizEm) {
+                            bizBlock = bizEm.closest('div.O8qbU, li, div');
+                        }
+                        // bizEm 못 찾으면 div.O8qbU 후보들 중 "영업" 텍스트 포함한 것만
                         if (!bizBlock) {
-                            const ems = Array.from(document.querySelectorAll('em'));
-                            const bizEm = ems.find(e => /영업/.test(e.textContent || ''));
-                            if (bizEm) bizBlock = bizEm.closest('div, li');
+                            const o8s = Array.from(document.querySelectorAll('div.O8qbU'));
+                            bizBlock = o8s.find(d => /영업/.test(d.innerText || ''));
                         }
 
                         if (bizBlock) {
-                            // 펼쳐진 상태면 요일별 행이 보임. 클래스명이 자주 바뀌므로
-                            // "월/화/수/목/금/토/일 ..." 패턴 텍스트를 가진 li/div만 모음.
                             const dayPattern = /^(월|화|수|목|금|토|일)(요일)?[\s\t]/;
                             const candidates = Array.from(bizBlock.querySelectorAll('li, div, span'));
                             const dayTexts = [];
@@ -429,16 +449,16 @@ async def fetch_place_detail(
                                     dayTexts.push(t);
                                 }
                             }
-                            // 최소 3개 요일 이상 잡혔을 때만 신뢰 (펼침 성공)
                             if (dayTexts.length >= 3) {
                                 r.open_hours = dayTexts.slice(0, 7).join(' / ');
                             } else {
-                                // 펼침 실패 — 영업시간 블록 전체 텍스트(요약)
-                                r.open_hours = visText(bizBlock);
+                                // 요일 매칭 < 3 — 펼침 실패. 블록 텍스트가 주소이면 빈 값.
+                                const blockText = visText(bizBlock);
+                                r.open_hours = /영업/.test(blockText) ? blockText : '';
                             }
                         }
 
-                        // 휴무일 (오늘 기준 30일 이내만 노출)
+                        // ── 휴무일 (오늘 기준 30일 이내만 노출) ──
                         const closedEms = Array.from(document.querySelectorAll('em'))
                             .filter(e => /휴무/.test(e.textContent || ''));
                         if (closedEms.length > 0) {
@@ -449,10 +469,68 @@ async def fetch_place_detail(
                             if (sib) r.closed_days = visText(sib);
                         }
 
-                        // 외부 홈페이지 URL
+                        // ── 외부 홈페이지 URL ──
                         const all = Array.from(document.querySelectorAll('a[href^="http"]'));
                         const ext = all.find(a => !/(naver|nver|map\.|m\.naver|pcmap)/.test(a.href));
                         if (ext) r.homepage = ext.href;
+
+                        // ── 메뉴 추출 (카페/식당 핵심) ──
+                        // 가격 패턴(N,NNN원 또는 NNNN원)을 가진 짧은 텍스트를
+                        // 메뉴 후보로 본다. 가격 앞 텍스트를 이름으로 추출.
+                        const priceRe = /(\d{1,3}(,\d{3})+|\d{3,6})\s*원/;
+                        const menuCandidates = Array.from(
+                            document.querySelectorAll('li, .place_section_content > div > div, .order_list li')
+                        );
+                        const menuItems = [];
+                        const seenMenu = new Set();
+                        for (const el of menuCandidates) {
+                            const t = visText(el);
+                            if (!t || t.length > 80) continue;
+                            const m = t.match(priceRe);
+                            if (!m) continue;
+                            const price = m[0];
+                            const name = t.substring(0, t.indexOf(price)).trim();
+                            // 이름이 너무 짧거나 가격 포함이면 노이즈
+                            if (!name || name.length > 40 || /\d원/.test(name)) continue;
+                            const key = name + '|' + price;
+                            if (seenMenu.has(key)) continue;
+                            seenMenu.add(key);
+                            menuItems.push({name, price});
+                            if (menuItems.length >= 20) break;
+                        }
+                        if (menuItems.length > 0) r.menu = menuItems;
+
+                        // ── 이미지 URL ──
+                        // Naver 매장 이미지는 pstatic.net CDN. 작은 아이콘·아바타 제외하기
+                        // 위해 src에 'restaurant'/'place'/'photo' 포함 또는 width 충분한 것만.
+                        const imgs = Array.from(document.querySelectorAll('img'));
+                        const imgUrls = [];
+                        const seenImg = new Set();
+                        for (const img of imgs) {
+                            const src = img.src || img.dataset?.src || '';
+                            if (!src || seenImg.has(src)) continue;
+                            // 외부 CDN이거나 Naver pstatic 매장 이미지만
+                            if (!/pstatic\.net|naver\.net/.test(src)) continue;
+                            // 작은 아이콘 제외 (icon, sprite, blank 키워드)
+                            if (/icon|sprite|blank|spacer|profile/i.test(src)) continue;
+                            seenImg.add(src);
+                            imgUrls.push(src);
+                            if (imgUrls.length >= 6) break;
+                        }
+                        if (imgUrls.length > 0) r.image_urls = imgUrls;
+
+                        // ── 소개·설명 (관광지/문화시설용) ──
+                        // class O8qbU에 '소개' em이 있는 블록 — '영업'과 다른 별도 블록일 수 있음.
+                        const introEm = ems.find(e => /소개|설명/.test(e.textContent || ''));
+                        if (introEm) {
+                            const block = introEm.closest('div.O8qbU, li, div');
+                            if (block) {
+                                const intro = visText(block);
+                                // em 텍스트 자체(=label)는 빼고 본문만
+                                const labelText = visText(introEm);
+                                r.intro = intro.startsWith(labelText) ? intro.slice(labelText.length).trim() : intro;
+                            }
+                        }
                         return r;
                     }
                 """)

@@ -38,6 +38,11 @@ async def fetch(
     conveniences = detail.get("conveniences", []) or []
     raw_category = detail.get("category", "") or category_name
 
+    # 매장 검색 결과로 클릭된 실제 매장명이 우리가 요청한 이름과 다를 수 있음
+    # (예: "스타벅스 명동점" 요청 → "스타벅스 포포인츠명동점" 클릭됨).
+    # 매칭 검증은 fetch_place_detail에서 이미 통과한 것이라 신뢰 가능.
+    matched_name = detail.get("name", "")
+
     return {
         "phone":       detail.get("phone", ""),
         "addr":        detail.get("roadAddress", "") or detail.get("address", ""),
@@ -45,11 +50,14 @@ async def fetch(
         "category":    raw_category,
         "open_hours":  detail.get("open_hours", ""),
         "closed_days": detail.get("closed_days", ""),
-        "image_urls":  [],  # Phase 2b에서 DOM에서 추출 예정
+        "image_urls":  detail.get("image_urls", []) or [],
         "details":     {
+            "matched_name": matched_name,
             "category":     raw_category,
             "conveniences": conveniences,
             "place_id":     detail.get("place_id", ""),
+            "menu":         detail.get("menu", []),
+            "intro":        detail.get("intro", ""),
         },
         "source":      "naver_place",
     }
