@@ -18,9 +18,9 @@ import httpx
 
 _API_URL = "https://map.naver.com/p/api/entry/addressDetailPlace"
 _REVERSE_GEOCODE_URL = "https://map.naver.com/p/api/location/geocode"
-_FLOOR_RE = re.compile(r"[Bb지하]\d+층|\d+층|\d+F|B\d+층?")
+_FLOOR_RE = re.compile(r"지하\s*(\d+)\s*층|B\s*(\d+)\s*층?|(\d+)\s*F|(\d+)\s*층")
 _PER_PAGE = 20
-_MAX_PAGES = 10  # 안전한도 (최대 200개)
+_MAX_PAGES = 20  # 안전한도 (최대 400개). 롯데백화점 등 200+매장 빌딩 대응.
 
 # 도로명주소에서 "{도로명} {번호}"까지만 추출하기 위한 정규식.
 # 뒤에 건물명(Noon Square)·층(4F)·호수 등이 붙으면 API가 404를 반환하므로 잘라낸다.
@@ -54,13 +54,24 @@ _FACILITY_CATEGORIES = (
 
 
 def _parse_floor(*texts: str) -> str:
-    """주어진 텍스트들에서 첫 번째로 발견되는 층 표기를 반환."""
+    """
+    주어진 텍스트들에서 첫 번째 층 표기를 찾아 **정규화된 키**로 반환한다.
+    "3층"/"3F"/"3 층"/"지상3층"은 모두 "3F"로,
+    "지하1층"/"B1"/"B1층"은 모두 "B1"으로 통일한다.
+    """
     for t in texts:
         if not t:
             continue
         m = _FLOOR_RE.search(t)
         if m:
-            return m.group(0)
+            g_basement_kor, g_basement_b, g_aboveF, g_above_kor = m.groups()
+            # 지하 그룹이 잡혔으면 B{n}
+            basement = g_basement_kor or g_basement_b
+            if basement:
+                return f"B{int(basement)}"
+            above = g_aboveF or g_above_kor
+            if above:
+                return f"{int(above)}F"
     return ""
 
 
