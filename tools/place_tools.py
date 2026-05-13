@@ -4,10 +4,13 @@ import httpx
 KAKAO_REST_API_KEY = os.getenv("KAKAO_REST_API_KEY", "")
 
 
-async def check_kakao_open_status(place_name: str, lat: float, lng: float) -> dict:
+async def check_kakao_open_status(
+    place_name: str, lat: float, lng: float, radius: int = 300,
+) -> dict:
     """
     Kakao Local API로 장소 기본 정보 조회.
-    주로 build_place_db.py에서 사용하며, 런타임에 실시간 영업여부가 필요할 때도 활용 가능.
+    store_details에서는 place_info.floor_info의 매장명이 들어오므로 그 건물 안에
+    있는 게 보장됨 → 좁은 반경(기본 300m)으로 충분. 동명 매장 오매칭 방지에도 유리.
     """
     url = "https://dapi.kakao.com/v2/local/search/keyword.json"
     headers = {"Authorization": f"KakaoAK {KAKAO_REST_API_KEY}"}
@@ -15,7 +18,7 @@ async def check_kakao_open_status(place_name: str, lat: float, lng: float) -> di
         "query": place_name,
         "x": str(lng),
         "y": str(lat),
-        "radius": 2000,
+        "radius": radius,
         "size": 1,
     }
     async with httpx.AsyncClient() as client:
