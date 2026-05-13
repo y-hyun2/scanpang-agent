@@ -30,7 +30,7 @@ from tools.details_fetchers import (
     tour_api,
     seoul_openapi,
     seoul_metro,
-    ecos,
+    koreaexim,
     static_json,
 )
 
@@ -43,7 +43,7 @@ _FETCHER_BY_SOURCE: dict[str, Callable[..., Awaitable[dict]]] = {
     "kakao":         kakao_basic.fetch,
     "seoul_openapi": seoul_openapi.fetch,
     "seoul_metro":   seoul_metro.fetch,
-    "ecos":          ecos.fetch,
+    "koreaexim":     koreaexim.fetch,
     "static_json":   static_json.fetch,
 }
 

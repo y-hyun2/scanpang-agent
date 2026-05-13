@@ -158,7 +158,7 @@ CATEGORY_SOURCES: dict[str, list[str]] = {
     "hospital":          ["kakao"],
     "bank":              ["kakao"],
     "atm":               ["kakao"],
-    "exchange":          ["ecos"],          # 한국은행 환율 API
+    "exchange":          ["koreaexim"],     # 한국수출입은행 환율 API
     "subway":            ["seoul_metro"],   # 서울교통공사 OpenAPI
     "restroom":          ["seoul_openapi"], # OA-22586
     "locker":            ["seoul_openapi"], # OA-22731

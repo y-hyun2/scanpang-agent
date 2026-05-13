@@ -5,12 +5,14 @@ KAKAO_REST_API_KEY = os.getenv("KAKAO_REST_API_KEY", "")
 
 
 async def check_kakao_open_status(
-    place_name: str, lat: float, lng: float, radius: int = 300,
+    place_name: str, lat: float, lng: float, radius: int = 1000,
 ) -> dict:
     """
     Kakao Local API로 장소 기본 정보 조회.
-    store_details에서는 place_info.floor_info의 매장명이 들어오므로 그 건물 안에
-    있는 게 보장됨 → 좁은 반경(기본 300m)으로 충분. 동명 매장 오매칭 방지에도 유리.
+    store_details에서는 place_info.floor_info의 매장명이 들어오므로 같은 건물
+    소속이 일반적이지만, Kakao에 등록된 매장 좌표가 건물 입구/별관/실제 매장 위치
+    중 어디인지 일정치 않아 거리 오차가 종종 300m를 넘는다. 기본 1km로 잡아
+    누락을 줄이고, 동명 체인은 Kakao가 거리순 정렬한 첫 결과를 채택해 어느 정도 방어.
     """
     url = "https://dapi.kakao.com/v2/local/search/keyword.json"
     headers = {"Authorization": f"KakaoAK {KAKAO_REST_API_KEY}"}

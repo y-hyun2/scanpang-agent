@@ -63,14 +63,21 @@ def _extract_stores(floor_info_raw, limit: int) -> list[tuple[str, str]]:
     return pairs
 
 
-async def run(ufid: str | None, name: str | None, store_names: list[str], limit: int):
-    # store 직접 지정 시 ufid 필요
-    if store_names and not ufid:
-        print("--store 사용 시 --ufid도 필요")
+async def run(
+    ufid: str | None, name: str | None, store_names: list[str], limit: int,
+    lat: float | None = None, lng: float | None = None,
+):
+    # outdoor 매장 테스트 모드: --lat/--lng 주어지면 ufid 없어도 OK.
+    # cache key용 가짜 place_id로 '__outdoor__'를 사용한다.
+    outdoor_mode = lat is not None and lng is not None
+
+    # store 직접 지정 시 ufid 필요 (단 outdoor_mode면 면제)
+    if store_names and not ufid and not outdoor_mode:
+        print("--store 사용 시 --ufid 또는 --lat/--lng 중 하나 필요")
         return
 
     if store_names:
-        building_ufid = ufid
+        building_ufid = ufid or "__outdoor__"
         target_pairs = [(s, "") for s in store_names]
     else:
         bld = await _resolve_building(ufid, name)
@@ -90,9 +97,12 @@ async def run(ufid: str | None, name: str | None, store_names: list[str], limit:
         if i > 1:
             # Naver Place transient 실패 방지용 (같은 세션에 연속 호출 시 약 30% 실패)
             await asyncio.sleep(3)
-        print(f"[{i}/{len(target_pairs)}] {store_name} ({floor})")
+        print(f"[{i}/{len(target_pairs)}] {store_name} ({floor})"
+              + (f" [outdoor lat={lat},lng={lng}]" if outdoor_mode else ""))
         try:
-            result = await get_store_detail(building_ufid, store_name)
+            result = await get_store_detail(
+                building_ufid, store_name, lat=lat, lng=lng,
+            )
             if not result:
                 print(f"  - 결과 없음")
                 continue
@@ -117,7 +127,17 @@ def main():
                         help="매장명 직접 지정 (여러 개), --ufid 필요")
     parser.add_argument("--limit", type=int, default=5,
                         help="floor_info에서 뽑을 매장 수 (기본 5)")
+    parser.add_argument("--lat",   type=float, default=None,
+                        help="outdoor 매장 테스트용 위도 (시나리오 b/c)")
+    parser.add_argument("--lng",   type=float, default=None,
+                        help="outdoor 매장 테스트용 경도 (시나리오 b/c)")
     args = parser.parse_args()
+
+    # outdoor 모드는 ufid 면제
+    if args.lat is not None and args.lng is not None and args.store:
+        asyncio.run(run(args.ufid, args.name, args.store, args.limit,
+                        lat=args.lat, lng=args.lng))
+        return
 
     if not (args.ufid or args.name):
         parser.error("--ufid 또는 --name 중 하나는 필수")
