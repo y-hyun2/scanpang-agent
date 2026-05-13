@@ -11,42 +11,39 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavController
 import com.scanpang.app.R
-import com.scanpang.app.data.OnboardingPreferences
+import com.scanpang.app.data.auth.AuthRepository
 import com.scanpang.app.navigation.AppRoutes
 import com.scanpang.app.ui.theme.ScanPangColors
 import com.scanpang.app.ui.theme.ScanPangType
-import kotlinx.coroutines.delay
+import io.github.jan.supabase.auth.status.SessionStatus
+import kotlinx.coroutines.flow.first
 
 @Composable
 fun SplashScreen(
     navController: NavController,
     modifier: Modifier = Modifier,
 ) {
-    val context = LocalContext.current
-    val prefs = remember { OnboardingPreferences(context) }
-
     LaunchedEffect(Unit) {
-        delay(1500)
-        if (prefs.isOnboardingComplete()) {
-            navController.navigate(AppRoutes.Home) {
-                popUpTo(AppRoutes.Splash) { inclusive = true }
-                launchSingleTop = true
-            }
-        } else {
-            navController.navigate(AppRoutes.OnboardingLanguage) {
-                popUpTo(AppRoutes.Splash) { inclusive = true }
-                launchSingleTop = true
-            }
+        // Supabase SDK 가 로컬 storage 에서 세션 복원할 때까지 기다린다 (Initializing 단계).
+        // 첫 결정 가능한 상태(Authenticated / NotAuthenticated) 가 잡히면 그에 맞게 분기.
+        // RefreshFailure 는 세션이 만료된 경우 → Login 으로 보내 재로그인 유도.
+        val status = AuthRepository.sessionStatus.first {
+            it is SessionStatus.Authenticated ||
+                it is SessionStatus.NotAuthenticated ||
+                it is SessionStatus.RefreshFailure
+        }
+        val target = if (status is SessionStatus.Authenticated) AppRoutes.Home else AppRoutes.Login
+        navController.navigate(target) {
+            popUpTo(AppRoutes.Splash) { inclusive = true }
+            launchSingleTop = true
         }
     }
 

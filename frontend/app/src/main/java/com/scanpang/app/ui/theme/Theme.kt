@@ -134,6 +134,34 @@ object ScanPangColors {
     val DetailFacilityTagBackground = Color(0xFFF3F4F6)
     /** 오버레이 카운트 배지 */
     val DetailImageCountScrim = Color(0x4D000000)
+
+    // ──────────────────────────────────────────────────────────────────────
+    // Auth (Login / Terms / OAuth) 화면 전용 별칭 토큰
+    // ──────────────────────────────────────────────────────────────────────
+    /** Kakao 브랜드 노란색 — 카카오 가이드 고정값 */
+    val KakaoYellow = Color(0xFFFEE500)
+    /** Kakao 버튼 pressed 오버레이 (~8% 어두운 톤) */
+    val KakaoYellowPressed = Color(0xFFE5CE00)
+    /** Kakao 버튼 라벨 색 — 검정 85% */
+    val KakaoLabel = Color(0xD9000000)
+    /** Google 버튼 배경 — neutral gray ("Sign in with Google" neutral 테마 #F2F2F2) */
+    val GoogleSurface = Color(0xFFF2F2F2)
+    /** Google 버튼 pressed 상태 — 약간 더 어두운 회색 */
+    val GoogleSurfacePressed = Color(0xFFE5E5E5)
+    /** Google 버튼 라벨 색 */
+    val GoogleLabel = Color(0xFF1F1F1F)
+    /** Login 그라디언트 시작 (top, 흰색) */
+    val LoginGradientStart = Color(0xFFFFFFFF)
+    /** Login 그라디언트 중간 (#F0F4FF) */
+    val LoginGradientMid = Color(0xFFF0F4FF)
+    /** Login 그라디언트 끝 (#E0EAFF) */
+    val LoginGradientEnd = Color(0xFFE0EAFF)
+    /** 약관 화면 비활성 CTA 배경 (회색) */
+    val DisabledSurface = Color(0xFFD1D5DB)
+    /** 회원탈퇴 / 에러 강조 배경 — 연한 빨강 */
+    val ErrorSoftBackground = Color(0xFFFEE2E2)
+    /** 경고 아이콘 배경 — 연한 앰버 */
+    val WarningSoftBackground = Color(0xFFFEF3C7)
 }
 
 /** 간격 토큰 */

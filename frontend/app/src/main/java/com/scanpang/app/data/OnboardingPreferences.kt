@@ -29,8 +29,11 @@ class OnboardingPreferences(context: Context) {
         prefs.edit().putString(KEY_TRAVEL_PREF, value).apply()
     }
 
-    /** 로그아웃 시 온보딩·프로필 저장값 초기화 후 스플래시부터 다시 시작할 때 사용 */
-    fun clearForLogout() {
+    /**
+     * 회원탈퇴 시 호출 — 온보딩·프로필·언어·여행 선호 등 모든 저장값을 비운다.
+     * (로그아웃은 세션만 끊고 데이터는 보존하는 게 표준 UX 이므로 호출하지 않는다.)
+     */
+    fun clearAll() {
         prefs.edit().clear().apply()
     }
 

@@ -25,10 +25,24 @@
         <activity
             android:name=".MainActivity"
             android:exported="true"
+            android:launchMode="singleTask"
             android:theme="@style/Theme.ScanPang">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+            <!--
+                Supabase OAuth redirect.
+                동일 scheme/host 를 Supabase Dashboard > Authentication > URL Configuration > Redirect URLs
+                ("com.scanpang.app://login-callback") 에 등록해야 카카오/구글 콜백이 앱으로 돌아온다.
+            -->
+            <intent-filter android:autoVerify="false">
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data
+                    android:scheme="${oauthRedirectScheme}"
+                    android:host="${oauthRedirectHost}" />
             </intent-filter>
         </activity>
         <activity

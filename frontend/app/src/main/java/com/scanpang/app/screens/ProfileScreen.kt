@@ -19,12 +19,17 @@ import androidx.compose.material.icons.automirrored.rounded.Logout
 import androidx.compose.material.icons.rounded.Mail
 import androidx.compose.material.icons.rounded.Mosque
 import androidx.compose.material.icons.rounded.Notifications
+import androidx.compose.material.icons.rounded.PersonRemove
 import androidx.compose.material.icons.rounded.RecordVoiceOver
 import androidx.compose.material.icons.rounded.Restaurant
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -37,7 +42,10 @@ import coil.request.ImageRequest
 import com.scanpang.app.components.ProfileSettingsCard
 import com.scanpang.app.components.ProfileSettingsRow
 import com.scanpang.app.components.ProfileSettingsSectionLabel
+import com.scanpang.app.components.auth.LogoutConfirmDialog
 import com.scanpang.app.data.OnboardingPreferences
+import com.scanpang.app.data.auth.AuthRepository
+import kotlinx.coroutines.launch
 import com.scanpang.app.navigation.AppRoutes
 import com.scanpang.app.ui.ScanPangFigmaAssets
 import com.scanpang.app.ui.theme.ScanPangColors
@@ -53,6 +61,8 @@ fun ProfileScreen(
 ) {
     val context = LocalContext.current
     val onboardingPrefs = remember(context) { OnboardingPreferences(context) }
+    val scope = rememberCoroutineScope()
+    var showLogoutDialog by remember { mutableStateOf(false) }
     val savedName = onboardingPrefs.getDisplayName().orEmpty().trim()
     val profileName = if (savedName.isNotEmpty()) savedName else "여행자"
     val langLabel = OnboardingPreferences.languageDisplayLabel(onboardingPrefs.getLanguageCode())
@@ -219,23 +229,41 @@ fun ProfileScreen(
                         showDividerBelow = true,
                     )
                     ProfileSettingsRow(
+                        label = "회원탈퇴",
+                        icon = Icons.Rounded.PersonRemove,
+                        iconTint = ScanPangColors.OnSurfaceMuted,
+                        onClick = { navController.navigate(AppRoutes.Withdrawal) },
+                        showDividerBelow = true,
+                    )
+                    ProfileSettingsRow(
                         label = "로그아웃",
                         icon = Icons.AutoMirrored.Rounded.Logout,
                         iconTint = ScanPangColors.DangerStrong,
                         labelColor = ScanPangColors.DangerStrong,
-                        onClick = {
-                            OnboardingPreferences(context).clearForLogout()
-                            navController.navigate(AppRoutes.Splash) {
-                                popUpTo(navController.graph.id) {
-                                    inclusive = true
-                                }
-                            }
-                        },
+                        onClick = { showLogoutDialog = true },
                         showDividerBelow = false,
                     )
                 }
             }
         }
+    }
+
+    if (showLogoutDialog) {
+        LogoutConfirmDialog(
+            onDismiss = { showLogoutDialog = false },
+            onConfirm = {
+                showLogoutDialog = false
+                // signOut() 은 서버 세션 무효화 + 로컬 토큰 삭제. 완료를 기다리지 않고 바로 navigate 하면
+                // 새 Login 화면이 잠시 "로그인됨" 상태로 노출될 수 있어, 먼저 await 후 이동한다.
+                scope.launch {
+                    AuthRepository.signOut()
+                    navController.navigate(AppRoutes.Login) {
+                        popUpTo(navController.graph.id) { inclusive = true }
+                        launchSingleTop = true
+                    }
+                }
+            },
+        )
     }
 }
 

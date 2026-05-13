@@ -37,6 +37,7 @@ import com.scanpang.arnavigation.data.repository.RouteRepositoryImpl
 import com.scanpang.arnavigation.presentation.MainViewModel
 import com.scanpang.arnavigation.presentation.MainViewModelFactory
 import androidx.compose.material3.MaterialTheme
+import com.google.android.filament.Material
 import dev.romainguy.kotlin.math.Float3
 import io.github.sceneview.ar.ARScene
 import io.github.sceneview.ar.node.AnchorNode
@@ -172,6 +173,9 @@ fun ArRealSceneView(
     // 공간증강 쿼리 throttle용 — 5초 간격 보장
     var lastPlaceQueryTime by remember { mutableStateOf(0L) }
 
+    // 도착 상태 — ViewNode2 안의 Compose가 구독해서 배지를 초록 체크로 자동 전환
+    val isArrivedState = remember { mutableStateOf(false) }
+
     // AR 노드 + 라우트 상태
     val routeNodes = remember { mutableStateListOf<Node>() }
     var fullRouteNodes by remember { mutableStateOf<List<ArRouteNode>>(emptyList()) }
@@ -179,7 +183,11 @@ fun ArRealSceneView(
     var currentTargetPointIndex by remember { mutableStateOf(1) }
     val renderedIndices = remember { mutableSetOf<Int>() }
     val activeArNodes = remember { mutableMapOf<Int, AnchorNode>() }
-    val activeChildNodes = remember { mutableMapOf<Int, Node>() }
+    val activeChildNodes = remember { mutableMapOf<Int, Node>() }       // 앞면 (정상 방향 아이콘)
+    val activeBackChildNodes = remember { mutableMapOf<Int, Node>() }   // 뒷면 (거울상 방향 아이콘)
+    // 앵커 생성 시점의 카메라 고도 — 매 프레임 ViewNode2 child의 local Y를
+    // (현재 cameraAlt - 생성 시 cameraAlt)로 갱신해 사용자 고도 변화 추적.
+    val anchorCreationAltitudes = remember { mutableMapOf<Int, Double>() }
     val turnDirectionMap = remember { mutableMapOf<Int, Boolean>() }
     var lastChunkRenderTime by remember { mutableStateOf(0L) }
 
@@ -189,8 +197,9 @@ fun ArRealSceneView(
         if (route is NavRouteResponse) {
             val nodes = parseNavResponse(route)
             if (nodes.isNotEmpty()) {
-                clearArState(routeNodes, activeArNodes, activeChildNodes, renderedIndices)
+                clearArState(routeNodes, activeArNodes, activeChildNodes, activeBackChildNodes, renderedIndices)
                 turnDirectionMap.clear()  // 새 라우트가 도착할 때만 이전 방향 정보 폐기
+                isArrivedState.value = false  // 새 라우트 시작 — 도착 상태 리셋
                 fullRouteNodes = nodes
                 majorPointIndices.clear()
                 nodes.forEachIndexed { i, n -> if (n.type != NodeType.PATH_POINT) majorPointIndices.add(i) }
@@ -254,7 +263,7 @@ fun ArRealSceneView(
             //   "destroying MaterialInstance which is still in use by Renderable" Filament panic.
             //   우회: Renderable component를 먼저 destroy해서 material binding을 풀고
             //   그 다음 ViewNode2.destroy() 호출 (material → texture → stream 순으로 정리).
-            activeChildNodes.values.forEach { node ->
+            (activeChildNodes.values + activeBackChildNodes.values).forEach { node ->
                 if (node is ViewNode2) {
                     runCatching { engine.renderableManager.destroy(node.entity) }
                     runCatching { node.destroy() }
@@ -263,6 +272,8 @@ fun ArRealSceneView(
             routeNodes.clear()
             activeArNodes.clear()
             activeChildNodes.clear()
+            activeBackChildNodes.clear()
+            anchorCreationAltitudes.clear()
             renderedIndices.clear()
         }
     }
@@ -290,9 +301,30 @@ fun ArRealSceneView(
             val pose = earth.cameraGeospatialPose
             val lat = pose.latitude
             val lng = pose.longitude
+            val cameraAlt = pose.altitude
             val now = System.currentTimeMillis()
 
-            onPoseUpdate(lat, lng, pose.heading, pose.altitude, pose.horizontalAccuracy)
+            onPoseUpdate(lat, lng, pose.heading, cameraAlt, pose.horizontalAccuracy)
+
+            // ── 고도 추적: 각 ViewNode2 child의 local Y를 카메라 고도 변화량으로 갱신
+            // 앵커 생성 시점 고도(creationAlt) 대비 현재 cameraAlt 차이만큼 child를 위/아래로 이동
+            // → 사용자가 경사로/계단 올라가도 배지가 따라 올라옴 (눈높이 유지)
+            activeChildNodes.forEach { (k, node) ->
+                if (node is ViewNode2) {
+                    val creationAlt = anchorCreationAltitudes[k] ?: return@forEach
+                    val deltaAlt = (cameraAlt - creationAlt).toFloat()
+                    val p = node.position
+                    node.position = Float3(p.x, deltaAlt, p.z)
+                }
+            }
+            activeBackChildNodes.forEach { (k, node) ->
+                if (node is ViewNode2) {
+                    val creationAlt = anchorCreationAltitudes[k] ?: return@forEach
+                    val deltaAlt = (cameraAlt - creationAlt).toFloat()
+                    val p = node.position
+                    node.position = Float3(p.x, deltaAlt, p.z)
+                }
+            }
 
             // 카메라 pitch — 폰을 아래로 내려다보는지 판정 (점선 나침반 표시 조건)
             val poseMatrix = FloatArray(16)
@@ -339,9 +371,130 @@ fun ArRealSceneView(
                 Location.distanceBetween(lat, lng, tn.lat, tn.lng, distRes)
                 val dist = distRes[0]
 
-                // 도착 처리
-                if (tn.type == NodeType.END && dist <= 15.0f) {
-                    clearArState(routeNodes, activeArNodes, activeChildNodes, renderedIndices)
+                // 도착 처리 — 모든 active 배지에 180° X 회전 + 120°에서 파랑→초록 swap 병렬 애니메이션
+                if (tn.type == NodeType.END && dist <= 20.0f && !isArrivedState.value) {
+                    isArrivedState.value = true
+
+                    // 현재 활성 배지들 스냅샷 (앞면 + 뒷면 페어)
+                    data class AnimTarget(
+                        val key: Int,
+                        val anchor: AnchorNode,
+                        val oldFront: ViewNode2,
+                        val oldBack: ViewNode2?,
+                        val direction: BadgeDirection,
+                    )
+                    val targets = activeChildNodes.entries.mapNotNull { (k, ch) ->
+                        if (ch !is ViewNode2) return@mapNotNull null
+                        val anc = activeArNodes[k] ?: return@mapNotNull null
+                        val backCh = activeBackChildNodes[k] as? ViewNode2
+                        val node = fullRouteNodes.getOrNull(k) ?: return@mapNotNull null
+                        val mi = majorPointIndices.indexOf(k)
+                        val dir = when (node.type) {
+                            NodeType.END -> BadgeDirection.DESTINATION
+                            NodeType.TURN_POINT -> {
+                                if (node.turnType == 17) BadgeDirection.LEFT
+                                else if (node.turnType == 18) BadgeDirection.RIGHT
+                                else when (turnDirectionMap[mi]) {
+                                    true -> BadgeDirection.RIGHT
+                                    false -> BadgeDirection.LEFT
+                                    null -> BadgeDirection.STRAIGHT
+                                }
+                            }
+                            else -> return@mapNotNull null  // START 포함
+                        }
+                        AnimTarget(k, anc, ch, backCh, dir)
+                    }
+
+                    // 도착 애니메이션 — 뒷면은 destroy 후 앞면만 단독 회전 → 끝나고 뒷면 재생성
+                    targets.forEach { tgt ->
+                        val frontYaw = tgt.oldFront.rotation.y
+                        val basePitch = tgt.oldFront.rotation.x
+                        coroutineScope.launch {
+                            // 1) 뒷면 즉시 제거
+                            tgt.oldBack?.let { oldBack ->
+                                runCatching { tgt.anchor.removeChildNode(oldBack) }
+                                runCatching { engine.renderableManager.destroy(oldBack.entity) }
+                                runCatching { oldBack.destroy() }
+                            }
+                            activeBackChildNodes.remove(tgt.key)
+
+                            val phaseMs = 300L
+                            val tiltDeg = 90f
+                            var curFront: ViewNode2 = tgt.oldFront
+
+                            // Phase 1: 0° → 90°
+                            val t1 = System.currentTimeMillis()
+                            while (isMounted.value) {
+                                val elapsed = System.currentTimeMillis() - t1
+                                val progress = (elapsed.toFloat() / phaseMs).coerceIn(0f, 1f)
+                                runCatching {
+                                    curFront.rotation = Float3(basePitch + progress * tiltDeg, frontYaw, 0f)
+                                }
+                                if (progress >= 1f) break
+                                delay(16)
+                            }
+
+                            // Atomic swap: 파란→초록 앞면
+                            val newFront = runCatching {
+                                ViewNode2(
+                                    engine = engine,
+                                    windowManager = viewNodeManager,
+                                    materialLoader = materialLoader,
+                                    unlit = true,
+                                ) {
+                                    MaterialTheme {
+                                        ArInWorldBadgeContent(direction = tgt.direction, isArrived = true)
+                                    }
+                                }.apply {
+                                    this.rotation = Float3(basePitch + tiltDeg, frontYaw, 0f)
+                                }.also { node ->
+                                    runCatching { node.materialInstance.setCullingMode(Material.CullingMode.BACK) }
+                                }
+                            }.getOrNull() ?: return@launch
+
+                            runCatching { tgt.anchor.removeChildNode(curFront) }
+                            runCatching { engine.renderableManager.destroy(curFront.entity) }
+                            runCatching { curFront.destroy() }
+                            tgt.anchor.addChildNode(newFront)
+                            activeChildNodes[tgt.key] = newFront
+                            curFront = newFront
+
+                            // Phase 2: 90° → 0°
+                            val t2 = System.currentTimeMillis()
+                            while (isMounted.value) {
+                                val elapsed = System.currentTimeMillis() - t2
+                                val progress = (elapsed.toFloat() / phaseMs).coerceIn(0f, 1f)
+                                runCatching {
+                                    curFront.rotation = Float3(basePitch + (1f - progress) * tiltDeg, frontYaw, 0f)
+                                }
+                                if (progress >= 1f) break
+                                delay(16)
+                            }
+
+                            // 애니메이션 후 뒷면 재생성 (초록 거울상)
+                            val newBack = runCatching {
+                                ViewNode2(
+                                    engine = engine,
+                                    windowManager = viewNodeManager,
+                                    materialLoader = materialLoader,
+                                    unlit = true,
+                                ) {
+                                    MaterialTheme {
+                                        ArInWorldBadgeContent(direction = tgt.direction, isArrived = true)
+                                    }
+                                }.apply {
+                                    this.rotation = Float3(basePitch, frontYaw + 180f, 0f)
+                                }.also { node ->
+                                    runCatching { node.materialInstance.setCullingMode(Material.CullingMode.BACK) }
+                                }
+                            }.getOrNull()
+                            if (newBack != null) {
+                                tgt.anchor.addChildNode(newBack)
+                                activeBackChildNodes[tgt.key] = newBack
+                            }
+                        }
+                    }
+
                     val arrivalSpeech = tn.speech.ifBlank { "목적지에 도착했습니다." }
                     if (!hasSpokenArrival) {
                         coroutineScope.launch {
@@ -434,9 +587,119 @@ fun ArRealSceneView(
                     spokenForTurnIndex = currentTargetPointIndex
                 }
 
-                // 8m 이내 → 다음 턴
+                // 8m 이내 → 다음 턴 (END는 20m 도착 처리에서 이미 return함)
                 if (dist <= 8.0f) {
-                    clearArState(routeNodes, activeArNodes, activeChildNodes, renderedIndices)
+                    val animKey = majorPointIndices[currentTargetPointIndex]
+                    val animAnchor = activeArNodes[animKey]
+                    val animFront = activeChildNodes[animKey] as? ViewNode2
+                    val animBack = activeBackChildNodes[animKey] as? ViewNode2
+                    val animNode = fullRouteNodes.getOrNull(animKey)
+                    val animDirection: BadgeDirection? = when (animNode?.type) {
+                        NodeType.TURN_POINT -> {
+                            if (animNode.turnType == 17) BadgeDirection.LEFT
+                            else if (animNode.turnType == 18) BadgeDirection.RIGHT
+                            else when (turnDirectionMap[currentTargetPointIndex]) {
+                                true -> BadgeDirection.RIGHT
+                                false -> BadgeDirection.LEFT
+                                null -> BadgeDirection.STRAIGHT
+                            }
+                        }
+                        else -> null
+                    }
+
+                    if (animAnchor != null && animFront != null && animDirection != null) {
+                        val frontYaw = animFront.rotation.y
+                        val basePitch = animFront.rotation.x
+                        // 추적 맵의 anchorCreationAltitudes는 유지 → 애니메이션 동안에도 고도 추적 작동.
+                        // activeChildNodes에서 일시 제거 → 매 프레임 position 업데이트가 회전과 충돌 안 함.
+                        activeChildNodes.remove(animKey)
+                        activeBackChildNodes.remove(animKey)
+
+                        coroutineScope.launch {
+                            // 뒷면 먼저 destroy
+                            animBack?.let { oldBack ->
+                                runCatching { animAnchor.removeChildNode(oldBack) }
+                                runCatching { engine.renderableManager.destroy(oldBack.entity) }
+                                runCatching { oldBack.destroy() }
+                            }
+
+                            val phaseMs = 300L
+                            val tiltDeg = 90f
+                            var curFront: ViewNode2 = animFront
+
+                            // Phase 1: 0° → 90°
+                            val t1 = System.currentTimeMillis()
+                            while (isMounted.value) {
+                                val elapsed = System.currentTimeMillis() - t1
+                                val progress = (elapsed.toFloat() / phaseMs).coerceIn(0f, 1f)
+                                runCatching {
+                                    curFront.rotation = Float3(basePitch + progress * tiltDeg, frontYaw, 0f)
+                                }
+                                if (progress >= 1f) break
+                                delay(16)
+                            }
+
+                            // Atomic swap: 파란 → 초록
+                            val newFront = runCatching {
+                                ViewNode2(
+                                    engine = engine,
+                                    windowManager = viewNodeManager,
+                                    materialLoader = materialLoader,
+                                    unlit = true,
+                                ) {
+                                    MaterialTheme {
+                                        ArInWorldBadgeContent(direction = animDirection, isArrived = true)
+                                    }
+                                }.apply {
+                                    this.rotation = Float3(basePitch + tiltDeg, frontYaw, 0f)
+                                }.also { node ->
+                                    runCatching { node.materialInstance.setCullingMode(Material.CullingMode.BACK) }
+                                }
+                            }.getOrNull() ?: return@launch
+                            runCatching { animAnchor.removeChildNode(curFront) }
+                            runCatching { engine.renderableManager.destroy(curFront.entity) }
+                            runCatching { curFront.destroy() }
+                            animAnchor.addChildNode(newFront)
+                            curFront = newFront
+
+                            // Phase 2: 90° → 0°
+                            val t2 = System.currentTimeMillis()
+                            while (isMounted.value) {
+                                val elapsed = System.currentTimeMillis() - t2
+                                val progress = (elapsed.toFloat() / phaseMs).coerceIn(0f, 1f)
+                                runCatching {
+                                    curFront.rotation = Float3(basePitch + (1f - progress) * tiltDeg, frontYaw, 0f)
+                                }
+                                if (progress >= 1f) break
+                                delay(16)
+                            }
+
+                            // 애니메이션 종료 → 초록 배지 유지. 뒷면도 같은 콘텐츠로 재생성.
+                            val newBack = runCatching {
+                                ViewNode2(
+                                    engine = engine,
+                                    windowManager = viewNodeManager,
+                                    materialLoader = materialLoader,
+                                    unlit = true,
+                                ) {
+                                    MaterialTheme {
+                                        ArInWorldBadgeContent(direction = animDirection, isArrived = true)
+                                    }
+                                }.apply {
+                                    this.rotation = Float3(basePitch, frontYaw + 180f, 0f)
+                                }.also { node ->
+                                    runCatching { node.materialInstance.setCullingMode(Material.CullingMode.BACK) }
+                                }
+                            }.getOrNull()
+                            if (newBack != null) {
+                                animAnchor.addChildNode(newBack)
+                                activeBackChildNodes[animKey] = newBack
+                            }
+                            // 추적 맵 재등록 — 이후 고도 추적 계속 작동
+                            activeChildNodes[animKey] = curFront
+                        }
+                    }
+
                     currentTargetPointIndex++
                 }
             }
@@ -452,11 +715,14 @@ fun ArRealSceneView(
                     renderedIndices = renderedIndices,
                     activeArNodes = activeArNodes,
                     activeChildNodes = activeChildNodes,
+                    activeBackChildNodes = activeBackChildNodes,
+                    anchorCreationAltitudes = anchorCreationAltitudes,
                     turnDirectionMap = turnDirectionMap,
                     engine = engine,
                     materialLoader = materialLoader,
                     viewNodeWindowManager = viewNodeManager,
                     routeNodes = routeNodes,
+                    isArrivedState = isArrivedState,
                 )
             }
         },
@@ -474,12 +740,14 @@ private fun clearArState(
     routeNodes: SnapshotStateList<Node>,
     activeArNodes: MutableMap<Int, AnchorNode>,
     activeChildNodes: MutableMap<Int, Node>,
+    activeBackChildNodes: MutableMap<Int, Node>,
     renderedIndices: MutableSet<Int>,
 ) {
     routeNodes.clear()
     activeArNodes.values.forEach { runCatching { it.destroy() } }
     activeArNodes.clear()
     activeChildNodes.clear()
+    activeBackChildNodes.clear()
     renderedIndices.clear()
 }
 
@@ -497,11 +765,14 @@ private fun renderNearbyArrows(
     renderedIndices: MutableSet<Int>,
     activeArNodes: MutableMap<Int, AnchorNode>,
     activeChildNodes: MutableMap<Int, Node>,
+    activeBackChildNodes: MutableMap<Int, Node>,
+    anchorCreationAltitudes: MutableMap<Int, Double>,
     turnDirectionMap: MutableMap<Int, Boolean>,
     engine: Engine,
     materialLoader: MaterialLoader,
     viewNodeWindowManager: ViewNode2.WindowManager,
     routeNodes: SnapshotStateList<Node>,
+    isArrivedState: androidx.compose.runtime.State<Boolean>,
 ) {
     if (earth.trackingState != TrackingState.TRACKING ||
         majorPointIndices.size < 2 ||
@@ -516,15 +787,16 @@ private fun renderNearbyArrows(
     for (i in startIdx..endIdx) {
         if (renderedIndices.contains(i)) continue
         val node = fullRouteNodes[i]
-        if (node.type == NodeType.PATH_POINT) {
+        if (node.type == NodeType.PATH_POINT || node.type == NodeType.START) {
+            // PATH_POINT는 보간점이라 렌더 X. START는 사용자가 이미 그 자리에 있어 불필요.
             renderedIndices.add(i)
             continue
         }
-        // END 배지는 35m 이내에서만 렌더 — 그 밖이면 스킵하고 다음 사이클에 재확인
+        // END 배지는 50m 이내에서만 렌더 — 그 밖이면 스킵하고 다음 사이클에 재확인
         if (node.type == NodeType.END) {
             val d = FloatArray(1)
             Location.distanceBetween(cameraPose.latitude, cameraPose.longitude, node.lat, node.lng, d)
-            if (d[0] > 35f) continue
+            if (d[0] > 50f) continue
         }
         renderedIndices.add(i)
 
@@ -532,6 +804,7 @@ private fun renderNearbyArrows(
         val anchor = earth.createAnchor(node.lat, node.lng, cameraAlt - yOff, 0f, 0f, 0f, 1f) ?: continue
         val anchorNode = AnchorNode(engine = engine, anchor = anchor)
         activeArNodes[i] = anchorNode
+        anchorCreationAltitudes[i] = cameraAlt  // 매 프레임 child 고도 갱신용
         routeNodes.add(anchorNode)
 
         val direction = resolveBadgeDirection(
@@ -544,24 +817,46 @@ private fun renderNearbyArrows(
 
         val rotationY = computeArrowRotation(i, node, fullRouteNodes)
 
-        // ViewNode2: Compose UI를 3D 평면 빌보드로 렌더.
-        // unlit=true — Geospatial 씬에 광원이 없으므로 색상 그대로 출력.
+        // Back-to-back 두 평면 (원래 yaw 할당으로 복귀)
+        //   앞면 = rotationY
+        //   뒷면 = rotationY + 180°, 거울상 콘텐츠
+        val isDestination = direction == BadgeDirection.DESTINATION
+        val initialIsArrived = isDestination && isArrivedState.value
+        // 앞면
         runCatching {
-            val viewNode = ViewNode2(
+            val front = ViewNode2(
                 engine = engine,
                 windowManager = viewNodeWindowManager,
                 materialLoader = materialLoader,
                 unlit = true,
             ) {
                 MaterialTheme {
-                    ArInWorldBadgeContent(direction = direction)
+                    ArInWorldBadgeContent(direction = direction, isArrived = initialIsArrived)
                 }
             }.apply {
-                // Z(roll) 0° — 회전 baseline 없음. 진입 방향(rotationY)만 적용.
                 this.rotation = Float3(0f, rotationY, 0f)
             }
-            anchorNode.addChildNode(viewNode)
-            activeChildNodes[i] = viewNode
+            runCatching { front.materialInstance.setCullingMode(Material.CullingMode.BACK) }
+            anchorNode.addChildNode(front)
+            activeChildNodes[i] = front
+        }
+        // 뒷면 — 거울상 + yaw +180°
+        runCatching {
+            val back = ViewNode2(
+                engine = engine,
+                windowManager = viewNodeWindowManager,
+                materialLoader = materialLoader,
+                unlit = true,
+            ) {
+                MaterialTheme {
+                    ArInWorldBadgeContent(direction = direction, isArrived = initialIsArrived)
+                }
+            }.apply {
+                this.rotation = Float3(0f, rotationY + 180f, 0f)
+            }
+            runCatching { back.materialInstance.setCullingMode(Material.CullingMode.BACK) }
+            anchorNode.addChildNode(back)
+            activeBackChildNodes[i] = back
         }
     }
 }
@@ -577,7 +872,8 @@ private fun resolveBadgeDirection(
     majorPointIndices: List<Int>,
     turnDirectionMap: MutableMap<Int, Boolean>,
 ): BadgeDirection? = when (node.type) {
-    NodeType.START, NodeType.END -> BadgeDirection.DESTINATION
+    NodeType.END -> BadgeDirection.DESTINATION
+    NodeType.START -> null  // START는 사용자가 이미 그 자리에 있어 렌더 안 함
     NodeType.TURN_POINT -> {
         // 측면 분기 (turnType 17/18) 처리
         if (node.turnType == 17 || node.turnType == 18) {
