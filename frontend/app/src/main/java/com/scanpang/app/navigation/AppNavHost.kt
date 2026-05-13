@@ -12,6 +12,11 @@ import java.net.URLEncoder
 import java.nio.charset.StandardCharsets
 import com.scanpang.app.screens.HomeScreen
 import com.scanpang.app.screens.SplashScreen
+import com.scanpang.app.screens.auth.LoginErrorScreen
+import com.scanpang.app.screens.auth.LoginScreen
+import com.scanpang.app.screens.auth.OAuthLoadingScreen
+import com.scanpang.app.screens.auth.TermsAgreementScreen
+import com.scanpang.app.screens.auth.WithdrawalScreen
 import com.scanpang.app.screens.onboarding.OnboardingLanguageScreen
 import com.scanpang.app.screens.onboarding.OnboardingNameScreen
 import com.scanpang.app.screens.onboarding.OnboardingPreferenceScreen
@@ -92,6 +97,17 @@ object AppRoutes {
         val encoded = URLEncoder.encode(destName, StandardCharsets.UTF_8.name())
         return "$ArNavMap/$encoded"
     }
+
+    const val Login = "login"
+    const val TermsAgreement = "terms_agreement"
+    /** 라우트 패턴 — 호출 시 [oauthLoadingRoute] 사용 */
+    const val OAuthLoading = "oauth_loading?provider={provider}"
+    const val OAuthLoadingArgProvider = "provider"
+    const val LoginError = "login_error"
+    const val Withdrawal = "withdrawal"
+
+    /** OAuth Loading 화면으로 이동할 때 provider 식별자를 함께 전달 */
+    fun oauthLoadingRoute(provider: String): String = "oauth_loading?provider=$provider"
 }
 
 @Composable
@@ -166,5 +182,95 @@ fun AppNavHost(
             val destName = runCatching { URLDecoder.decode(entry.arguments?.getString("destName").orEmpty(), StandardCharsets.UTF_8.name()) }.getOrDefault("")
             ArNavigationMapScreen(navController = navController, destinationName = destName)
         }
+        composable(AppRoutes.Login) {
+            val context = androidx.compose.ui.platform.LocalContext.current
+            LoginScreen(
+                onKakaoClick = {
+                    navController.navigate(AppRoutes.oauthLoadingRoute(AuthProviderArg.Kakao))
+                },
+                onGoogleClick = {
+                    navController.navigate(AppRoutes.oauthLoadingRoute(AuthProviderArg.Google))
+                },
+                onTermsClick = {
+                    android.widget.Toast
+                        .makeText(context, "이용약관 (전문 화면은 준비 중)", android.widget.Toast.LENGTH_SHORT)
+                        .show()
+                },
+                onPrivacyClick = {
+                    android.widget.Toast
+                        .makeText(context, "개인정보 처리방침 (전문 화면은 준비 중)", android.widget.Toast.LENGTH_SHORT)
+                        .show()
+                },
+            )
+        }
+        composable(AppRoutes.TermsAgreement) {
+            TermsAgreementScreen(
+                onBack = { navController.popBackStack() },
+                onAllAgreedAndContinue = {
+                    navController.navigate(AppRoutes.OnboardingLanguage)
+                },
+                onTermDetailClick = { /* TODO: 약관 전문 보기 */ },
+            )
+        }
+        composable(
+            route = AppRoutes.OAuthLoading,
+            arguments = listOf(
+                navArgument(AppRoutes.OAuthLoadingArgProvider) {
+                    type = NavType.StringType
+                    nullable = true
+                    defaultValue = null
+                },
+            ),
+        ) { entry ->
+            val providerArg = entry.arguments?.getString(AppRoutes.OAuthLoadingArgProvider)
+            val provider = when (providerArg) {
+                AuthProviderArg.Kakao -> com.scanpang.app.data.AuthProvider.KAKAO
+                AuthProviderArg.Google -> com.scanpang.app.data.AuthProvider.GOOGLE
+                else -> null
+            }
+            OAuthLoadingScreen(
+                provider = provider,
+                onAuthSuccessExistingUser = {
+                    navController.navigate(AppRoutes.Home) {
+                        popUpTo(AppRoutes.Login) { inclusive = true }
+                        launchSingleTop = true
+                    }
+                },
+                onAuthSuccessNewUser = {
+                    navController.navigate(AppRoutes.TermsAgreement) {
+                        popUpTo(AppRoutes.Login) { inclusive = true }
+                        launchSingleTop = true
+                    }
+                },
+            )
+        }
+        composable(AppRoutes.LoginError) {
+            LoginErrorScreen(
+                onRetry = { /* TODO: 재시도 */ },
+                onBackToLogin = {
+                    navController.popBackStack(AppRoutes.Login, inclusive = false)
+                },
+            )
+        }
+        composable(AppRoutes.Withdrawal) {
+            val context = androidx.compose.ui.platform.LocalContext.current
+            WithdrawalScreen(
+                onBack = { navController.popBackStack() },
+                onWithdraw = {
+                    // 회원탈퇴: 모든 prefs 삭제 + 백스택 비우고 Login 으로
+                    com.scanpang.app.data.OnboardingPreferences(context).clearAll()
+                    navController.navigate(AppRoutes.Login) {
+                        popUpTo(navController.graph.id) { inclusive = true }
+                        launchSingleTop = true
+                    }
+                },
+            )
+        }
     }
+}
+
+/** OAuth provider 식별자(NavArg 직렬화용) */
+private object AuthProviderArg {
+    const val Kakao = "kakao"
+    const val Google = "google"
 }

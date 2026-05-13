@@ -19,12 +19,16 @@ import androidx.compose.material.icons.automirrored.rounded.Logout
 import androidx.compose.material.icons.rounded.Mail
 import androidx.compose.material.icons.rounded.Mosque
 import androidx.compose.material.icons.rounded.Notifications
+import androidx.compose.material.icons.rounded.PersonRemove
 import androidx.compose.material.icons.rounded.RecordVoiceOver
 import androidx.compose.material.icons.rounded.Restaurant
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -37,6 +41,7 @@ import coil.request.ImageRequest
 import com.scanpang.app.components.ProfileSettingsCard
 import com.scanpang.app.components.ProfileSettingsRow
 import com.scanpang.app.components.ProfileSettingsSectionLabel
+import com.scanpang.app.components.auth.LogoutConfirmDialog
 import com.scanpang.app.data.OnboardingPreferences
 import com.scanpang.app.navigation.AppRoutes
 import com.scanpang.app.ui.ScanPangFigmaAssets
@@ -53,6 +58,7 @@ fun ProfileScreen(
 ) {
     val context = LocalContext.current
     val onboardingPrefs = remember(context) { OnboardingPreferences(context) }
+    var showLogoutDialog by remember { mutableStateOf(false) }
     val savedName = onboardingPrefs.getDisplayName().orEmpty().trim()
     val profileName = if (savedName.isNotEmpty()) savedName else "여행자"
     val langLabel = OnboardingPreferences.languageDisplayLabel(onboardingPrefs.getLanguageCode())
@@ -219,23 +225,37 @@ fun ProfileScreen(
                         showDividerBelow = true,
                     )
                     ProfileSettingsRow(
+                        label = "회원탈퇴",
+                        icon = Icons.Rounded.PersonRemove,
+                        iconTint = ScanPangColors.OnSurfaceMuted,
+                        onClick = { navController.navigate(AppRoutes.Withdrawal) },
+                        showDividerBelow = true,
+                    )
+                    ProfileSettingsRow(
                         label = "로그아웃",
                         icon = Icons.AutoMirrored.Rounded.Logout,
                         iconTint = ScanPangColors.DangerStrong,
                         labelColor = ScanPangColors.DangerStrong,
-                        onClick = {
-                            OnboardingPreferences(context).clearForLogout()
-                            navController.navigate(AppRoutes.Splash) {
-                                popUpTo(navController.graph.id) {
-                                    inclusive = true
-                                }
-                            }
-                        },
+                        onClick = { showLogoutDialog = true },
                         showDividerBelow = false,
                     )
                 }
             }
         }
+    }
+
+    if (showLogoutDialog) {
+        LogoutConfirmDialog(
+            onDismiss = { showLogoutDialog = false },
+            onConfirm = {
+                showLogoutDialog = false
+                // 로그아웃은 세션만 끊고 prefs 는 보존 → 다음 로그인 시 Home 직행.
+                navController.navigate(AppRoutes.Login) {
+                    popUpTo(navController.graph.id) { inclusive = true }
+                    launchSingleTop = true
+                }
+            },
+        )
     }
 }
 
