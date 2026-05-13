@@ -12,14 +12,8 @@ from dotenv import load_dotenv
 from core.db import get_pool
 from rag.automation.kakao_radius import collect_stores_at_building
 from rag.automation.homepage_crawler import crawl_homepage
-from rag.automation.llm_extractor import (
-    extract_stores,
-    extract_building_info,
-    extract_floor_info_from_homepage,
-)
-from rag.automation.query_builder import build_queries
+from rag.automation.llm_extractor import extract_floor_info_from_homepage
 from rag.automation.search_collector import (
-    collect,
     fetch_naver_local,
     fetch_naver_address_places,
     naver_image_search,
@@ -29,7 +23,6 @@ from rag.automation.naver_map_scraper import (
     fetch_place_detail as fetch_naver_place_detail,
     reverse_geocode as naver_reverse_geocode,
 )
-from rag.automation.validator import cross_validate
 from rag.automation.govt_api import (
     fetch_building_key,
     fetch_kakao_info,
@@ -99,31 +92,6 @@ def _naver_places_to_floor_info(places: list[dict]) -> list[dict]:
         if f == "미확인":
             return (2, 0)
         s = f.upper().replace("층", "").replace("F", "").replace("B", "-").strip()
-        try:
-            n = int(s)
-            return (0, n) if n >= 0 else (1, abs(n))
-        except ValueError:
-            return (2, 0)
-
-    return [
-        {"floor": f, "stores": stores}
-        for f, stores in sorted(floor_map.items(), key=lambda x: _sort_key(x[0]))
-    ]
-
-
-def _confirmed_to_floor_info(confirmed: list[dict]) -> list[dict]:
-    floor_map: dict[str, list[dict]] = {}
-    for store in confirmed:
-        floor = store.get("floor") or "미확인"
-        name  = store.get("name", "").strip()
-        cat   = store.get("category") or ""
-        if name:
-            floor_map.setdefault(floor, []).append({"name": name, "category": cat})
-
-    def _sort_key(floor_str: str):
-        if floor_str == "미확인":
-            return (2, 0)
-        s = floor_str.upper().replace("층", "").replace("F", "").replace("B", "-").strip()
         try:
             n = int(s)
             return (0, n) if n >= 0 else (1, abs(n))
@@ -276,53 +244,6 @@ def _merge_naver_govt(
     total = sum(len(f["stores"]) for f in result)
     print(f"[pipeline] 하이브리드 병합: 총 {total}개 "
           f"(Naver교체={naver_replaced}, Naver전용추가={naver_only})")
-    return result
-
-
-def _enrich_govt_with_confirmed(
-    govt_stores: list[dict],
-    confirmed: list[dict],
-) -> list[dict]:
-    """confirmed 중 govt_stores에 없는 매장을 층별로 병합한다."""
-    if not confirmed:
-        return govt_stores
-
-    try:
-        from rapidfuzz import fuzz as _fuzz
-        def _already_in(name: str, name_set: set[str]) -> bool:
-            n = name.lower()
-            return any(_fuzz.ratio(n, g) >= 70 for g in name_set)
-    except ImportError:
-        def _already_in(name: str, name_set: set[str]) -> bool:
-            return name.lower() in name_set
-
-    govt_name_set: set[str] = set()
-    for floor_item in govt_stores:
-        for store in floor_item.get("stores", []):
-            n = store.get("name", "") if isinstance(store, dict) else store.split("(")[0]
-            if n:
-                govt_name_set.add(n.strip().lower())
-
-    extra: dict[str, list] = {}
-    for store in confirmed:
-        name = store.get("name", "").strip()
-        if not name or _already_in(name, govt_name_set):
-            continue
-        floor = store.get("floor") or "미확인"
-        extra.setdefault(floor, []).append(
-            {"name": name, "category": store.get("category") or ""}
-        )
-
-    if not extra:
-        return govt_stores
-
-    result = [{"floor": f["floor"], "stores": list(f["stores"])} for f in govt_stores]
-    floor_idx = {f["floor"]: i for i, f in enumerate(result)}
-    for floor, stores in extra.items():
-        if floor in floor_idx:
-            result[floor_idx[floor]]["stores"].extend(stores)
-        else:
-            result.append({"floor": floor, "stores": stores})
     return result
 
 
@@ -514,50 +435,24 @@ async def process_one_building(ufid: str) -> dict:
         except Exception as e:
             print(f"[pipeline] collect_stores_at_building 실패: {e}")
 
-    # ── 4) 쿼리 스펙 생성 ────────────────────────────────────────────────────
-    query_specs = build_queries(building, kakao_stores)
-    print(f"[pipeline] 쿼리 {len(query_specs)}개 생성")
-
-    # ── 5) 검색 결과 수집 ────────────────────────────────────────────────────
-    search_results: list[dict] = []
-    try:
-        search_results = await collect(query_specs)
-    except Exception as e:
-        print(f"[pipeline] collect 실패: {e}")
-
-    # ── 6) LLM 매장 추출 ────────────────────────────────────────────────────
-    extracted: list[dict] = []
-    try:
-        extracted = await extract_stores(bld_nm, search_results)
-    except Exception as e:
-        print(f"[pipeline] extract_stores 실패: {e}")
-
-    # ── 6.5) LLM 건물 운영정보 추출 (Naver Place 미매칭 시 fallback) ────────
-    # ⓒ.6에서 Naver Place detail로 잡힌 경우 운영정보를 그대로 사용하고 LLM은 건너뜀.
-    # 그렇지 않은 경우(빌딩이 Naver Place에 없을 때)만 ⑥⑦ 검색 결과로 LLM 추출.
+    # ── 4) 운영정보 결정 ─────────────────────────────────────────────────────
+    # Naver Place detail이 매칭되면 그걸 사용. 안 되면 빈 값으로 둔다.
+    # (이전엔 웹검색+LLM(extract_building_info) fallback이 있었는데 정확도 낮고
+    #  비용 커서 제거. Naver Place에 없는 작은 건물은 운영정보 자체가 공개 안 된
+    #  경우가 많아 빈 값이 차라리 안전함.)
     if place_detail:
         open_hours    = place_detail.get("open_hours", "")
         closed_days   = place_detail.get("closed_days", "")
-        # 편의시설 리스트에서 주차 관련 항목 → parking_info 텍스트로 합침
         conv = place_detail.get("conveniences", []) or []
         parking_terms = [c for c in conv if "주차" in c or "발렛" in c]
         parking_info  = ", ".join(parking_terms) if parking_terms else ""
-        admission_fee = ""  # Naver Place에 별도 필드 없음
     else:
-        bld_info: dict = {}
-        try:
-            bld_info = await extract_building_info(bld_nm, search_results)
-        except Exception as e:
-            print(f"[pipeline] extract_building_info 실패: {e}")
+        open_hours    = ""
+        closed_days   = ""
+        parking_info  = ""
+    admission_fee = ""  # 정형 소스 없음
 
-        open_hours    = bld_info.get("open_hours", "")
-        closed_days   = bld_info.get("closed_days", "")
-        parking_info  = bld_info.get("parking_info", "")
-        admission_fee = bld_info.get("admission_fee", "")
-        # LLM이 추출한 homepage도 소셜 필터 적용 후 fallback (최종 4순위)
-        homepage = homepage or _accept(bld_info.get("homepage", ""))
-
-    # ── 6.7) 네이버 이미지 검색 ─────────────────────────────────────────────
+    # ── 5) 네이버 이미지 검색 ───────────────────────────────────────────────
     image_url = ""
     if bld_nm:
         try:
@@ -565,7 +460,7 @@ async def process_one_building(ufid: str) -> dict:
         except Exception as e:
             print(f"[pipeline] naver_image_search 실패: {e}")
 
-    # ── 7) 정부 DB (소상공인 API) ────────────────────────────────────────────
+    # ── 6) 정부 DB (소상공인 API) ───────────────────────────────────────────
     # floor_info_locked 상태면 3·4순위 fallback이 발동될 일이 없어 정부DB 불필요.
     govt_stores: list[dict] = []
     if not floor_info_locked:
@@ -577,43 +472,32 @@ async def process_one_building(ufid: str) -> dict:
         except Exception as e:
             print(f"[pipeline] 정부DB 조회 실패: {e}")
 
-    # ── 8) 교차검증 ──────────────────────────────────────────────────────────
-    validation    = cross_validate(extracted, govt_stores, kakao_stores)
-    confirmed     = validation["confirmed"]
-    coverage_rate = validation["coverage_rate"]
-
-    result["confirmed_count"] = len(confirmed)
-    result["coverage_rate"]   = coverage_rate
-
-    # ── 8.5) floor_info 우선순위
-    # 1순위: 홈페이지 크롤 (층 구조 가장 정확)
-    # 2순위: 네이버 "이 주소의 장소" (층 정보가 주소에 명시된 경우)
-    # 3순위: 정부DB + Kakao 이름/카테고리 보완
-    # 4순위: LLM confirmed 매장
-    # homepage_floor_info, naver_floor_info는 §2.9에서 이미 계산됨
+    # ── 7) floor_info 우선순위 결정 (4단계) ──────────────────────────────────
+    # 1순위: 홈페이지 LLM 추출 (homepage_floor_info — §2.9에서 계산)
+    # 2순위: Naver 주소장소 中 층 명시 (naver_floor_info — §2.9에서 계산)
+    # 3순위: Naver + 소상공인 하이브리드 (이름·카테고리=Naver, 층=정부DB)
+    # 4순위: 소상공인 + Kakao 이름 교체
+    # (이전 5순위 "LLM confirmed only"는 웹검색+LLM 의존이라 제거.)
     if homepage_floor_info:
-        # 1순위: 공식 홈페이지 LLM 추출 (층-매장 구조 가장 정확)
         floor_info_list = homepage_floor_info
         print(f"[pipeline] floor_info 출처: 홈페이지 ({len(homepage_floor_info)}개 층)")
     elif naver_floor_info:
-        # 2순위: Naver 주소에 층이 명시된 매장 (직접 등록 데이터 — 소상공인보다 신뢰)
         floor_info_list = naver_floor_info
         total = sum(len(f["stores"]) for f in naver_floor_info)
         print(f"[pipeline] floor_info 출처: 네이버 주소장소 ({len(naver_floor_info)}개 층, {total}개 매장)")
     elif naver_addr_places and govt_stores:
-        # 3순위: Naver 이름/카테고리 + 소상공인 층번호 하이브리드
-        #         (Naver에 층 정보 없지만 소상공인 층번호로 보완)
-        enriched = _enrich_govt_with_confirmed(govt_stores, confirmed)
-        floor_info_list = _merge_naver_govt(naver_addr_places, enriched, kakao_stores)
+        floor_info_list = _merge_naver_govt(naver_addr_places, govt_stores, kakao_stores)
+        print(f"[pipeline] floor_info 출처: Naver×정부DB 하이브리드")
     elif govt_stores:
-        # 4순위: 소상공인 + Kakao 이름/카테고리
-        enriched = _enrich_govt_with_confirmed(govt_stores, confirmed)
-        floor_info_list = _enrich_govt_with_kakao(enriched, kakao_stores)
+        floor_info_list = _enrich_govt_with_kakao(govt_stores, kakao_stores)
         print(f"[pipeline] floor_info 출처: 정부DB+Kakao")
     else:
-        # 5순위: LLM confirmed
-        floor_info_list = _confirmed_to_floor_info(confirmed)
-        print(f"[pipeline] floor_info 출처: LLM confirmed")
+        floor_info_list = []
+        print(f"[pipeline] floor_info 채울 소스 없음")
+
+    # confirmed_count·coverage_rate는 cross_validate 제거로 의미를 잃음 → 0으로 고정.
+    result["confirmed_count"] = sum(len(f.get("stores", [])) for f in floor_info_list)
+    result["coverage_rate"]   = 0.0
 
     # ── 9) Supabase upsert ───────────────────────────────────────────────────
 
@@ -648,7 +532,7 @@ async def process_one_building(ufid: str) -> dict:
                 """,
                 ufid, name_ko, lat, lng, addr, phone, category,
                 json.dumps(floor_info_list, ensure_ascii=False),
-                coverage_rate,
+                result["coverage_rate"],
                 datetime.now(timezone.utc),
                 "automated",
                 image_url or None, homepage or None,
