@@ -87,6 +87,9 @@ async def run(ufid: str | None, name: str | None, store_names: list[str], limit:
     print(f"시드 대상: {len(target_pairs)}개 매장\n")
 
     for i, (store_name, floor) in enumerate(target_pairs, 1):
+        if i > 1:
+            # Naver Place transient 실패 방지용 (같은 세션에 연속 호출 시 약 30% 실패)
+            await asyncio.sleep(3)
         print(f"[{i}/{len(target_pairs)}] {store_name} ({floor})")
         try:
             result = await get_store_detail(building_ufid, store_name)

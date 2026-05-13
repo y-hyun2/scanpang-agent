@@ -11,6 +11,8 @@ Kakao 카테고리 예시:
 - "생활,편의 > 편의점"                → "convenience_store"
 """
 
+import re
+
 # Kakao category_name에 들어가는 키워드 → category_key 매핑.
 # 위에서부터 우선순위 — 첫 매치를 채택.
 _CATEGORY_RULES: list[tuple[str, str]] = [
@@ -77,26 +79,45 @@ _CATEGORY_RULES: list[tuple[str, str]] = [
 ]
 
 
-# 매장명에서 카테고리 키워드 매칭용. category_name이 빈 경우 fallback으로 사용.
-_NAME_RULES: list[tuple[str, str]] = [
+# 매장명 strong override — category_name보다 우선 판정.
+# Kakao Local이 카테고리를 모호하게 주는 카테고리(환전소→"금융서비스", 화장실→없음,
+# 지하철역→없음)는 매장명으로 우선 잡아야 정확함.
+_STRONG_NAME_RULES: list[tuple[str, str]] = [
     ("기도실",        "prayer_room"),
+    ("공중화장실",    "restroom"),
     ("화장실",        "restroom"),
+    ("물품보관함",    "locker"),
     ("물품보관",      "locker"),
+    ("락커",          "locker"),
     ("ATM",           "atm"),
-    ("지하철역",      "subway"),
+    ("외환",          "exchange"),
     ("환전",          "exchange"),
-    ("CGV",           "cultural"),  # 영화관은 cultural로 분류
+    ("지하철역",      "subway"),
+    ("CGV",           "cultural"),
     ("롯데시네마",    "cultural"),
     ("메가박스",      "cultural"),
+    # 편의점 체인 — Kakao 매칭 실패 시 다른 분류로 빠지면 곤란
+    ("CU ",           "convenience_store"),
+    ("GS25",          "convenience_store"),
+    ("세븐일레븐",    "convenience_store"),
+    ("이마트24",      "convenience_store"),
+    ("미니스톱",      "convenience_store"),
 ]
+
+# 매장명이 "역"으로 끝나면 지하철역으로 간주 (예: "을지로입구역", "명동역").
+_STATION_SUFFIX = re.compile(r"역$")
 
 
 def classify_category(category_name: str, store_name: str = "") -> str:
     """
-    카테고리 키 분류.
+    카테고리 키 분류 — 3단계 우선순위.
 
-    1차: Kakao category_name 키워드 매칭 (_CATEGORY_RULES)
-    2차: 매장명 키워드 매칭 (_NAME_RULES) — Kakao 미매칭이거나 'other'일 때 fallback
+    1차 (STRONG): 매장명에 환전/화장실/ATM/지하철역/기도실/물품보관/CGV/편의점 체인명
+                 → 즉시 결정. category_name이 모호한 경우(예: 환전소가 "금융서비스"로
+                 옴) 매장명이 더 정확한 신호라 1순위.
+    2차: "{역명}역" suffix → subway.
+    3차: Kakao category_name 키워드 매칭 (_CATEGORY_RULES).
+    4차: category_name 없을 때 매장명 다른 키워드 fallback.
 
     Returns:
         'cafe' | 'restaurant' | 'tourist' | 'cultural' | 'shopping' |
@@ -104,16 +125,20 @@ def classify_category(category_name: str, store_name: str = "") -> str:
         'exchange' | 'subway' | 'restroom' | 'locker' | 'prayer_room' |
         'accommodation' | 'other'
     """
-    # 1차: category_name 기반
+    # 1차 STRONG: 매장명 override
+    if store_name:
+        for keyword, key in _STRONG_NAME_RULES:
+            if keyword in store_name:
+                return key
+        # 2차: "...역" suffix (을지로입구역, 명동역, 종로3가역 등)
+        # 단, '여행' 등 단순 단어가 '역'으로 끝나는 경우 방어 — 매장명 길이 ≤ 8자.
+        if len(store_name) <= 10 and _STATION_SUFFIX.search(store_name):
+            return "subway"
+
+    # 3차: category_name 기반
     if category_name:
         for keyword, key in _CATEGORY_RULES:
             if keyword in category_name:
-                return key
-
-    # 2차: 매장명 기반 (Kakao 미매칭/other 케이스 — 예: '기도실', 'ATM' 매장)
-    if store_name:
-        for keyword, key in _NAME_RULES:
-            if keyword in store_name:
                 return key
 
     return "other"
