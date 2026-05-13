@@ -1,5 +1,6 @@
 import java.util.Properties
 import java.io.FileInputStream
+import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 
 plugins {
     id("com.android.application")
@@ -28,13 +29,25 @@ android {
         val tmapKey = localProperties.getProperty("TMAP_APP_KEY") ?: ""
         val googleMapsKey = localProperties.getProperty("GOOGLE_MAPS_API_KEY") ?: ""
         val serverUrl = localProperties.getProperty("SERVER_URL") ?: "http://localhost:8000/"
+        val supabaseUrl = localProperties.getProperty("SUPABASE_URL") ?: ""
+        val supabaseAnonKey = localProperties.getProperty("SUPABASE_ANON_KEY") ?: ""
+        // OAuth redirect deep link — Supabase 콘솔의 Authentication > URL Configuration > Redirect URLs 에 동일 값 등록 필요.
+        // 형식: <scheme>://<host> (path 없음). applicationId 와 분리해 brand 패키지 형태로 짧게 잡는다.
+        val oauthRedirectScheme = "com.scanpang.app"
+        val oauthRedirectHost = "login-callback"
 
         buildConfigField("String", "KAKAO_REST_API_KEY", "\"$kakaoKey\"")
         buildConfigField("String", "TMAP_APP_KEY", "\"$tmapKey\"")
         buildConfigField("String", "GOOGLE_MAPS_API_KEY", "\"$googleMapsKey\"")
         buildConfigField("String", "SERVER_URL", "\"$serverUrl\"")
+        buildConfigField("String", "SUPABASE_URL", "\"$supabaseUrl\"")
+        buildConfigField("String", "SUPABASE_ANON_KEY", "\"$supabaseAnonKey\"")
+        buildConfigField("String", "OAUTH_REDIRECT_SCHEME", "\"$oauthRedirectScheme\"")
+        buildConfigField("String", "OAUTH_REDIRECT_HOST", "\"$oauthRedirectHost\"")
 
         manifestPlaceholders["googleMapsApiKey"] = googleMapsKey
+        manifestPlaceholders["oauthRedirectScheme"] = oauthRedirectScheme
+        manifestPlaceholders["oauthRedirectHost"] = oauthRedirectHost
     }
 
     buildTypes {
@@ -50,9 +63,6 @@ android {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
-    kotlinOptions {
-        jvmTarget = "17"
-    }
     buildFeatures {
         compose = true
         viewBinding = true
@@ -62,6 +72,14 @@ android {
         resources {
             excludes += "/META-INF/{AL2.0,LGPL2.1}"
         }
+    }
+}
+
+// Kotlin 2.0+ 의 새 DSL. 이전 `kotlinOptions { jvmTarget = "17" }` 는 deprecated → error.
+// android {} 블록 밖에서 kotlin {} 블록으로 분리해 설정한다.
+kotlin {
+    compilerOptions {
+        jvmTarget = JvmTarget.JVM_17
     }
 }
 
@@ -110,6 +128,14 @@ dependencies {
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
     implementation("com.squareup.okhttp3:logging-interceptor:4.12.0")
     implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.8.7")
+
+    // Supabase Auth (OAuth + session/JWT 관리) — supabase-kt 공식 Kotlin SDK.
+    // BOM 이 모든 supabase 모듈 버전을 정렬. supabase-kt 3.x 는 ktor 3.x 를 요구한다.
+    implementation(platform("io.github.jan-tennert.supabase:bom:3.6.0"))
+    implementation("io.github.jan-tennert.supabase:auth-kt")
+    implementation("io.ktor:ktor-client-okhttp:3.0.0")
+    // 토큰을 EncryptedSharedPreferences 로 보관 (평문 SharedPrefs 대비 보안 강화)
+    implementation("androidx.security:security-crypto:1.1.0-alpha06")
 
     debugImplementation("androidx.compose.ui:ui-tooling")
     debugImplementation("androidx.compose.ui:ui-test-manifest")

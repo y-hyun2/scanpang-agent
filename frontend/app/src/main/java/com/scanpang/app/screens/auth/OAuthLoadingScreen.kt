@@ -25,10 +25,13 @@ import androidx.compose.ui.unit.dp
 import com.scanpang.app.components.auth.LogoMark
 import com.scanpang.app.data.AuthProvider
 import com.scanpang.app.data.OnboardingPreferences
+import com.scanpang.app.data.auth.AuthRepository
 import com.scanpang.app.ui.theme.ScanPangColors
 import com.scanpang.app.ui.theme.ScanPangTheme
 import com.scanpang.app.ui.theme.ScanPangType
-import kotlinx.coroutines.delay
+import io.github.jan.supabase.auth.status.SessionStatus
+import kotlinx.coroutines.flow.filterIsInstance
+import kotlinx.coroutines.flow.first
 
 private val LoadingGradient = Brush.verticalGradient(
     colorStops = arrayOf(
@@ -38,17 +41,21 @@ private val LoadingGradient = Brush.verticalGradient(
     ),
 )
 
-private const val SimulatedAuthDelayMs = 1500L
-
 /**
  * OAuth 인증 진행 중 로딩 화면.
  *
- * 실제 OAuth 미연동 상태이므로 [SimulatedAuthDelayMs] 후 [OnboardingPreferences.isOnboardingComplete]
- * 로 신규/기존 유저를 판별해 분기:
- *   - true  → [onAuthSuccessExistingUser]   (Home 으로 이동, login·oauth_loading 스택 제거)
- *   - false → [onAuthSuccessNewUser]        (TermsAgreement 로 이동, login·oauth_loading 스택 제거)
+ * 진입 시 [provider] 에 따라 [AuthRepository.signInWithKakao] / [signInWithGoogle] 을 호출해
+ * Custom Tab 으로 Supabase 호스팅 OAuth 페이지를 띄운다. 사용자가 외부 인증을 끝내면
+ * deep link (`com.scanpang.app://login-callback`) 로 [com.scanpang.app.MainActivity] 가
+ * intent 를 받아 SDK 에 위임하고, SDK 는 PKCE 코드 교환 후 [AuthRepository.sessionStatus]
+ * 를 [SessionStatus.Authenticated] 로 갱신한다.
  *
- * TODO: 실제 OAuth 연동 시 try/catch 로 실패 케이스를 받아 LoginError 로 분기.
+ * 이 화면은 그 갱신 이벤트를 기다렸다가 onboarding 완료 여부로 분기:
+ *   - true  → [onAuthSuccessExistingUser]   (Home, login·oauth_loading 스택 제거)
+ *   - false → [onAuthSuccessNewUser]        (TermsAgreement)
+ *
+ * 사용자가 Custom Tab 을 그냥 닫고 돌아오면 sessionStatus 가 갱신되지 않아 계속 대기.
+ * 백 버튼으로 Login 으로 빠져나갈 수 있어 dead-lock 은 아니지만, 추후 timeout 추가 가능.
  */
 @Composable
 fun OAuthLoadingScreen(
@@ -60,8 +67,20 @@ fun OAuthLoadingScreen(
     val context = LocalContext.current
     val prefs = remember(context) { OnboardingPreferences(context) }
 
+    // (1) OAuth 시작 — provider 가 정해진 경우에만 1회 호출.
+    LaunchedEffect(provider) {
+        when (provider) {
+            AuthProvider.KAKAO -> AuthRepository.signInWithKakao()
+            AuthProvider.GOOGLE -> AuthRepository.signInWithGoogle()
+            null -> Unit
+        }
+    }
+
+    // (2) Authenticated 이벤트 첫 발생을 기다렸다가 onboarding 상태로 분기.
     LaunchedEffect(Unit) {
-        delay(SimulatedAuthDelayMs)
+        AuthRepository.sessionStatus
+            .filterIsInstance<SessionStatus.Authenticated>()
+            .first()
         if (prefs.isOnboardingComplete()) {
             onAuthSuccessExistingUser()
         } else {

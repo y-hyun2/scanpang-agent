@@ -28,6 +28,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -43,6 +44,8 @@ import com.scanpang.app.components.ProfileSettingsRow
 import com.scanpang.app.components.ProfileSettingsSectionLabel
 import com.scanpang.app.components.auth.LogoutConfirmDialog
 import com.scanpang.app.data.OnboardingPreferences
+import com.scanpang.app.data.auth.AuthRepository
+import kotlinx.coroutines.launch
 import com.scanpang.app.navigation.AppRoutes
 import com.scanpang.app.ui.ScanPangFigmaAssets
 import com.scanpang.app.ui.theme.ScanPangColors
@@ -58,6 +61,7 @@ fun ProfileScreen(
 ) {
     val context = LocalContext.current
     val onboardingPrefs = remember(context) { OnboardingPreferences(context) }
+    val scope = rememberCoroutineScope()
     var showLogoutDialog by remember { mutableStateOf(false) }
     val savedName = onboardingPrefs.getDisplayName().orEmpty().trim()
     val profileName = if (savedName.isNotEmpty()) savedName else "여행자"
@@ -249,10 +253,14 @@ fun ProfileScreen(
             onDismiss = { showLogoutDialog = false },
             onConfirm = {
                 showLogoutDialog = false
-                // 로그아웃은 세션만 끊고 prefs 는 보존 → 다음 로그인 시 Home 직행.
-                navController.navigate(AppRoutes.Login) {
-                    popUpTo(navController.graph.id) { inclusive = true }
-                    launchSingleTop = true
+                // signOut() 은 서버 세션 무효화 + 로컬 토큰 삭제. 완료를 기다리지 않고 바로 navigate 하면
+                // 새 Login 화면이 잠시 "로그인됨" 상태로 노출될 수 있어, 먼저 await 후 이동한다.
+                scope.launch {
+                    AuthRepository.signOut()
+                    navController.navigate(AppRoutes.Login) {
+                        popUpTo(navController.graph.id) { inclusive = true }
+                        launchSingleTop = true
+                    }
                 }
             },
         )

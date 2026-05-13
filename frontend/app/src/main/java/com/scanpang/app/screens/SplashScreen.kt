@@ -19,10 +19,12 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavController
 import com.scanpang.app.R
+import com.scanpang.app.data.auth.AuthRepository
 import com.scanpang.app.navigation.AppRoutes
 import com.scanpang.app.ui.theme.ScanPangColors
 import com.scanpang.app.ui.theme.ScanPangType
-import kotlinx.coroutines.delay
+import io.github.jan.supabase.auth.status.SessionStatus
+import kotlinx.coroutines.flow.first
 
 @Composable
 fun SplashScreen(
@@ -30,9 +32,16 @@ fun SplashScreen(
     modifier: Modifier = Modifier,
 ) {
     LaunchedEffect(Unit) {
-        delay(1500)
-        // 인증 흐름이 메인 진입 — 신규/기존 분기는 OAuthLoading 에서 isOnboardingComplete 로 결정.
-        navController.navigate(AppRoutes.Login) {
+        // Supabase SDK 가 로컬 storage 에서 세션 복원할 때까지 기다린다 (Initializing 단계).
+        // 첫 결정 가능한 상태(Authenticated / NotAuthenticated) 가 잡히면 그에 맞게 분기.
+        // RefreshFailure 는 세션이 만료된 경우 → Login 으로 보내 재로그인 유도.
+        val status = AuthRepository.sessionStatus.first {
+            it is SessionStatus.Authenticated ||
+                it is SessionStatus.NotAuthenticated ||
+                it is SessionStatus.RefreshFailure
+        }
+        val target = if (status is SessionStatus.Authenticated) AppRoutes.Home else AppRoutes.Login
+        navController.navigate(target) {
             popUpTo(AppRoutes.Splash) { inclusive = true }
             launchSingleTop = true
         }
