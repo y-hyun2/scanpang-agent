@@ -352,48 +352,90 @@ async def fetch_place_detail(
                     "conveniences": base.get("conveniences", []) or [],
                 }
 
-                # 영업시간 펼침 시도 — aria-expanded=false인 토글 버튼 클릭.
+                # 영업시간 펼침 시도 — Naver가 클래스명을 자주 바꾸므로 여러 셀렉터/방법 시도.
                 # "펼쳐보기" 텍스트는 .place_blind(스크린리더 전용)에 있어 직접 클릭 불가.
-                try:
-                    expand_btn = entry_frame.locator(
-                        "a[role='button'][aria-expanded='false']"
-                    ).first
-                    if await expand_btn.count() > 0:
-                        await expand_btn.click(timeout=2_000)
-                        await entry_frame.wait_for_timeout(1_000)
-                except Exception:
-                    pass
+                # 최대 3번까지 펼침을 시도 (영업시간 + 요일별 토글이 따로 있는 경우 대비).
+                expand_selectors = [
+                    "a[role='button'][aria-expanded='false']",
+                    "button[aria-expanded='false']",
+                    "div.O8qbU a[role='button']",
+                    "div.O8qbU button",
+                ]
+                for _ in range(3):
+                    clicked = False
+                    for sel in expand_selectors:
+                        try:
+                            btn = entry_frame.locator(sel).first
+                            if await btn.count() > 0:
+                                # 영업시간 영역 안에 있는 토글인지 확인 (다른 토글 오작동 방지)
+                                ok = await btn.evaluate(
+                                    "el => !!el.closest('div.O8qbU') || "
+                                    "el.parentElement?.innerText?.includes('영업')"
+                                )
+                                if ok:
+                                    await btn.click(timeout=1_500, force=True)
+                                    await entry_frame.wait_for_timeout(1_000)
+                                    clicked = True
+                                    break
+                        except Exception:
+                            continue
+                    if not clicked:
+                        break
 
                 dom = await entry_frame.evaluate(r"""
                     () => {
                         const r = {};
-                        // 스크린리더용 텍스트 제거 헬퍼: place_blind 클래스 요소 텍스트 제외
+                        // 스크린리더용 텍스트(place_blind) 제거 후 가시 텍스트만 추출.
                         const visText = (el) => {
+                            if (!el) return '';
                             const clone = el.cloneNode(true);
                             clone.querySelectorAll('.place_blind').forEach(b => b.remove());
                             return (clone.innerText || '').trim().replace(/\s+/g, ' ');
                         };
-                        // 영업시간: 요일별 행이 펼쳐졌으면 그걸 우선
-                        const dayRows = Array.from(document.querySelectorAll('.w9QyJ, .y6tNq, li'));
-                        const dayTexts = dayRows
-                            .map(visText)
-                            .filter(t => /^(월|화|수|목|금|토|일)\s/.test(t) && t.length < 50);
-                        if (dayTexts.length > 0) {
-                            r.open_hours = dayTexts.join(' / ');
-                        } else {
+
+                        // 영업시간 블록(div.O8qbU)을 우선 식별 — 못 찾으면 em "영업" 부모로 fallback.
+                        let bizBlock = document.querySelector('div.O8qbU');
+                        if (!bizBlock) {
                             const ems = Array.from(document.querySelectorAll('em'));
                             const bizEm = ems.find(e => /영업/.test(e.textContent || ''));
-                            if (bizEm) {
-                                const blk = bizEm.closest('div.O8qbU, li, div');
-                                if (blk) r.open_hours = visText(blk);
+                            if (bizEm) bizBlock = bizEm.closest('div, li');
+                        }
+
+                        if (bizBlock) {
+                            // 펼쳐진 상태면 요일별 행이 보임. 클래스명이 자주 바뀌므로
+                            // "월/화/수/목/금/토/일 ..." 패턴 텍스트를 가진 li/div만 모음.
+                            const dayPattern = /^(월|화|수|목|금|토|일)(요일)?[\s\t]/;
+                            const candidates = Array.from(bizBlock.querySelectorAll('li, div, span'));
+                            const dayTexts = [];
+                            const seen = new Set();
+                            for (const c of candidates) {
+                                const t = visText(c);
+                                if (dayPattern.test(t) && t.length < 80 && !seen.has(t)) {
+                                    seen.add(t);
+                                    dayTexts.push(t);
+                                }
+                            }
+                            // 최소 3개 요일 이상 잡혔을 때만 신뢰 (펼침 성공)
+                            if (dayTexts.length >= 3) {
+                                r.open_hours = dayTexts.slice(0, 7).join(' / ');
+                            } else {
+                                // 펼침 실패 — 영업시간 블록 전체 텍스트(요약)
+                                r.open_hours = visText(bizBlock);
                             }
                         }
-                        const ems2 = Array.from(document.querySelectorAll('em'));
-                        const closedEm = ems2.find(e => /휴무/.test(e.textContent || ''));
-                        if (closedEm) {
-                            const sib = closedEm.parentElement?.querySelector('.pwY9x');
+
+                        // 휴무일 (오늘 기준 30일 이내만 노출)
+                        const closedEms = Array.from(document.querySelectorAll('em'))
+                            .filter(e => /휴무/.test(e.textContent || ''));
+                        if (closedEms.length > 0) {
+                            const closedEm = closedEms[0];
+                            const sib = closedEm.parentElement?.querySelector('.pwY9x')
+                                     || closedEm.nextElementSibling
+                                     || closedEm.parentElement;
                             if (sib) r.closed_days = visText(sib);
                         }
+
+                        // 외부 홈페이지 URL
                         const all = Array.from(document.querySelectorAll('a[href^="http"]'));
                         const ext = all.find(a => !/(naver|nver|map\.|m\.naver|pcmap)/.test(a.href));
                         if (ext) r.homepage = ext.href;
