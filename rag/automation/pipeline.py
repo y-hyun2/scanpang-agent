@@ -403,9 +403,8 @@ async def process_one_building(ufid: str) -> dict:
         except Exception as e:
             print(f"[pipeline] fetch_naver_local 실패: {e}")
 
-    # Naver 우선, Kakao 보완 (Naver가 직통번호 정확도 높음). addr은 이미 확정.
-    phone    = naver_local.get("phone", "")    or phone
-    homepage = naver_local.get("homepage", "") or kakao_info.get("homepage", "")
+    # phone: Naver Local 우선, Kakao 보완 (Naver가 직통번호 정확도 높음).
+    phone = naver_local.get("phone", "") or phone
 
     # ── 2.6) Naver Place 상세 정보 (가장 풍부한 단일 소스) ──────────────────
     # map.naver.com에 건물명으로 검색 → 매칭되는 Naver Place 페이지에서
@@ -423,15 +422,27 @@ async def process_one_building(ufid: str) -> dict:
             print(f"[pipeline] fetch_naver_place_detail 실패: {e}")
 
     if place_detail:
-        # phone/homepage가 비어있으면 Naver Place에서 보강
-        phone    = phone    or place_detail.get("phone", "")
-        homepage = homepage or place_detail.get("homepage", "")
+        # phone은 Naver Place가 비어있을 때만 보강 (이미 Naver Local에서 받음)
+        phone = phone or place_detail.get("phone", "")
 
-    # 소셜미디어·블로그 URL은 공식 홈페이지로 인정하지 않음 (Naver Place API가 종종
-    # Instagram/Facebook을 link로 반환함). 공식 페이지가 없으면 빈 문자열로 둔다.
-    if homepage and _is_social_url(homepage):
-        print(f"[pipeline] 소셜/블로그 URL이라 homepage에서 제외: {homepage}")
-        homepage = ""
+    # homepage 우선순위 결정:
+    # 1순위) ③ Naver Place detail의 "홈페이지" 버튼 (사용자에게 노출되는 공식 링크 — 최신·정확)
+    # 2순위) ② Naver Local의 link 필드 (인스타·블로그 비율 높아 신뢰 낮음)
+    # 3순위) ② Kakao의 place_url 필드
+    # 소셜·블로그 도메인은 단계별로 거른 뒤 다음 fallback으로 넘어간다.
+    def _accept(url: str) -> str:
+        return url if (url and not _is_social_url(url)) else ""
+
+    homepage = (
+        _accept(place_detail.get("homepage", ""))
+        or _accept(naver_local.get("homepage", ""))
+        or _accept(kakao_info.get("homepage", ""))
+    )
+    if homepage:
+        src = ("Naver Place" if homepage == place_detail.get("homepage")
+               else "Naver Local" if homepage == naver_local.get("homepage")
+               else "Kakao")
+        print(f"[pipeline] homepage 출처: {src} → {homepage}")
 
     # ── 2.7) 공식 홈페이지 크롤 ─────────────────────────────────────────────
     homepage_text: str = ""
@@ -543,7 +554,8 @@ async def process_one_building(ufid: str) -> dict:
         closed_days   = bld_info.get("closed_days", "")
         parking_info  = bld_info.get("parking_info", "")
         admission_fee = bld_info.get("admission_fee", "")
-        homepage      = homepage or bld_info.get("homepage", "")
+        # LLM이 추출한 homepage도 소셜 필터 적용 후 fallback (최종 4순위)
+        homepage = homepage or _accept(bld_info.get("homepage", ""))
 
     # ── 6.7) 네이버 이미지 검색 ─────────────────────────────────────────────
     image_url = ""
