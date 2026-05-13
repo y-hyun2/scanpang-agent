@@ -378,37 +378,53 @@ async def fetch_place_detail(
                     "address":      base.get("address", "") or "",
                     "category":     base.get("category", "") or "",
                     "conveniences": base.get("conveniences", []) or [],
+                    # base.road = "을지로3가역 12번출구 앞, 포포인츠 호텔 명동점 1층"
+                    # 매장이 속한 건물명·층 정보. floor 정규화 추출용.
+                    "road_detail":  base.get("road", "") or "",
                 }
+                # 층 정보 추출 — base.road에서 "X층" 패턴
+                m_floor = re.search(r"지하\s*(\d+)\s*층|B\s*(\d+)\s*층?|(\d+)\s*F|(\d+)\s*층",
+                                    result["road_detail"])
+                if m_floor:
+                    g = m_floor.groups()
+                    basement = g[0] or g[1]
+                    above    = g[2] or g[3]
+                    if basement:
+                        result["floor"] = f"B{int(basement)}"
+                    elif above:
+                        result["floor"] = f"{int(above)}F"
 
-                # 영업시간 펼침 시도 — Naver가 클래스명을 자주 바꾸므로 여러 셀렉터/방법 시도.
-                # "펼쳐보기" 텍스트는 .place_blind(스크린리더 전용)에 있어 직접 클릭 불가.
-                # 최대 3번까지 펼침을 시도 (영업시간 + 요일별 토글이 따로 있는 경우 대비).
-                expand_selectors = [
-                    "a[role='button'][aria-expanded='false']",
-                    "button[aria-expanded='false']",
-                    "div.O8qbU a[role='button']",
-                    "div.O8qbU button",
-                ]
-                for _ in range(3):
-                    clicked = False
-                    for sel in expand_selectors:
-                        try:
-                            btn = entry_frame.locator(sel).first
-                            if await btn.count() > 0:
-                                # 영업시간 영역 안에 있는 토글인지 확인 (다른 토글 오작동 방지)
-                                ok = await btn.evaluate(
-                                    "el => !!el.closest('div.O8qbU') || "
-                                    "el.parentElement?.innerText?.includes('영업')"
-                                )
-                                if ok:
-                                    await btn.click(timeout=1_500, force=True)
-                                    await entry_frame.wait_for_timeout(1_000)
-                                    clicked = True
-                                    break
-                        except Exception:
-                            continue
-                    if not clicked:
-                        break
+                # 영업시간 펼침 토글 클릭 — 페이지에 여러 aria-expanded=false 토글이 있으므로
+                # "영업시간"이라는 텍스트가 ancestor에 있는 토글만 골라서 클릭한다.
+                # 1순위: 클래스명 a.gKP9i (현재 Naver Place의 영업시간 토글 클래스).
+                # 2순위: 모든 a/button[aria-expanded=false] 중 ancestor에 '영업' 텍스트 있는 것.
+                try:
+                    clicked = await entry_frame.evaluate(r"""
+                        () => {
+                            // 1순위: 정확한 클래스
+                            let toggle = document.querySelector('a.gKP9i');
+                            if (!toggle) {
+                                // 2순위: aria-expanded=false 후보 중 '영업' 텍스트 가진 ancestor 찾기
+                                const cands = document.querySelectorAll(
+                                    "a[role='button'][aria-expanded='false'], button[aria-expanded='false']"
+                                );
+                                for (const c of cands) {
+                                    const txt = c.innerText || '';
+                                    if (/영업|펼쳐보기/.test(txt) && c.closest('div.O8qbU')) {
+                                        toggle = c;
+                                        break;
+                                    }
+                                }
+                            }
+                            if (!toggle) return false;
+                            toggle.click();
+                            return true;
+                        }
+                    """)
+                    if clicked:
+                        await entry_frame.wait_for_timeout(1_500)
+                except Exception:
+                    pass
 
                 dom = await entry_frame.evaluate(r"""
                     () => {
@@ -422,37 +438,38 @@ async def fetch_place_detail(
                         };
 
                         // ── 영업시간 영역 식별 ──
-                        // div.O8qbU는 매장에 따라 주소 블록이기도 함. 그래서 우선
-                        // "em 안에 '영업' 텍스트가 있는" 요소의 부모를 찾고, 그것의
-                        // 가장 가까운 div.O8qbU/li/div 조상을 영업시간 블록으로 본다.
-                        let bizBlock = null;
+                        // div.O8qbU는 페이지에 여러 개 (주소/영업시간/편의시설 등 섹션마다).
+                        // '영업'/'영업시간' em이 포함된 O8qbU만 정확히 골라야 함.
                         const ems = Array.from(document.querySelectorAll('em'));
                         const bizEm = ems.find(e => /영업/.test(e.textContent || ''));
-                        if (bizEm) {
-                            bizBlock = bizEm.closest('div.O8qbU, li, div');
-                        }
-                        // bizEm 못 찾으면 div.O8qbU 후보들 중 "영업" 텍스트 포함한 것만
+                        let bizBlock = bizEm ? bizEm.closest('div.O8qbU') : null;
+                        // closest('div.O8qbU') 실패 fallback: O8qbU 후보들 중 '영업' 텍스트 가진 것
                         if (!bizBlock) {
                             const o8s = Array.from(document.querySelectorAll('div.O8qbU'));
-                            bizBlock = o8s.find(d => /영업/.test(d.innerText || ''));
+                            bizBlock = o8s.find(d => /영업시간|영업\s*중|영업\s*종료/.test(d.innerText || ''));
                         }
 
                         if (bizBlock) {
-                            const dayPattern = /^(월|화|수|목|금|토|일)(요일)?[\s\t]/;
-                            const candidates = Array.from(bizBlock.querySelectorAll('li, div, span'));
-                            const dayTexts = [];
-                            const seen = new Set();
-                            for (const c of candidates) {
-                                const t = visText(c);
-                                if (dayPattern.test(t) && t.length < 80 && !seen.has(t)) {
-                                    seen.add(t);
-                                    dayTexts.push(t);
+                            // 펼쳐진 후 요일별 영업시간을 깔끔히 추출.
+                            // 패턴: "수(5/13)매장07:00 - 17:00드라이브스루..." 같이 노이즈 섞임.
+                            // → 정규식으로 "{요일} HH:MM-HH:MM"만 뽑아내고 요일별 중복 제거.
+                            const dayHourRe = /^(월|화|수|목|금|토|일)(?:\([\d/]+\))?\s*(?:매장|영업|평일|주말|24시간|연중무휴)?\s*(\d{1,2}:\d{2})\s*[-~]\s*(\d{1,2}:\d{2})/;
+                            const all = Array.from(bizBlock.querySelectorAll('li, div, span'));
+                            const byDay = new Map();  // 요일별 1개만 보존
+                            for (const el of all) {
+                                const t = visText(el);
+                                if (t.length > 200) continue;
+                                const m = t.match(dayHourRe);
+                                if (m && !byDay.has(m[1])) {
+                                    byDay.set(m[1], `${m[1]} ${m[2]}-${m[3]}`);
                                 }
                             }
-                            if (dayTexts.length >= 3) {
-                                r.open_hours = dayTexts.slice(0, 7).join(' / ');
+                            const order = ['월','화','수','목','금','토','일'];
+                            const lines = order.filter(d => byDay.has(d)).map(d => byDay.get(d));
+                            if (lines.length >= 3) {
+                                r.open_hours = lines.join(' / ');
                             } else {
-                                // 요일 매칭 < 3 — 펼침 실패. 블록 텍스트가 주소이면 빈 값.
+                                // 펼침 실패 — 요약 텍스트 fallback
                                 const blockText = visText(bizBlock);
                                 r.open_hours = /영업/.test(blockText) ? blockText : '';
                             }

@@ -24,6 +24,21 @@ from tools.details_fetchers import fetch_by_category
 _DEFAULT_LAT = 37.5636
 _DEFAULT_LNG = 126.9822
 
+# 공식 홈페이지로 인정 안 하는 소셜·블로그 도메인
+_SOCIAL_URL_PATTERNS = (
+    "instagram.com", "facebook.com", "twitter.com", "x.com",
+    "youtube.com", "youtu.be",
+    "blog.naver.com", "cafe.naver.com", "post.naver.com",
+    "tiktok.com", "pf.kakao.com", "kakao.com/o/", "linktr.ee",
+)
+
+
+def _is_social_url(url: str) -> bool:
+    if not url:
+        return False
+    lower = url.lower()
+    return any(p in lower for p in _SOCIAL_URL_PATTERNS)
+
 
 async def get_store_detail(place_id: str, store_name: str) -> dict:
     """
@@ -72,10 +87,17 @@ async def get_store_detail(place_id: str, store_name: str) -> dict:
     # fetcher 결과가 비어있으면 Kakao 1차 메타로 fallback
     phone      = fetched.get("phone")      or kakao.get("phone", "")
     addr       = fetched.get("addr")       or kakao.get("addr", "")
-    homepage   = fetched.get("homepage")   or kakao.get("place_url", "")
+    # homepage 소셜 URL 필터 — 인스타·블로그는 제외. fetcher 결과가 소셜이면
+    # Kakao place_url로 fallback (Kakao place_url은 Kakao 자체 페이지라 항상 OK).
+    raw_homepage = fetched.get("homepage", "") or ""
+    if _is_social_url(raw_homepage):
+        print(f"[store_tools] 소셜/블로그 URL 제외: {raw_homepage}")
+        raw_homepage = ""
+    homepage   = raw_homepage or kakao.get("place_url", "")
     open_hours = fetched.get("open_hours", "")
     closed_days = fetched.get("closed_days", "")
     image_urls = fetched.get("image_urls", []) or []
+    floor      = fetched.get("floor", "") or None  # Naver Place base.road에서 추출
     details    = fetched.get("details", {}) or {}
     source     = fetched.get("source", "kakao" if kakao else "")
 
@@ -101,6 +123,7 @@ async def get_store_detail(place_id: str, store_name: str) -> dict:
                 closed_days   = EXCLUDED.closed_days,
                 homepage      = EXCLUDED.homepage,
                 image_urls    = EXCLUDED.image_urls,
+                floor         = EXCLUDED.floor,
                 source        = EXCLUDED.source,
                 last_updated  = EXCLUDED.last_updated
             """,
@@ -110,7 +133,7 @@ async def get_store_detail(place_id: str, store_name: str) -> dict:
             json.dumps(details, ensure_ascii=False),
             open_hours, closed_days, homepage,
             json.dumps(image_urls, ensure_ascii=False),
-            None, source, datetime.now(timezone.utc),
+            floor, source, datetime.now(timezone.utc),
         )
 
     return {
@@ -129,6 +152,7 @@ async def get_store_detail(place_id: str, store_name: str) -> dict:
         "closed_days":   closed_days,
         "homepage":      homepage,
         "image_urls":    image_urls,
+        "floor":         floor,
         "source":        source,
     }
 

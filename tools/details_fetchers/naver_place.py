@@ -51,6 +51,7 @@ async def fetch(
         "open_hours":  detail.get("open_hours", ""),
         "closed_days": detail.get("closed_days", ""),
         "image_urls":  detail.get("image_urls", []) or [],
+        "floor":       detail.get("floor", ""),  # base.road에서 추출한 정규화된 층 ("1F"/"B1")
         "details":     {
             "matched_name": matched_name,
             "category":     raw_category,
@@ -58,6 +59,7 @@ async def fetch(
             "place_id":     detail.get("place_id", ""),
             "menu":         detail.get("menu", []),
             "intro":        detail.get("intro", ""),
+            "road_detail":  detail.get("road_detail", ""),  # 원본 위치 텍스트
         },
         "source":      "naver_place",
     }
