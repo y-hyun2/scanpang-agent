@@ -298,19 +298,21 @@ async def fetch_place_detail(
                                 try:
                                     await first.click(timeout=3_000)
                                     await page.wait_for_timeout(4_000)
-                                except Exception:
-                                    pass
+                                except Exception as click_e:
+                                    print(f"[naver_map_scraper] 검색결과 클릭 실패 ({query!r}): {click_e}")
                     entry_frame = next(
                         (f for f in page.frames if f.name == "entryIframe"), None,
                     )
 
                 if not entry_frame:
+                    print(f"[naver_map_scraper] entryIframe 미발견 ({query!r})")
                     return {}
 
                 await asyncio.sleep(1.5)
                 m = re.search(r"/place/(\d+)", entry_frame.url)
                 place_id = m.group(1) if m else None
                 if not place_id:
+                    print(f"[naver_map_scraper] place_id 추출 실패 ({query!r}, url={entry_frame.url!r})")
                     return {}
 
                 apollo_json = await entry_frame.evaluate(
@@ -320,6 +322,7 @@ async def fetch_place_detail(
                 apollo = _json.loads(apollo_json or "{}")
                 base = apollo.get(f"PlaceDetailBase:{place_id}") or {}
                 if not base:
+                    print(f"[naver_map_scraper] PlaceDetailBase:{place_id} 비어있음 (Apollo 키 {len(apollo)}개)")
                     return {}
 
                 name = base.get("name", "") or ""

@@ -56,7 +56,8 @@ async def get_store_detail(place_id: str, store_name: str) -> dict:
     # ── ③ Kakao Local 1차 — category_name 확보용 (분류 입력) ─────────────────
     kakao = await check_kakao_open_status(store_name, lat, lng) or {}
     category_name = kakao.get("category", "") or ""
-    category_key  = classify_category(category_name)
+    category_key  = classify_category(category_name, store_name)
+    print(f"[store_tools] {store_name!r} → category_name={category_name!r}, category_key={category_key!r}")
 
     # ── ④ 카테고리별 fetcher 디스패치 ───────────────────────────────────────
     fetched = await fetch_by_category(

@@ -36,6 +36,8 @@ _CATEGORY_RULES: list[tuple[str, str]] = [
     # ── 금융 ──
     ("환전",          "exchange"),
     ("은행",          "bank"),
+    ("금융서비스",    "bank"),
+    ("금융",          "bank"),
     ("ATM",           "atm"),
     ("현금인출",      "atm"),
     # ── 교통 ──
@@ -70,28 +72,50 @@ _CATEGORY_RULES: list[tuple[str, str]] = [
     ("의류",          "shopping"),
     ("신발",          "shopping"),
     ("화장품",        "shopping"),
+    ("드럭스토어",    "shopping"),
     ("잡화",          "shopping"),
 ]
 
 
-def classify_category(category_name: str) -> str:
-    """
-    Kakao category_name → category_key. 매칭 실패 시 'other'.
+# 매장명에서 카테고리 키워드 매칭용. category_name이 빈 경우 fallback으로 사용.
+_NAME_RULES: list[tuple[str, str]] = [
+    ("기도실",        "prayer_room"),
+    ("화장실",        "restroom"),
+    ("물품보관",      "locker"),
+    ("ATM",           "atm"),
+    ("지하철역",      "subway"),
+    ("환전",          "exchange"),
+    ("CGV",           "cultural"),  # 영화관은 cultural로 분류
+    ("롯데시네마",    "cultural"),
+    ("메가박스",      "cultural"),
+]
 
-    Args:
-        category_name: Kakao Local API의 category_name 필드 또는
-                       store_details.category 컬럼.
+
+def classify_category(category_name: str, store_name: str = "") -> str:
+    """
+    카테고리 키 분류.
+
+    1차: Kakao category_name 키워드 매칭 (_CATEGORY_RULES)
+    2차: 매장명 키워드 매칭 (_NAME_RULES) — Kakao 미매칭이거나 'other'일 때 fallback
+
     Returns:
         'cafe' | 'restaurant' | 'tourist' | 'cultural' | 'shopping' |
         'convenience_store' | 'pharmacy' | 'hospital' | 'bank' | 'atm' |
         'exchange' | 'subway' | 'restroom' | 'locker' | 'prayer_room' |
         'accommodation' | 'other'
     """
-    if not category_name:
-        return "other"
-    for keyword, key in _CATEGORY_RULES:
-        if keyword in category_name:
-            return key
+    # 1차: category_name 기반
+    if category_name:
+        for keyword, key in _CATEGORY_RULES:
+            if keyword in category_name:
+                return key
+
+    # 2차: 매장명 기반 (Kakao 미매칭/other 케이스 — 예: '기도실', 'ATM' 매장)
+    if store_name:
+        for keyword, key in _NAME_RULES:
+            if keyword in store_name:
+                return key
+
     return "other"
 
 

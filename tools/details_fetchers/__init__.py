@@ -64,12 +64,14 @@ async def fetch_by_category(
     있으면 채택. 모두 비어있으면 빈 dict.
     """
     sources = CATEGORY_SOURCES.get(category_key, ["kakao"])
+    print(f"[details_fetchers] dispatch category_key={category_key!r} sources={sources}")
     last_result: dict = {}
     for src in sources:
         fetcher = _FETCHER_BY_SOURCE.get(src)
         if fetcher is None:
             continue
         try:
+            print(f"[details_fetchers] → trying {src}...")
             result = await fetcher(
                 store_name=store_name,
                 lat=lat,
@@ -80,9 +82,11 @@ async def fetch_by_category(
         except Exception as e:
             print(f"[details_fetchers] {src} 실패 ({store_name!r}): {e}")
             continue
-        # source 키 외에 의미있는 필드가 채워졌으면 채택
         meaningful = {k: v for k, v in result.items() if k != "source" and v}
         if meaningful:
+            print(f"[details_fetchers] ✓ {src} 성공 (fields={list(meaningful.keys())})")
             return result
+        else:
+            print(f"[details_fetchers] {src} 빈 결과 → 다음 fetcher 시도")
         last_result = result
     return last_result
