@@ -143,6 +143,7 @@ private data class BuildingCandidate(
     val dist: Float,
     val centerBearing: Double,      // 사용자 → 건물 중심 방향 (0~360°)
     val angularHalfWidth: Double,   // 사용자 위치에서 건물이 차지하는 시야각의 절반
+    val visiblePolygon: List<Pair<Double, Double>>,  // FOV ∩ 건물 polygon (Pair<lng, lat>)
 )
 
 /**
@@ -335,28 +336,6 @@ fun ArExploreScreen(
                         earth.trackingState != TrackingState.TRACKING
                     ) return@ARScene
 
-                    if (System.currentTimeMillis() % 5000 < 100) {
-                        val fov = buildFovPolygon(currentLat, currentLng, currentHeading)
-                        Log.d("SCANPANG_AR", "FOV polygon vertices: ${fov.size}, first=${fov[0]}, last=${fov.last()}")
-                    }
-
-                    // 임시 — 검증 후 삭제
-                    if (System.currentTimeMillis() % 5000 < 100 && hasAchievedHighAccuracy) {
-                        val fov = buildFovPolygon(currentLat, currentLng, currentHeading)
-                        val cache = viewModel.buildingsCache.value
-                        val sample = cache.values.firstOrNull() ?: return@ARScene
-                        
-                        // 첫 polygon의 outer ring만 사용 (MultiPolygon이라 중첩 깊음)
-                        val firstRing = sample.geom.coordinates.firstOrNull()?.firstOrNull() ?: return@ARScene
-                        val buildingPoly = firstRing.map { Pair(it[0], it[1]) }  // [lng, lat]
-                        
-                        val visible = clipPolygon(buildingPoly, fov)
-                        Log.d("SCANPANG_AR", "Clip test: building=${sample.bld_nm}, " +
-                            "building_vertices=${buildingPoly.size}, " +
-                            "visible_vertices=${visible.size}")
-                    }
-
-
                     val pose = earth.cameraGeospatialPose
                     currentLat = pose.latitude
                     currentLng = pose.longitude
@@ -411,7 +390,10 @@ fun ArExploreScreen(
 
                             val cache = viewModel.buildingsCache.value
                             if (cache.isNotEmpty()) {
-                                // 100m 이내 후보 추출
+                                // FOV polygon 계산 (이번 1초 사이클의 시야)
+                                val fov = buildFovPolygon(currentLat, currentLng, currentHeading)
+
+                                // 100m 이내 + FOV 안 후보 추출
                                 val candidates = cache.values
                                     .mapNotNull { b ->
                                         val center = computeCentroid(b.geom) ?: return@mapNotNull null
@@ -421,6 +403,12 @@ fun ArExploreScreen(
                                         val dist = r[0]
                                         if (dist >= 100f) return@mapNotNull null
 
+                                        // FOV 필터 — 사용자 시야 안에 들어온 부분만
+                                        val firstRing = b.geom.coordinates.firstOrNull()?.firstOrNull() ?: return@mapNotNull null
+                                        val buildingPoly = firstRing.map { Pair(it[0], it[1]) }  // [lng, lat]
+                                        val visible = clipPolygon(buildingPoly, fov)
+                                        if (visible.isEmpty()) return@mapNotNull null   // 시야 밖이면 제외
+
                                         BuildingCandidate(
                                             b = b,
                                             centerLat = center.first,
@@ -428,37 +416,34 @@ fun ArExploreScreen(
                                             dist = dist,
                                             centerBearing = footprint.first,
                                             angularHalfWidth = footprint.second,
+                                            visiblePolygon = visible,
                                         )
                                     }
                                     .sortedBy { it.dist }
 
-                                // Occlusion 완화 — 거리 차 15m 이상 + footprint 70% 안에 들어갈 때만 가려진 걸로
-                                // Occlusion 필터링 — angular footprint 겹침 비율 60% 이상이면 가려진 걸로
-                                val occludedRanges = mutableListOf<Triple<Double, Double, Float>>()
+                                // Ray-polygon intersection 기반 occlusion
                                 val visibleCandidates = mutableListOf<BuildingCandidate>()
                                 for (cand in candidates) {
-                                    val candWidth = cand.angularHalfWidth * 2.0
-
-                                    val isOccluded = occludedRanges.any { (occCenter, occHalf, occDist) ->
-                                        // 거리 차 5m 미만이면 옆에 나란히 있는 거 — 가린다고 판단 안 함
-                                        if (cand.dist - occDist < 5f) return@any false
-
-                                        // 두 angular range의 겹침 계산
-                                        val occMin = occCenter - occHalf
-                                        val occMax = occCenter + occHalf
-                                        val candMin = cand.centerBearing - cand.angularHalfWidth
-                                        val candMax = cand.centerBearing + cand.angularHalfWidth
-
-                                        val overlapMin = kotlin.math.max(occMin, candMin)
-                                        val overlapMax = kotlin.math.min(occMax, candMax)
-                                        val overlap = kotlin.math.max(0.0, overlapMax - overlapMin)
-
-                                        // candidate footprint의 60% 이상이 가려졌으면 occluded
-                                        candWidth > 0 && (overlap / candWidth) > 0.6
+                                    val isOccluded = visibleCandidates.any { occluder ->
+                                        // 거리 차 5m 미만이면 옆 건물 — 가린다고 판단 안 함
+                                        if (cand.dist - occluder.dist < 5f) return@any false
+                                        
+                                        // 사용자 → 후보 마커 ray가 occluder polygon을 통과하는지
+                                        val occluderPoly = occluder.b.geom.coordinates.firstOrNull()?.firstOrNull()
+                                            ?.map { Pair(it[0], it[1]) } ?: return@any false
+                                        
+                                        // 마커 위치 (front edge midpoint)
+                                        val markerPos = computeFrontEdgeMidpoint(cand.visiblePolygon, currentLat, currentLng)
+                                            ?: Pair(cand.centerLat, cand.centerLng)
+                                        
+                                        isRayBlockedByPolygon(
+                                            currentLng, currentLat,
+                                            markerPos.second, markerPos.first,   // Pair<lat, lng> → lng, lat 순
+                                            occluderPoly,
+                                        )
                                     }
 
                                     if (!isOccluded) {
-                                        occludedRanges.add(Triple(cand.centerBearing, cand.angularHalfWidth, cand.dist))
                                         visibleCandidates.add(cand)
                                     }
                                     if (visibleCandidates.size >= 30) break
@@ -469,7 +454,7 @@ fun ArExploreScreen(
                                     "building_${cand.b.ufid ?: cand.b.h3_index_10}_${cand.b.hashCode()}"
                                 }.toSet()
 
-                                // 더 이상 visible 아닌 건물 라벨 제거 (멀어진 건물, 새로 가려진 건물)
+                                // 더 이상 visible 아닌 건물 라벨 제거 (멀어진 / 가려진 / FOV 밖)
                                 val currentBuildingIds = dynamicPois.filter { it.id.startsWith("building_") }.map { it.id }
                                 val toRemove = currentBuildingIds.filter { it !in newVisibleIds }
                                 toRemove.forEach { id ->
@@ -478,16 +463,23 @@ fun ArExploreScreen(
                                 }
                                 dynamicPois.removeAll { it.id.startsWith("building_") && it.id !in newVisibleIds }
 
-                                // 새로 visible된 건물만 앵커 생성 (이미 있는 건 건드리지 않음)
+                                // 새 visible 건물 — anchor 생성 또는 위치 갱신
                                 val existingIds = dynamicPois.map { it.id }.toSet()
                                 visibleCandidates.forEach { cand ->
                                     val id = "building_${cand.b.ufid ?: cand.b.h3_index_10}_${cand.b.hashCode()}"
+
+                                    // 마커 위치 — visible polygon front edge 중점
+                                    val markerPos = computeFrontEdgeMidpoint(
+                                        cand.visiblePolygon, currentLat, currentLng
+                                    ) ?: Pair(cand.centerLat, cand.centerLng)
+
+                                    val labelAltitude = currentAltitude + (cand.b.render_height / 2.0)
+
                                     if (id !in existingIds) {
+                                        // 새 건물 — anchor 신규 생성
                                         try {
-                                            // 중심 라벨 anchor — 건물 정중앙
-                                            val labelAltitude = currentAltitude + (cand.b.render_height / 2.0)
                                             val anchor = earth.createAnchor(
-                                                cand.centerLat, cand.centerLng, labelAltitude,
+                                                markerPos.first, markerPos.second, labelAltitude,
                                                 0f, 0f, 0f, 1f,
                                             )
                                             geospatialAnchors[id] = anchor
@@ -497,21 +489,47 @@ fun ArExploreScreen(
                                                     name = cand.b.bld_nm ?: "이름 없는 건물",
                                                     category = "건물",
                                                     distance = cand.dist,
-                                                    latitude = cand.centerLat,
-                                                    longitude = cand.centerLng,
+                                                    latitude = markerPos.first,
+                                                    longitude = markerPos.second,
                                                 ),
                                             )
                                         } catch (e: Exception) {
                                             Log.e("ArExplore", "건물 앵커 실패 ${cand.b.bld_nm}: ${e.message}")
+                                        }
+                                    } else {
+                                        // 기존 건물 — 위치가 3m 이상 바뀌었을 때만 anchor 갱신
+                                        val existingPoi = dynamicPois.firstOrNull { it.id == id } ?: return@forEach
+                                        val r = FloatArray(1)
+                                        Location.distanceBetween(
+                                            existingPoi.latitude, existingPoi.longitude,
+                                            markerPos.first, markerPos.second, r,
+                                        )
+                                        if (r[0] > 1.5f) {
+                                            geospatialAnchors[id]?.detach()
+                                            try {
+                                                val anchor = earth.createAnchor(
+                                                    markerPos.first, markerPos.second, labelAltitude,
+                                                    0f, 0f, 0f, 1f,
+                                                )
+                                                geospatialAnchors[id] = anchor
+                                                val idx = dynamicPois.indexOfFirst { it.id == id }
+                                                if (idx != -1) {
+                                                    dynamicPois[idx] = dynamicPois[idx].copy(
+                                                        latitude = markerPos.first,
+                                                        longitude = markerPos.second,
+                                                    )
+                                                }
+                                            } catch (e: Exception) {
+                                                Log.e("ArExplore", "앵커 갱신 실패 ${cand.b.bld_nm}: ${e.message}")
+                                            }
                                         }
                                     }
                                 }
 
                                 Log.d("ArExplore",
                                     "visibility 갱신: 표시 ${visibleCandidates.size}개 " +
-                                            "(캐시 ${cache.size}, 100m 이내 ${candidates.size}, " +
+                                            "(캐시 ${cache.size}, FOV+100m 통과 ${candidates.size}, " +
                                             "occlusion ${candidates.size - visibleCandidates.size}개 제외, " +
-                                            "추가 ${visibleCandidates.size - existingIds.count { it.startsWith("building_") }}, " +
                                             "제거 ${toRemove.size})")
                             }
                         }
@@ -542,7 +560,7 @@ fun ArExploreScreen(
                                     val x = ((clipCoords[0] / clipCoords[3] + 1.0f) / 2.0f) * screenWidthPx
                                     val y = ((1.0f - clipCoords[1] / clipCoords[3]) / 2.0f) * screenHeightPx
                                     newPositions[id] = Offset(x, y)
-                                }
+                                }    
                             }
                         }
                     }
@@ -980,7 +998,6 @@ fun ArExploreScreen(
 private fun BoxScope.ArDynamicPoiMarkers(
     dynamicPois: List<DynamicPoi>,
     anchorScreenPositions: Map<String, Offset>,
-    // onPoiClick 파라미터 제거
 ) {
     dynamicPois.forEach { poi ->
         val screenPos = anchorScreenPositions[poi.id] ?: return@forEach
@@ -994,7 +1011,7 @@ private fun BoxScope.ArDynamicPoiMarkers(
                     if (poi.category.isNotEmpty()) append("${poi.category} · ")
                     append("${"%.0f".format(poi.distance)}m")
                 },
-                onClick = null,   // ← null로 두면 ArPoiCard가 클릭 안 됨
+                onClick = null,
             )
         }
     }
@@ -1157,9 +1174,12 @@ private fun buildFilterPillLabel(selected: Set<String>): String {
     return "${list[0]} 외 ${list.size - 1}개"
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Polygon utility 함수들
+// ─────────────────────────────────────────────────────────────────────────────
+
 /**
  * GeoJSON MultiPolygon의 첫 번째 polygon 외곽 ring의 vertex 평균 = 단순 중심점.
- * 작은 건물엔 충분히 정확. L자/중정형은 약간 오차 있을 수 있지만 라벨용으로 OK.
  */
 private fun computeCentroid(geom: GeoJsonMultiPolygon): Pair<Double, Double>? {
     val polygon = geom.coordinates.firstOrNull() ?: return null
@@ -1179,7 +1199,7 @@ private fun computeCentroid(geom: GeoJsonMultiPolygon): Pair<Double, Double>? {
 /**
  * 사용자 위치 기준, 건물 polygon이 차지하는 시야각(angular footprint).
  * 반환: (centerBearing 0~360°, halfWidth°)
- * Occlusion 판정에 사용 — 가까운 A의 footprint 범위 안에 들어가는 멀리 있는 B는 가려진 걸로.
+ * Occlusion 판정에 사용.
  */
 private fun computeAngularFootprint(
     geom: GeoJsonMultiPolygon,
@@ -1201,7 +1221,6 @@ private fun computeAngularFootprint(
     val range = maxB - minB
 
     return if (range > 180.0) {
-        // 0/360 경계 가로지름 → wrap-around 보정
         val wrapped = bearings.map { if (it < 180) it + 360 else it }
         val wMin = wrapped.min()
         val wMax = wrapped.max()
@@ -1215,49 +1234,40 @@ private fun computeAngularFootprint(
 /**
  * 사용자 시야(FOV)를 위경도 polygon으로 근사.
  * 부채꼴을 7개 vertex로 표현: 사용자 점 + FOV 호 위 6점.
- *
- * @param userLat 사용자 위도
- * @param userLng 사용자 경도
- * @param heading ARCore heading (0=북, 90=동, 180=남, 270=서)
- * @param fovDeg 카메라 FOV 각도 (기본 80° — Android 카메라 대략값)
- * @param maxDistM 가시 거리 (기본 200m — 너의 visibility 필터 100m보다 여유 있게)
- * @return [[lng, lat], [lng, lat], ...] 형태. closed (첫 점 = 마지막 점)
  */
 private fun buildFovPolygon(
     userLat: Double,
     userLng: Double,
     heading: Double,
-    fovDeg: Double = 80.0,
+    fovDeg: Double = 65.0,
     maxDistM: Double = 200.0,
 ): List<Pair<Double, Double>> {
     val halfFov = fovDeg / 2.0
-    val numArcPoints = 7   // 호 위 점 개수 (많을수록 정확, 계산 느림)
-    
+    val numArcPoints = 7
+
     val result = mutableListOf<Pair<Double, Double>>()
-    
-    // 1. 사용자 위치 (꼭짓점)
     result.add(Pair(userLng, userLat))
-    
-    // 2. FOV 호 위 점들
+
     val angleStep = fovDeg / (numArcPoints - 1)
     for (i in 0 until numArcPoints) {
         val angleFromHeading = -halfFov + i * angleStep
         val bearingDeg = (heading + angleFromHeading + 360) % 360
         val bearingRad = Math.toRadians(bearingDeg)
-        
-        // 위경도 평면 근사 (200m 범위에서 충분히 정확)
+
         val dLat = maxDistM * Math.cos(bearingRad) / 111_320.0
         val dLng = maxDistM * Math.sin(bearingRad) / (111_320.0 * Math.cos(Math.toRadians(userLat)))
-        
+
         result.add(Pair(userLng + dLng, userLat + dLat))
     }
-    
-    // 3. polygon 닫기 (첫 점 = 마지막 점)
+
     result.add(Pair(userLng, userLat))
-    
     return result
 }
 
+/**
+ * Sutherland-Hodgman 폴리곤 클리핑.
+ * subject (임의 모양) ∩ clip (convex, CW) = visible polygon.
+ */
 private fun clipPolygon(
     subject: List<Pair<Double, Double>>,
     clip: List<Pair<Double, Double>>,
@@ -1305,7 +1315,7 @@ private fun isInsideEdge(
 ): Boolean {
     // buildFovPolygon이 CW(시계방향) → inside = edge 오른쪽 → cross <= 0
     val cross = (edgeEnd.first - edgeStart.first) * (point.second - edgeStart.second) -
-                (edgeEnd.second - edgeStart.second) * (point.first - edgeStart.first)
+            (edgeEnd.second - edgeStart.second) * (point.first - edgeStart.first)
     return cross <= 0
 }
 
@@ -1325,4 +1335,82 @@ private fun computeLineIntersection(
 
     val t = ((x1 - x3) * (y3 - y4) - (y1 - y3) * (x3 - x4)) / denom
     return Pair(x1 + t * (x2 - x1), y1 + t * (y2 - y1))
+}
+
+/**
+ * visible polygon에서 사용자에게 가장 가까운 모서리(front edge) 중점 반환.
+ * 반환: Pair<lat, lng> (ARCore anchor 형식)
+ */
+private fun computeFrontEdgeMidpoint(
+    visiblePolygon: List<Pair<Double, Double>>,  // Pair<lng, lat>
+    userLat: Double,
+    userLng: Double,
+): Pair<Double, Double>? {
+    if (visiblePolygon.size < 2) return null
+
+    var bestMidLng = 0.0
+    var bestMidLat = 0.0
+    var bestDist = Double.MAX_VALUE
+
+    val n = visiblePolygon.size
+    for (i in 0 until n) {
+        val p1 = visiblePolygon[i]
+        val p2 = visiblePolygon[(i + 1) % n]
+
+        val midLng = (p1.first + p2.first) / 2.0
+        val midLat = (p1.second + p2.second) / 2.0
+
+        val r = FloatArray(1)
+        Location.distanceBetween(userLat, userLng, midLat, midLng, r)
+
+        if (r[0] < bestDist) {
+            bestDist = r[0].toDouble()
+            bestMidLat = midLat
+            bestMidLng = midLng
+        }
+    }
+
+    return Pair(bestMidLat, bestMidLng)
+}
+
+/**
+ * 사용자 → 마커까지의 ray가 occluder polygon을 통과하는지.
+ * 통과하면 occluder가 마커를 가림.
+ */
+private fun isRayBlockedByPolygon(
+    userLng: Double, userLat: Double,
+    targetLng: Double, targetLat: Double,
+    occluderPolygon: List<Pair<Double, Double>>,
+): Boolean {
+    if (occluderPolygon.size < 3) return false
+    val n = occluderPolygon.size
+    for (i in 0 until n) {
+        val p1 = occluderPolygon[i]
+        val p2 = occluderPolygon[(i + 1) % n]
+        if (segmentsIntersect(
+                userLng, userLat, targetLng, targetLat,
+                p1.first, p1.second, p2.first, p2.second,
+            )) {
+            return true
+        }
+    }
+    return false
+}
+
+private fun segmentsIntersect(
+    x1: Double, y1: Double, x2: Double, y2: Double,
+    x3: Double, y3: Double, x4: Double, y4: Double,
+): Boolean {
+    val d1 = direction(x3, y3, x4, y4, x1, y1)
+    val d2 = direction(x3, y3, x4, y4, x2, y2)
+    val d3 = direction(x1, y1, x2, y2, x3, y3)
+    val d4 = direction(x1, y1, x2, y2, x4, y4)
+    return ((d1 > 0 && d2 < 0) || (d1 < 0 && d2 > 0)) &&
+            ((d3 > 0 && d4 < 0) || (d3 < 0 && d4 > 0))
+}
+
+private fun direction(
+    x1: Double, y1: Double, x2: Double, y2: Double, x3: Double, y3: Double,
+): Double {
+    return (x3 - x1) * (y2 - y1) - (y3 - y1) * (x2 - x1)
 }
