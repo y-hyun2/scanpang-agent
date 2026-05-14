@@ -204,6 +204,7 @@ fun ArNavigationMapScreen(
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
                     .fillMaxWidth()
+                    .padding(bottom = 62.dp)
                     .zIndex(if (bottomSheetExpanded) 2f else 0f),
                 mapContent = {
                     ArNavMiniMap(
