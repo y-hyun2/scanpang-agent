@@ -388,7 +388,7 @@ fun ArRealSceneView(
                 val dist = distRes[0]
 
                 // 도착 처리
-                if (tn.type == NodeType.END && dist <= 20.0f && !isArrivedState.value) {
+                if (tn.type == NodeType.END && dist <= 25.0f && !isArrivedState.value) {
                     isArrivedState.value = true
 
                     // ── 목적지 도착: 모든 활성 배지에 애니메이션 ──
@@ -560,8 +560,8 @@ fun ArRealSceneView(
                 }
             }
 
-            // 2초마다 nearby 화살표 렌더
-            if (now - lastChunkRenderTime > 2000) {
+            // 0.5초마다 nearby 화살표 렌더
+            if (now - lastChunkRenderTime > 500) {
                 lastChunkRenderTime = now
                 renderNearbyArrows(
                     earth = earth,
@@ -650,7 +650,7 @@ private fun renderNearbyArrows(
         if (node.type == NodeType.END) {
             val d = FloatArray(1)
             Location.distanceBetween(cameraPose.latitude, cameraPose.longitude, node.lat, node.lng, d)
-            if (d[0] > 50f) continue
+            if (d[0] > 60f) continue
         }
         renderedIndices.add(i)
 
