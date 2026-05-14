@@ -335,6 +335,12 @@ fun ArExploreScreen(
                         earth.trackingState != TrackingState.TRACKING
                     ) return@ARScene
 
+                    if (System.currentTimeMillis() % 5000 < 100) {
+                        val fov = buildFovPolygon(currentLat, currentLng, currentHeading)
+                        Log.d("SCANPANG_AR", "FOV polygon vertices: ${fov.size}, first=${fov[0]}, last=${fov.last()}")
+                    }
+
+
                     val pose = earth.cameraGeospatialPose
                     currentLat = pose.latitude
                     currentLng = pose.longitude
@@ -1188,4 +1194,50 @@ private fun computeAngularFootprint(
     } else {
         Pair((minB + maxB) / 2.0, range / 2.0)
     }
+}
+
+/**
+ * 사용자 시야(FOV)를 위경도 polygon으로 근사.
+ * 부채꼴을 7개 vertex로 표현: 사용자 점 + FOV 호 위 6점.
+ *
+ * @param userLat 사용자 위도
+ * @param userLng 사용자 경도
+ * @param heading ARCore heading (0=북, 90=동, 180=남, 270=서)
+ * @param fovDeg 카메라 FOV 각도 (기본 80° — Android 카메라 대략값)
+ * @param maxDistM 가시 거리 (기본 200m — 너의 visibility 필터 100m보다 여유 있게)
+ * @return [[lng, lat], [lng, lat], ...] 형태. closed (첫 점 = 마지막 점)
+ */
+private fun buildFovPolygon(
+    userLat: Double,
+    userLng: Double,
+    heading: Double,
+    fovDeg: Double = 80.0,
+    maxDistM: Double = 200.0,
+): List<Pair<Double, Double>> {
+    val halfFov = fovDeg / 2.0
+    val numArcPoints = 7   // 호 위 점 개수 (많을수록 정확, 계산 느림)
+    
+    val result = mutableListOf<Pair<Double, Double>>()
+    
+    // 1. 사용자 위치 (꼭짓점)
+    result.add(Pair(userLng, userLat))
+    
+    // 2. FOV 호 위 점들
+    val angleStep = fovDeg / (numArcPoints - 1)
+    for (i in 0 until numArcPoints) {
+        val angleFromHeading = -halfFov + i * angleStep
+        val bearingDeg = (heading + angleFromHeading + 360) % 360
+        val bearingRad = Math.toRadians(bearingDeg)
+        
+        // 위경도 평면 근사 (200m 범위에서 충분히 정확)
+        val dLat = maxDistM * Math.cos(bearingRad) / 111_320.0
+        val dLng = maxDistM * Math.sin(bearingRad) / (111_320.0 * Math.cos(Math.toRadians(userLat)))
+        
+        result.add(Pair(userLng + dLng, userLat + dLat))
+    }
+    
+    // 3. polygon 닫기 (첫 점 = 마지막 점)
+    result.add(Pair(userLng, userLat))
+    
+    return result
 }
