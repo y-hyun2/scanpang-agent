@@ -366,6 +366,20 @@ fun ArRealSceneView(
             // 2) READY_TO_ROUTE + 노드 준비됨 → 매 프레임 처리
             if (navState != NavigationState.READY_TO_ROUTE || majorPointIndices.isEmpty()) return@ARScene
 
+            // 이미 도착한 상태면 ARRIVED UI를 계속 유지하고 이후 ROUTING 업데이트 차단
+            if (isArrivedState.value) {
+                onNavigationUpdate(
+                    ArNavUiState(
+                        phase = ArNavUiState.Phase.ARRIVED,
+                        isArrived = true,
+                        statusMessage = "목적지에 도착했습니다.",
+                        direction = "목적지",
+                        turnDirection = TurnDirection.DESTINATION,
+                    ),
+                )
+                return@ARScene
+            }
+
             if (currentTargetPointIndex < majorPointIndices.size) {
                 val tn = fullRouteNodes[majorPointIndices[currentTargetPointIndex]]
                 val distRes = FloatArray(2)

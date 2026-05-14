@@ -154,6 +154,7 @@ fun ArNavigationMapScreen(
             currentManeuverIcon = turnIcon,
             currentDistance = currentDistance,
             currentInstruction = currentInstruction,
+            isArrived = navUiState.isArrived,
         )
 
         ArNavTopHud(
