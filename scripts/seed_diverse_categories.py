@@ -30,11 +30,15 @@ MYEONGDONG_LAT = 37.5636
 MYEONGDONG_LNG = 126.9822
 PLACE_ID       = "__outdoor__"   # outdoor 모드 sentinel
 
-# 카테고리별 대표 매장 2개씩
-DIVERSE_STORES: dict[str, list[str]] = {
+# 카테고리별 대표 매장 — (store_name) 또는 (store_name, lat, lng) 튜플
+# 명동 중심에서 1km 밖 매장은 좌표 override 필요 (예: N서울타워).
+DIVERSE_STORES: dict[str, list] = {
     "cafe":              ["스타벅스 포포인츠 명동점", "블루보틀 명동점"],
     "restaurant":        ["멜팅소울 롯데백화점 본점", "명동교자 본점"],
-    "tourist":           ["N서울타워", "명동성당"],
+    "tourist":           [
+        ("N서울타워", 37.5512, 126.9882),   # 남산
+        "명동성당",
+    ],
     "cultural":          ["롯데시네마 에비뉴엘 명동", "명동예술극장"],
     "shopping":          ["올리브영 명동중앙점", "롯데백화점 본점"],
     "accommodation":     ["롯데호텔 서울", "웨스틴 조선호텔 서울"],
@@ -54,17 +58,58 @@ DIVERSE_STORES: dict[str, list[str]] = {
 async def _existing_ids() -> set[str]:
     pool = await get_pool()
     async with pool.acquire() as conn:
-        rows = await conn.fetch(
-            "SELECT id FROM store_details WHERE place_id = $1", PLACE_ID,
-        )
+        rows = await conn.fetch("SELECT id FROM store_details")
     return {r["id"] for r in rows}
 
 
+async def _resolve_building(store_name: str) -> dict | None:
+    """
+    매장명이 어느 빌딩에 속하는지 자동 매핑.
+    1) place_info.name_ko = 매장명 (매장 = 건물 자체. 예: 명동성당, N서울타워)
+    2) place_info.floor_info 안 stores[].name = 매장명 (매장 ⊂ 건물의 층별정보)
+    Returns: {"ufid", "lat", "lng", "match_kind": "building"|"floor_info"} 또는 None
+    """
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        # 1차: 건물명 정확/부분 일치
+        row = await conn.fetchrow(
+            "SELECT ufid, lat, lng FROM place_info "
+            "WHERE name_ko ILIKE $1 ORDER BY length(name_ko) LIMIT 1",
+            f"%{store_name}%",
+        )
+        if row:
+            return {**dict(row), "match_kind": "building"}
+
+        # 2차: floor_info JSONB 안 매장명 검색
+        row = await conn.fetchrow(
+            """
+            SELECT ufid, lat, lng FROM place_info
+            WHERE floor_info IS NOT NULL
+              AND EXISTS (
+                  SELECT 1
+                  FROM jsonb_array_elements(floor_info) AS fl,
+                       jsonb_array_elements(fl->'stores') AS s
+                  WHERE s->>'name' ILIKE $1
+              )
+            LIMIT 1
+            """,
+            f"%{store_name}%",
+        )
+        if row:
+            return {**dict(row), "match_kind": "floor_info"}
+    return None
+
+
 async def run(categories: list[str], skip_existing: bool, sleep_sec: float):
-    targets: list[tuple[str, str]] = []  # (category, store_name)
+    # (category, store_name, lat_override, lng_override) — 좌표 없으면 None
+    targets: list[tuple[str, str, float | None, float | None]] = []
     for cat in categories or DIVERSE_STORES.keys():
-        for name in DIVERSE_STORES.get(cat, []):
-            targets.append((cat, name))
+        for entry in DIVERSE_STORES.get(cat, []):
+            if isinstance(entry, tuple):
+                name, lat_o, lng_o = entry
+                targets.append((cat, name, lat_o, lng_o))
+            else:
+                targets.append((cat, entry, None, None))
 
     if not targets:
         print("대상 카테고리 없음")
@@ -77,8 +122,27 @@ async def run(categories: list[str], skip_existing: bool, sleep_sec: float):
     t_start = time.time()
     results: list[dict] = []
 
-    for i, (cat, store_name) in enumerate(targets, 1):
-        cache_id = f"{PLACE_ID}__{store_name}"
+    for i, (cat, store_name, lat_o, lng_o) in enumerate(targets, 1):
+        # 진입점 결정 우선순위:
+        # 1) DIVERSE_STORES에 좌표 override 명시된 경우 (예: N서울타워) — 그 좌표 사용
+        # 2) place_info에 매핑되는 빌딩이 있으면 빌딩 ufid + 좌표
+        # 3) 그 외 명동 중심 outdoor
+        if lat_o is not None and lng_o is not None:
+            place_id = PLACE_ID
+            lat, lng = lat_o, lng_o
+            entry_label = "outdoor(override)"
+        else:
+            bld = await _resolve_building(store_name)
+            if bld:
+                place_id = bld["ufid"]
+                lat, lng = float(bld["lat"]), float(bld["lng"])
+                entry_label = f"building({bld['match_kind']})"
+            else:
+                place_id = PLACE_ID
+                lat, lng = MYEONGDONG_LAT, MYEONGDONG_LNG
+                entry_label = "outdoor"
+
+        cache_id = f"{place_id}__{store_name}"
         if skip_existing and cache_id in existing:
             print(f"[{i:2d}/{len(targets)}] {store_name} ({cat}) — 캐시 hit, skip")
             skipped_existing += 1
@@ -89,21 +153,18 @@ async def run(categories: list[str], skip_existing: bool, sleep_sec: float):
 
         t0 = time.time()
         try:
-            r = await get_store_detail(
-                PLACE_ID, store_name,
-                lat=MYEONGDONG_LAT, lng=MYEONGDONG_LNG,
-            )
+            r = await get_store_detail(place_id, store_name, lat=lat, lng=lng)
             elapsed = time.time() - t0
             d = r.get("details") if r else {}
             d_keys = list(d.keys()) if isinstance(d, dict) else []
             results.append({
-                "store_name": store_name, "category": cat,
+                "store_name": store_name, "category": cat, "entry": entry_label,
                 "category_key": r.get("category_key"),
                 "source":     r.get("source"),
                 "has_data":   bool(r.get("phone") or r.get("addr") or d_keys),
                 "elapsed":    round(elapsed, 1),
             })
-            print(f"[{i:2d}/{len(targets)}] {store_name} ({cat}) "
+            print(f"[{i:2d}/{len(targets)}] {store_name} ({cat}) [{entry_label}] "
                   f"→ key={r.get('category_key')} src={r.get('source') or '(empty)'} "
                   f"({elapsed:.1f}s)")
         except Exception as e:

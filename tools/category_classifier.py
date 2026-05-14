@@ -28,6 +28,7 @@ _CATEGORY_RULES: list[tuple[str, str]] = [
     ("일식",          "restaurant"),
     ("중식",          "restaurant"),
     ("아시아음식",    "restaurant"),
+    ("분식",          "restaurant"),
     ("뷔페",          "restaurant"),
     # ── 의료 ──
     ("약국",          "pharmacy"),
@@ -55,12 +56,16 @@ _CATEGORY_RULES: list[tuple[str, str]] = [
     ("게스트하우스",  "accommodation"),
     ("모텔",          "accommodation"),
     # ── 관광·문화 ──
-    ("공연장",        "cultural"),
+    ("공연",          "cultural"),  # "공연장", "공연,연극" 모두 cover
+    ("연극",          "cultural"),
+    ("영화",          "cultural"),  # "영화,영상" 등
+    ("영상",          "cultural"),
     ("박물관",        "cultural"),
     ("미술관",        "cultural"),
     ("전시관",        "cultural"),
     ("문화시설",      "cultural"),
     ("도서관",        "cultural"),
+    ("종교",          "cultural"),  # 명동성당 등 종교시설
     ("관광",          "tourist"),
     ("명소",          "tourist"),
     ("전망대",        "tourist"),
