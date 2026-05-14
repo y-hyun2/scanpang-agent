@@ -1,5 +1,6 @@
 package com.scanpang.app.screens.ar
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -22,6 +23,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.zIndex
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.scanpang.app.data.remote.ScanPangViewModel
 import androidx.compose.ui.Modifier
@@ -39,8 +41,11 @@ import com.scanpang.app.components.ar.ArNavSideVolumeCamera
 import com.scanpang.app.components.ar.ArNavTopHud
 import com.scanpang.app.components.ar.ArPoiFloatingDetailOverlay
 import com.scanpang.app.components.ar.ArPoiTabBuilding
+import com.scanpang.app.components.ScanPangMainTab
+import com.scanpang.app.components.ScanPangTabBar
 import com.scanpang.app.navigation.AppRoutes
 import com.scanpang.app.ui.theme.ScanPangColors
+import com.scanpang.app.ui.theme.ScanPangDimens
 
 private const val NAV_TAB_MAP = "map"
 private const val NAV_TAB_AI = "ai"
@@ -179,10 +184,14 @@ fun ArNavigationMapScreen(
             onSpaceAugmentToggle = { spaceAugmentEnabled = !spaceAugmentEnabled },
         )
 
-        Column(
+        // 레이어 순서 (아래→위):
+        //   갤럭시 시스템 탭바 → 지도 시트 → 스캔팡 탭바 (z-order 높음)
+        // 맵 펼침: 지도 시트 z-order 올려 스캔팡 탭바까지 덮음.
+        Box(
             modifier = Modifier
                 .align(Alignment.BottomCenter)
                 .fillMaxWidth()
+                .background(ScanPangColors.Surface)
                 .navigationBarsPadding(),
         ) {
             ArNavBottomSheet(
@@ -191,7 +200,10 @@ fun ArNavigationMapScreen(
                 onSelectAgent = { activeTab = NAV_TAB_AI },
                 expanded = bottomSheetExpanded,
                 onToggleExpanded = { bottomSheetExpanded = !bottomSheetExpanded },
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .fillMaxWidth()
+                    .zIndex(if (bottomSheetExpanded) 2f else 0f),
                 mapContent = {
                     ArNavMiniMap(
                         userLat = userLat,
@@ -212,6 +224,29 @@ fun ArNavigationMapScreen(
                         placeholder = "무엇이든 물어보세요",
                     )
                 },
+            )
+            ScanPangTabBar(
+                selectedTab = ScanPangMainTab.None,
+                onHomeClick = {
+                    navController.navigate(AppRoutes.Home) {
+                        popUpTo(AppRoutes.Home) { inclusive = false }
+                        launchSingleTop = true
+                    }
+                },
+                onSearchClick = {
+                    navController.navigate(AppRoutes.Search) { launchSingleTop = true }
+                },
+                onSavedClick = {
+                    navController.navigate(AppRoutes.Saved) { launchSingleTop = true }
+                },
+                onProfileClick = {
+                    navController.navigate(AppRoutes.Profile) { launchSingleTop = true }
+                },
+                onExploreClick = { /* 이미 AR 길안내 중 */ },
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .fillMaxWidth()
+                    .zIndex(if (bottomSheetExpanded) 0f else 2f),
             )
         }
 
