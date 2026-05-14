@@ -40,8 +40,6 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.navigation.NavController
 import com.scanpang.app.components.SavedPlaceCard
-import com.scanpang.app.components.SavedPlaceTag
-import com.scanpang.app.components.SavedPlaceTagStyle
 import com.scanpang.app.components.ScanPangFilterChip
 import com.scanpang.app.data.SavedPlaceEntry
 import com.scanpang.app.data.SavedPlaceNavTarget
@@ -67,17 +65,10 @@ private data class SavedPlaceRow(
     val title: String,
     val categoryLabel: String,
     val distanceLine: String,
-    val tags: List<SavedPlaceTag>,
     val distanceMeters: Int,
     val savedOrder: Long,
     val navTarget: SavedPlaceNavTarget,
 )
-
-private fun tagLabelToStyle(label: String): SavedPlaceTagStyle = when {
-    label.contains("인증") -> SavedPlaceTagStyle.Success
-    label.contains("인기") || label.contains("필수") -> SavedPlaceTagStyle.Warning
-    else -> SavedPlaceTagStyle.Neutral
-}
 
 private fun parseDistanceMeters(line: String): Int {
     Regex("""(\d+(?:\.\d+)?)\s*km""").find(line)?.groupValues?.get(1)?.toDoubleOrNull()
@@ -86,11 +77,19 @@ private fun parseDistanceMeters(line: String): Int {
     return Int.MAX_VALUE / 4
 }
 
+// Detail 화면들이 distanceLine 을 "카테고리 · 80m" 처럼 카테고리 prefix 와 함께 저장한다.
+// 저장한 장소 카드는 이미 좌측에 파란 카테고리 pill 을 노출하므로, 회색 텍스트 영역에는
+// 거리값만 남기기 위해 " · " 직전의 카테고리 부분을 잘라낸다.
+// (마지막 " · " 만 잘라내므로 "지하철 1호선, 4호선 · 80m" 처럼 중간 콤마가 있어도 안전.)
+private fun stripCategoryPrefix(line: String): String {
+    val idx = line.lastIndexOf(" · ")
+    return if (idx >= 0) line.substring(idx + 3).trim() else line.trim()
+}
+
 private fun SavedPlaceEntry.toUiRow(): SavedPlaceRow = SavedPlaceRow(
     title = name,
     categoryLabel = category,
-    distanceLine = distanceLine,
-    tags = tags.map { SavedPlaceTag(it, tagLabelToStyle(it)) },
+    distanceLine = stripCategoryPrefix(distanceLine),
     distanceMeters = parseDistanceMeters(distanceLine),
     savedOrder = savedOrder,
     navTarget = target,
@@ -165,14 +164,14 @@ fun SavedPlacesScreen(
 
     Scaffold(
         modifier = modifier.fillMaxSize(),
-        containerColor = ScanPangColors.Background,
+        containerColor = ScanPangColors.Surface,
         contentWindowInsets = androidx.compose.foundation.layout.WindowInsets(0, 0, 0, 0),
     ) { _ ->
         if (entries.isEmpty()) {
             Column(
                 modifier = Modifier
                     .fillMaxSize()
-                    .background(ScanPangColors.Background)
+                    .background(ScanPangColors.Surface)
                     .statusBarsPadding()
                     .padding(horizontal = ScanPangDimens.screenHorizontal)
                     .padding(bottom = ScanPangDimens.mainTabContentBottomInset),
@@ -201,7 +200,7 @@ fun SavedPlacesScreen(
             LazyColumn(
                 modifier = Modifier
                     .fillMaxSize()
-                    .background(ScanPangColors.Background)
+                    .background(ScanPangColors.Surface)
                     .statusBarsPadding()
                     .padding(horizontal = ScanPangDimens.screenHorizontal)
                     .padding(bottom = ScanPangDimens.mainTabContentBottomInset),
@@ -313,7 +312,6 @@ fun SavedPlacesScreen(
                         title = row.title,
                         categoryLabel = row.categoryLabel,
                         distanceLine = row.distanceLine,
-                        tags = row.tags,
                         onClick = { navController.navigateToSavedDetail(row.navTarget) },
                     )
                 }

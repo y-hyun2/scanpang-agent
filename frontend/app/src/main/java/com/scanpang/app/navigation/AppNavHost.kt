@@ -11,7 +11,11 @@ import java.net.URLDecoder
 import java.net.URLEncoder
 import java.nio.charset.StandardCharsets
 import com.scanpang.app.screens.HomeScreen
-import com.scanpang.app.screens.SplashScreen
+import com.scanpang.app.screens.RecentlyViewedListScreen
+import com.scanpang.app.screens.profile.LanguageSettingsScreen
+import com.scanpang.app.screens.profile.NotificationSettingsScreen
+import com.scanpang.app.screens.profile.ValueAddedSettingsScreen
+import com.scanpang.app.screens.auth.SplashScreen
 import com.scanpang.app.screens.auth.LoginErrorScreen
 import com.scanpang.app.screens.auth.LoginScreen
 import com.scanpang.app.screens.auth.OAuthLoadingScreen
@@ -31,7 +35,7 @@ import com.scanpang.app.screens.HospitalDetailScreen
 import com.scanpang.app.screens.LockersDetailScreen
 import com.scanpang.app.screens.PharmacyDetailScreen
 import com.scanpang.app.screens.PrayerRoomDetailScreen
-import com.scanpang.app.screens.ProfileScreen
+import com.scanpang.app.screens.profile.ProfileScreen
 import com.scanpang.app.screens.QiblaDirectionScreen
 import com.scanpang.app.screens.RestaurantDetailScreen
 import com.scanpang.app.screens.RestroomDetailScreen
@@ -65,6 +69,12 @@ object AppRoutes {
 
     const val Saved = "saved"
     const val Profile = "profile"
+    const val RecentlyViewed = "recently_viewed"
+
+    // 내 정보 → 상세 설정 페이지들
+    const val SettingsLanguage = "settings_language"
+    const val SettingsValueAdded = "settings_value_added"
+    const val SettingsNotification = "settings_notification"
     const val NearbyHalal = "nearby_halal"
     const val NearbyPrayer = "nearby_prayer"
     const val RestaurantDetail = "restaurant_detail"
@@ -138,6 +148,10 @@ fun AppNavHost(
         }
         composable(AppRoutes.Saved) { SavedPlacesScreen(navController = navController) }
         composable(AppRoutes.Profile) { ProfileScreen(navController = navController) }
+        composable(AppRoutes.RecentlyViewed) { RecentlyViewedListScreen(navController = navController) }
+        composable(AppRoutes.SettingsLanguage) { LanguageSettingsScreen(navController = navController) }
+        composable(AppRoutes.SettingsValueAdded) { ValueAddedSettingsScreen(navController = navController) }
+        composable(AppRoutes.SettingsNotification) { NotificationSettingsScreen(navController = navController) }
         composable(AppRoutes.NearbyHalal) { NearbyHalalRestaurantsScreen(navController = navController) }
         composable(AppRoutes.NearbyPrayer) { NearbyPrayerRoomsScreen(navController = navController) }
         composable(AppRoutes.RestaurantDetail) { RestaurantDetailScreen(navController = navController) }

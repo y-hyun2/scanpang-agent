@@ -1,4 +1,4 @@
-package com.scanpang.app.screens
+package com.scanpang.app.screens.auth
 
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
