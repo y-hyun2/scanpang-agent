@@ -294,6 +294,7 @@ fun ArRealSceneView(
             config.depthMode = Config.DepthMode.DISABLED
         },
         onSessionUpdated = { session, frame ->
+            if (!isMounted.value) return@ARScene
             val earth = session.earth ?: return@ARScene
             if (earth.earthState != Earth.EarthState.ENABLED ||
                 earth.trackingState != TrackingState.TRACKING
