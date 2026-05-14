@@ -47,6 +47,7 @@ enum class ScanPangMainTab {
     Search,
     Saved,
     Profile,
+    None,
 }
 
 /**

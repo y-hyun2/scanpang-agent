@@ -60,8 +60,10 @@ fun ArInWorldBadgeContent(
         Icons.Rounded.CheckCircle
     else
         direction.icon()
+    val badgeSize = if (direction == BadgeDirection.DESTINATION) 180.dp else 120.dp
+    val iconSize = if (direction == BadgeDirection.DESTINATION) 108.dp else 72.dp
     Surface(
-        modifier = Modifier.size(120.dp),
+        modifier = Modifier.size(badgeSize),
         shape = CircleShape,
         color = color,
         shadowElevation = 6.dp,
@@ -70,7 +72,7 @@ fun ArInWorldBadgeContent(
             Icon(
                 imageVector = icon,
                 contentDescription = null,
-                modifier = Modifier.size(72.dp),
+                modifier = Modifier.size(iconSize),
                 tint = Color.White,
             )
         }

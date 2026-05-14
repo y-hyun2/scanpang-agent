@@ -270,6 +270,7 @@ fun BoxScope.ArNavActionCardCluster(
     currentManeuverIcon: ImageVector,
     currentDistance: String,
     currentInstruction: String,
+    isArrived: Boolean = false,
 ) {
     // 메인 카드는 본문 줄 수에 따라 자유 높이를 갖고, 서브 카드는 그 바로 밑에 살짝 겹쳐서 붙음.
     // (zIndex로 메인 카드를 위로 올려, 겹치는 부분은 메인 카드가 가림)
@@ -300,12 +301,12 @@ fun BoxScope.ArNavActionCardCluster(
             ) {
                 Surface(
                     modifier = Modifier.size(ScanPangDimens.arNavActionIconSquare),
-                    shape = ScanPangShapes.radius14,
-                    color = ScanPangColors.Primary,
+                    shape = if (isArrived) CircleShape else ScanPangShapes.radius14,
+                    color = if (isArrived) ScanPangColors.Success else ScanPangColors.Primary,
                 ) {
                     Box(contentAlignment = Alignment.Center) {
                         Icon(
-                            imageVector = currentManeuverIcon,
+                            imageVector = if (isArrived) Icons.Rounded.CheckCircle else currentManeuverIcon,
                             contentDescription = null,
                             modifier = Modifier.size(ScanPangDimens.arNavActionIconInner),
                             tint = Color.White,
@@ -316,22 +317,24 @@ fun BoxScope.ArNavActionCardCluster(
                     verticalArrangement = Arrangement.spacedBy(ScanPangDimens.icon5),
                 ) {
                     Text(
-                        text = currentDistance,
+                        text = if (isArrived) "도착했어요!" else currentDistance,
                         style = ScanPangType.arNavDistance26,
-                        color = ScanPangColors.OnSurfaceStrong,
+                        color = if (isArrived) ScanPangColors.Success else ScanPangColors.OnSurfaceStrong,
                     )
-                    Text(
-                        text = currentInstruction,
-                        style = ScanPangType.arNavStepCaption12,
-                        color = ScanPangColors.OnSurfaceMuted,
-                        maxLines = 3,
-                        overflow = TextOverflow.Ellipsis,
-                    )
+                    if (!isArrived) {
+                        Text(
+                            text = currentInstruction,
+                            style = ScanPangType.arNavStepCaption12,
+                            color = ScanPangColors.OnSurfaceMuted,
+                            maxLines = 3,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
                 }
             }
         }
 
-        if (showNextStep) {
+        if (showNextStep && !isArrived) {
             Row(
                 modifier = Modifier
                     .padding(start = ScanPangDimens.arNavNextStepOffsetStart)
