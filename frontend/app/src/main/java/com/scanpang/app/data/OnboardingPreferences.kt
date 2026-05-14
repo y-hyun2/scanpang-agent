@@ -97,6 +97,15 @@ class OnboardingPreferences(context: Context) {
                 null -> ""
             }
 
+        /** 프로필 등 짧은 태그용. [ValueAdded.GENERAL] 은 온보딩 문구와 달리 "일반"으로만 노출. */
+        fun valueAddedShortLabel(value: ValueAdded?): String =
+            when (value) {
+                ValueAdded.HALAL -> "할랄"
+                ValueAdded.VEGAN -> "비건"
+                ValueAdded.GENERAL -> "일반"
+                null -> ""
+            }
+
         /** 구 API: ProfileScreen 등 String 기반 호출처 호환. */
         fun travelPreferenceDisplayLabel(pref: String?): String =
             valueAddedDisplayLabel(ValueAdded.fromRaw(pref))
