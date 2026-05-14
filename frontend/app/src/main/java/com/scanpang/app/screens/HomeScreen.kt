@@ -88,16 +88,6 @@ fun HomeScreen(
                 qiblaText = qiblaText,
                 nextPrayerText = nextPrayerText,
             )
-
-            // ⚠️ DEBUG: AR 모델 미리보기 진입 — 실내 테스트용. 검증 끝나면 이 블록 삭제.
-            androidx.compose.material3.Button(
-                onClick = { navController.navigate(AppRoutes.ArDebugPreview) },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = ScanPangSpacing.lg, vertical = ScanPangSpacing.sm),
-            ) {
-                Text("🛠 AR 디버그 미리보기")
-            }
         }
     }
 }

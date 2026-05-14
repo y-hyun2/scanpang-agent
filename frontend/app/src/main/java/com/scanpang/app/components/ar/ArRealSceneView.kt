@@ -371,129 +371,9 @@ fun ArRealSceneView(
                 Location.distanceBetween(lat, lng, tn.lat, tn.lng, distRes)
                 val dist = distRes[0]
 
-                // 도착 처리 — 모든 active 배지에 180° X 회전 + 120°에서 파랑→초록 swap 병렬 애니메이션
+                // 도착 처리
                 if (tn.type == NodeType.END && dist <= 20.0f && !isArrivedState.value) {
                     isArrivedState.value = true
-
-                    // 현재 활성 배지들 스냅샷 (앞면 + 뒷면 페어)
-                    data class AnimTarget(
-                        val key: Int,
-                        val anchor: AnchorNode,
-                        val oldFront: ViewNode2,
-                        val oldBack: ViewNode2?,
-                        val direction: BadgeDirection,
-                    )
-                    val targets = activeChildNodes.entries.mapNotNull { (k, ch) ->
-                        if (ch !is ViewNode2) return@mapNotNull null
-                        val anc = activeArNodes[k] ?: return@mapNotNull null
-                        val backCh = activeBackChildNodes[k] as? ViewNode2
-                        val node = fullRouteNodes.getOrNull(k) ?: return@mapNotNull null
-                        val mi = majorPointIndices.indexOf(k)
-                        val dir = when (node.type) {
-                            NodeType.END -> BadgeDirection.DESTINATION
-                            NodeType.TURN_POINT -> {
-                                if (node.turnType == 17) BadgeDirection.LEFT
-                                else if (node.turnType == 18) BadgeDirection.RIGHT
-                                else when (turnDirectionMap[mi]) {
-                                    true -> BadgeDirection.RIGHT
-                                    false -> BadgeDirection.LEFT
-                                    null -> BadgeDirection.STRAIGHT
-                                }
-                            }
-                            else -> return@mapNotNull null  // START 포함
-                        }
-                        AnimTarget(k, anc, ch, backCh, dir)
-                    }
-
-                    // 도착 애니메이션 — 뒷면은 destroy 후 앞면만 단독 회전 → 끝나고 뒷면 재생성
-                    targets.forEach { tgt ->
-                        val frontYaw = tgt.oldFront.rotation.y
-                        val basePitch = tgt.oldFront.rotation.x
-                        coroutineScope.launch {
-                            // 1) 뒷면 즉시 제거
-                            tgt.oldBack?.let { oldBack ->
-                                runCatching { tgt.anchor.removeChildNode(oldBack) }
-                                runCatching { engine.renderableManager.destroy(oldBack.entity) }
-                                runCatching { oldBack.destroy() }
-                            }
-                            activeBackChildNodes.remove(tgt.key)
-
-                            val phaseMs = 300L
-                            val tiltDeg = 90f
-                            var curFront: ViewNode2 = tgt.oldFront
-
-                            // Phase 1: 0° → 90°
-                            val t1 = System.currentTimeMillis()
-                            while (isMounted.value) {
-                                val elapsed = System.currentTimeMillis() - t1
-                                val progress = (elapsed.toFloat() / phaseMs).coerceIn(0f, 1f)
-                                runCatching {
-                                    curFront.rotation = Float3(basePitch + progress * tiltDeg, frontYaw, 0f)
-                                }
-                                if (progress >= 1f) break
-                                delay(16)
-                            }
-
-                            // Atomic swap: 파란→초록 앞면
-                            val newFront = runCatching {
-                                ViewNode2(
-                                    engine = engine,
-                                    windowManager = viewNodeManager,
-                                    materialLoader = materialLoader,
-                                    unlit = true,
-                                ) {
-                                    MaterialTheme {
-                                        ArInWorldBadgeContent(direction = tgt.direction, isArrived = true)
-                                    }
-                                }.apply {
-                                    this.rotation = Float3(basePitch + tiltDeg, frontYaw, 0f)
-                                }.also { node ->
-                                    runCatching { node.materialInstance.setCullingMode(Material.CullingMode.BACK) }
-                                }
-                            }.getOrNull() ?: return@launch
-
-                            runCatching { tgt.anchor.removeChildNode(curFront) }
-                            runCatching { engine.renderableManager.destroy(curFront.entity) }
-                            runCatching { curFront.destroy() }
-                            tgt.anchor.addChildNode(newFront)
-                            activeChildNodes[tgt.key] = newFront
-                            curFront = newFront
-
-                            // Phase 2: 90° → 0°
-                            val t2 = System.currentTimeMillis()
-                            while (isMounted.value) {
-                                val elapsed = System.currentTimeMillis() - t2
-                                val progress = (elapsed.toFloat() / phaseMs).coerceIn(0f, 1f)
-                                runCatching {
-                                    curFront.rotation = Float3(basePitch + (1f - progress) * tiltDeg, frontYaw, 0f)
-                                }
-                                if (progress >= 1f) break
-                                delay(16)
-                            }
-
-                            // 애니메이션 후 뒷면 재생성 (초록 거울상)
-                            val newBack = runCatching {
-                                ViewNode2(
-                                    engine = engine,
-                                    windowManager = viewNodeManager,
-                                    materialLoader = materialLoader,
-                                    unlit = true,
-                                ) {
-                                    MaterialTheme {
-                                        ArInWorldBadgeContent(direction = tgt.direction, isArrived = true)
-                                    }
-                                }.apply {
-                                    this.rotation = Float3(basePitch, frontYaw + 180f, 0f)
-                                }.also { node ->
-                                    runCatching { node.materialInstance.setCullingMode(Material.CullingMode.BACK) }
-                                }
-                            }.getOrNull()
-                            if (newBack != null) {
-                                tgt.anchor.addChildNode(newBack)
-                                activeBackChildNodes[tgt.key] = newBack
-                            }
-                        }
-                    }
 
                     val arrivalSpeech = tn.speech.ifBlank { "목적지에 도착했습니다." }
                     if (!hasSpokenArrival) {
@@ -587,119 +467,8 @@ fun ArRealSceneView(
                     spokenForTurnIndex = currentTargetPointIndex
                 }
 
-                // 8m 이내 → 다음 턴 (END는 20m 도착 처리에서 이미 return함)
-                if (dist <= 8.0f) {
-                    val animKey = majorPointIndices[currentTargetPointIndex]
-                    val animAnchor = activeArNodes[animKey]
-                    val animFront = activeChildNodes[animKey] as? ViewNode2
-                    val animBack = activeBackChildNodes[animKey] as? ViewNode2
-                    val animNode = fullRouteNodes.getOrNull(animKey)
-                    val animDirection: BadgeDirection? = when (animNode?.type) {
-                        NodeType.TURN_POINT -> {
-                            if (animNode.turnType == 17) BadgeDirection.LEFT
-                            else if (animNode.turnType == 18) BadgeDirection.RIGHT
-                            else when (turnDirectionMap[currentTargetPointIndex]) {
-                                true -> BadgeDirection.RIGHT
-                                false -> BadgeDirection.LEFT
-                                null -> BadgeDirection.STRAIGHT
-                            }
-                        }
-                        else -> null
-                    }
-
-                    if (animAnchor != null && animFront != null && animDirection != null) {
-                        val frontYaw = animFront.rotation.y
-                        val basePitch = animFront.rotation.x
-                        // 추적 맵의 anchorCreationAltitudes는 유지 → 애니메이션 동안에도 고도 추적 작동.
-                        // activeChildNodes에서 일시 제거 → 매 프레임 position 업데이트가 회전과 충돌 안 함.
-                        activeChildNodes.remove(animKey)
-                        activeBackChildNodes.remove(animKey)
-
-                        coroutineScope.launch {
-                            // 뒷면 먼저 destroy
-                            animBack?.let { oldBack ->
-                                runCatching { animAnchor.removeChildNode(oldBack) }
-                                runCatching { engine.renderableManager.destroy(oldBack.entity) }
-                                runCatching { oldBack.destroy() }
-                            }
-
-                            val phaseMs = 300L
-                            val tiltDeg = 90f
-                            var curFront: ViewNode2 = animFront
-
-                            // Phase 1: 0° → 90°
-                            val t1 = System.currentTimeMillis()
-                            while (isMounted.value) {
-                                val elapsed = System.currentTimeMillis() - t1
-                                val progress = (elapsed.toFloat() / phaseMs).coerceIn(0f, 1f)
-                                runCatching {
-                                    curFront.rotation = Float3(basePitch + progress * tiltDeg, frontYaw, 0f)
-                                }
-                                if (progress >= 1f) break
-                                delay(16)
-                            }
-
-                            // Atomic swap: 파란 → 초록
-                            val newFront = runCatching {
-                                ViewNode2(
-                                    engine = engine,
-                                    windowManager = viewNodeManager,
-                                    materialLoader = materialLoader,
-                                    unlit = true,
-                                ) {
-                                    MaterialTheme {
-                                        ArInWorldBadgeContent(direction = animDirection, isArrived = true)
-                                    }
-                                }.apply {
-                                    this.rotation = Float3(basePitch + tiltDeg, frontYaw, 0f)
-                                }.also { node ->
-                                    runCatching { node.materialInstance.setCullingMode(Material.CullingMode.BACK) }
-                                }
-                            }.getOrNull() ?: return@launch
-                            runCatching { animAnchor.removeChildNode(curFront) }
-                            runCatching { engine.renderableManager.destroy(curFront.entity) }
-                            runCatching { curFront.destroy() }
-                            animAnchor.addChildNode(newFront)
-                            curFront = newFront
-
-                            // Phase 2: 90° → 0°
-                            val t2 = System.currentTimeMillis()
-                            while (isMounted.value) {
-                                val elapsed = System.currentTimeMillis() - t2
-                                val progress = (elapsed.toFloat() / phaseMs).coerceIn(0f, 1f)
-                                runCatching {
-                                    curFront.rotation = Float3(basePitch + (1f - progress) * tiltDeg, frontYaw, 0f)
-                                }
-                                if (progress >= 1f) break
-                                delay(16)
-                            }
-
-                            // 애니메이션 종료 → 초록 배지 유지. 뒷면도 같은 콘텐츠로 재생성.
-                            val newBack = runCatching {
-                                ViewNode2(
-                                    engine = engine,
-                                    windowManager = viewNodeManager,
-                                    materialLoader = materialLoader,
-                                    unlit = true,
-                                ) {
-                                    MaterialTheme {
-                                        ArInWorldBadgeContent(direction = animDirection, isArrived = true)
-                                    }
-                                }.apply {
-                                    this.rotation = Float3(basePitch, frontYaw + 180f, 0f)
-                                }.also { node ->
-                                    runCatching { node.materialInstance.setCullingMode(Material.CullingMode.BACK) }
-                                }
-                            }.getOrNull()
-                            if (newBack != null) {
-                                animAnchor.addChildNode(newBack)
-                                activeBackChildNodes[animKey] = newBack
-                            }
-                            // 추적 맵 재등록 — 이후 고도 추적 계속 작동
-                            activeChildNodes[animKey] = curFront
-                        }
-                    }
-
+                // 20m 이내 → 다음 턴
+                if (dist <= 20.0f) {
                     currentTargetPointIndex++
                 }
             }
@@ -722,7 +491,6 @@ fun ArRealSceneView(
                     materialLoader = materialLoader,
                     viewNodeWindowManager = viewNodeManager,
                     routeNodes = routeNodes,
-                    isArrivedState = isArrivedState,
                 )
             }
         },
@@ -772,7 +540,6 @@ private fun renderNearbyArrows(
     materialLoader: MaterialLoader,
     viewNodeWindowManager: ViewNode2.WindowManager,
     routeNodes: SnapshotStateList<Node>,
-    isArrivedState: androidx.compose.runtime.State<Boolean>,
 ) {
     if (earth.trackingState != TrackingState.TRACKING ||
         majorPointIndices.size < 2 ||
@@ -820,8 +587,6 @@ private fun renderNearbyArrows(
         // Back-to-back 두 평면 (원래 yaw 할당으로 복귀)
         //   앞면 = rotationY
         //   뒷면 = rotationY + 180°, 거울상 콘텐츠
-        val isDestination = direction == BadgeDirection.DESTINATION
-        val initialIsArrived = isDestination && isArrivedState.value
         // 앞면
         runCatching {
             val front = ViewNode2(
@@ -831,7 +596,7 @@ private fun renderNearbyArrows(
                 unlit = true,
             ) {
                 MaterialTheme {
-                    ArInWorldBadgeContent(direction = direction, isArrived = initialIsArrived)
+                    ArInWorldBadgeContent(direction = direction, isArrived = false)
                 }
             }.apply {
                 this.rotation = Float3(0f, rotationY, 0f)
@@ -840,7 +605,7 @@ private fun renderNearbyArrows(
             anchorNode.addChildNode(front)
             activeChildNodes[i] = front
         }
-        // 뒷면 — 거울상 + yaw +180°
+        // 뒷면 — yaw +180°
         runCatching {
             val back = ViewNode2(
                 engine = engine,
@@ -849,7 +614,7 @@ private fun renderNearbyArrows(
                 unlit = true,
             ) {
                 MaterialTheme {
-                    ArInWorldBadgeContent(direction = direction, isArrived = initialIsArrived)
+                    ArInWorldBadgeContent(direction = direction, isArrived = false)
                 }
             }.apply {
                 this.rotation = Float3(0f, rotationY + 180f, 0f)
