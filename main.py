@@ -18,6 +18,7 @@ from schemas.restaurant import RestaurantDetailRequest
 from tools.restaurant_tools import get_restaurant_detail
 from rag.automation.worker import start_worker, stop_worker
 from core.db import get_pool, close_pool
+from api.h3_buildings import router as h3_buildings_router
 
 app = FastAPI(title="ScanPang Navigation API")
 

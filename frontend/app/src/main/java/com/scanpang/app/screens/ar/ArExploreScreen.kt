@@ -340,6 +340,22 @@ fun ArExploreScreen(
                         Log.d("SCANPANG_AR", "FOV polygon vertices: ${fov.size}, first=${fov[0]}, last=${fov.last()}")
                     }
 
+                    // 임시 — 검증 후 삭제
+                    if (System.currentTimeMillis() % 5000 < 100 && hasAchievedHighAccuracy) {
+                        val fov = buildFovPolygon(currentLat, currentLng, currentHeading)
+                        val cache = viewModel.buildingsCache.value
+                        val sample = cache.values.firstOrNull() ?: return@ARScene
+                        
+                        // 첫 polygon의 outer ring만 사용 (MultiPolygon이라 중첩 깊음)
+                        val firstRing = sample.geom.coordinates.firstOrNull()?.firstOrNull() ?: return@ARScene
+                        val buildingPoly = firstRing.map { Pair(it[0], it[1]) }  // [lng, lat]
+                        
+                        val visible = clipPolygon(buildingPoly, fov)
+                        Log.d("SCANPANG_AR", "Clip test: building=${sample.bld_nm}, " +
+                            "building_vertices=${buildingPoly.size}, " +
+                            "visible_vertices=${visible.size}")
+                    }
+
 
                     val pose = earth.cameraGeospatialPose
                     currentLat = pose.latitude
@@ -1240,4 +1256,73 @@ private fun buildFovPolygon(
     result.add(Pair(userLng, userLat))
     
     return result
+}
+
+private fun clipPolygon(
+    subject: List<Pair<Double, Double>>,
+    clip: List<Pair<Double, Double>>,
+): List<Pair<Double, Double>> {
+    if (subject.size < 3 || clip.size < 3) return emptyList()
+
+    val subjectClean = if (subject.first() == subject.last()) subject.dropLast(1) else subject
+    val clipClean = if (clip.first() == clip.last()) clip.dropLast(1) else clip
+
+    var output = subjectClean.toMutableList()
+
+    for (i in clipClean.indices) {
+        if (output.isEmpty()) break
+
+        val input = output.toList()
+        output = mutableListOf()
+
+        val edgeStart = clipClean[i]
+        val edgeEnd = clipClean[(i + 1) % clipClean.size]
+
+        for (j in input.indices) {
+            val current = input[j]
+            val previous = input[(j - 1 + input.size) % input.size]
+
+            val currentInside = isInsideEdge(current, edgeStart, edgeEnd)
+            val previousInside = isInsideEdge(previous, edgeStart, edgeEnd)
+
+            when {
+                previousInside && currentInside -> output.add(current)
+                previousInside && !currentInside -> output.add(computeLineIntersection(previous, current, edgeStart, edgeEnd))
+                !previousInside && currentInside -> {
+                    output.add(computeLineIntersection(previous, current, edgeStart, edgeEnd))
+                    output.add(current)
+                }
+            }
+        }
+    }
+    return output
+}
+
+private fun isInsideEdge(
+    point: Pair<Double, Double>,
+    edgeStart: Pair<Double, Double>,
+    edgeEnd: Pair<Double, Double>,
+): Boolean {
+    // buildFovPolygon이 CW(시계방향) → inside = edge 오른쪽 → cross <= 0
+    val cross = (edgeEnd.first - edgeStart.first) * (point.second - edgeStart.second) -
+                (edgeEnd.second - edgeStart.second) * (point.first - edgeStart.first)
+    return cross <= 0
+}
+
+private fun computeLineIntersection(
+    p1: Pair<Double, Double>,
+    p2: Pair<Double, Double>,
+    edgeStart: Pair<Double, Double>,
+    edgeEnd: Pair<Double, Double>,
+): Pair<Double, Double> {
+    val x1 = p1.first; val y1 = p1.second
+    val x2 = p2.first; val y2 = p2.second
+    val x3 = edgeStart.first; val y3 = edgeStart.second
+    val x4 = edgeEnd.first; val y4 = edgeEnd.second
+
+    val denom = (x1 - x2) * (y3 - y4) - (y1 - y2) * (x3 - x4)
+    if (denom == 0.0) return p2
+
+    val t = ((x1 - x3) * (y3 - y4) - (y1 - y3) * (x3 - x4)) / denom
+    return Pair(x1 + t * (x2 - x1), y1 + t * (y2 - y1))
 }

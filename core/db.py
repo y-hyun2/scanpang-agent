@@ -14,7 +14,7 @@ async def get_pool() -> asyncpg.Pool:
         url = os.getenv("SUPABASE_DATABASE_URL", "")
         if not url:
             raise RuntimeError("SUPABASE_DATABASE_URL이 .env에 없습니다.")
-        _pool = await asyncpg.create_pool(url, min_size=1, max_size=5)
+        _pool = await asyncpg.create_pool(url, min_size=1, max_size=5, max_inactive_connection_lifetime=60.0,statement_cache_size=0,)
     return _pool
 
 

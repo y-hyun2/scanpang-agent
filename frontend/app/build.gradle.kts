@@ -73,6 +73,9 @@ android {
             excludes += "/META-INF/{AL2.0,LGPL2.1}"
         }
     }
+    lint {
+        baseline = file("lint-baseline.xml")
+    }
 }
 
 // Kotlin 2.0+ 의 새 DSL. 이전 `kotlinOptions { jvmTarget = "17" }` 는 deprecated → error.
