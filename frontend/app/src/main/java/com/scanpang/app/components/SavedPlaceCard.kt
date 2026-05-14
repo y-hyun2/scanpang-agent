@@ -42,9 +42,9 @@ fun SavedPlaceCard(
     title: String,
     categoryLabel: String,
     distanceLine: String,
-    tags: List<SavedPlaceTag>,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
+    tags: List<SavedPlaceTag> = emptyList(),
 ) {
     Row(
         modifier = modifier
