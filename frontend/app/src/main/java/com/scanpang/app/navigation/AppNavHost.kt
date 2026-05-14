@@ -2,6 +2,7 @@ package com.scanpang.app.navigation
 
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import androidx.navigation.NavController
 import androidx.navigation.NavHostController
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
@@ -44,7 +45,6 @@ import com.scanpang.app.screens.ShoppingDetailScreen
 import com.scanpang.app.screens.SubwayDetailScreen
 import com.scanpang.app.screens.TouristSpotDetailScreen
 import com.scanpang.app.screens.SearchDefaultScreen
-import com.scanpang.app.screens.SearchResultsScreen
 import com.scanpang.app.screens.ar.ArDebugPreviewScreen
 import com.scanpang.app.screens.ar.ArExploreScreen
 import com.scanpang.app.screens.ar.ArNavigationMapScreen
@@ -58,7 +58,6 @@ object AppRoutes {
     const val Home = "home"
     const val Qibla = "qibla"
     const val Search = "search"
-    const val SearchResults = "search_results"
 
     const val SearchSavedStateClearQueryKey = "clear_search_query"
 
@@ -67,11 +66,6 @@ object AppRoutes {
      * savedStateHandle 키. SearchDefaultScreen 진입 시 값이 있으면 query 로 반영하고 null 로 리셋.
      */
     const val SearchSavedStatePendingQueryKey = "pending_search_query"
-
-    fun searchResultsRoute(query: String): String {
-        val encoded = URLEncoder.encode(query, StandardCharsets.UTF_8.name())
-        return "$SearchResults/$encoded"
-    }
 
     const val Saved = "saved"
     const val Profile = "profile"
@@ -144,14 +138,6 @@ fun AppNavHost(
         composable(AppRoutes.Home) { HomeScreen(navController = navController) }
         composable(AppRoutes.Qibla) { QiblaDirectionScreen(navController = navController) }
         composable(AppRoutes.Search) { SearchDefaultScreen(navController = navController) }
-        composable(
-            route = "${AppRoutes.SearchResults}/{query}",
-            arguments = listOf(navArgument("query") { type = NavType.StringType; defaultValue = "" }),
-        ) { entry ->
-            val raw = entry.arguments?.getString("query").orEmpty()
-            val query = runCatching { URLDecoder.decode(raw, StandardCharsets.UTF_8.name()) }.getOrDefault(raw)
-            SearchResultsScreen(navController = navController, searchQuery = query)
-        }
         composable(AppRoutes.Saved) { SavedPlacesScreen(navController = navController) }
         composable(AppRoutes.Profile) { ProfileScreen(navController = navController) }
         composable(AppRoutes.RecentlyViewed) { RecentlyViewedListScreen(navController = navController) }

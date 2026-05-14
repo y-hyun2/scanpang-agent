@@ -90,7 +90,8 @@ fun SearchDefaultScreen(
         keyboard?.hide()
         historyPrefs.add(q)
         recent = historyPrefs.getRecent()
-        navController.navigate(AppRoutes.searchResultsRoute(q))
+        // TODO: 외부 SearchDefaultScreen 머지 후 inline 결과 표시로 전환 (SearchResultsBody).
+        //       지금은 라우트 삭제로 검색 결과 화면 진입 일시 불능.
     }
 
     Scaffold(
