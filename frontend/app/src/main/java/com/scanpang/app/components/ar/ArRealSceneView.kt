@@ -8,6 +8,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.ui.draw.scale
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -375,6 +376,44 @@ fun ArRealSceneView(
                 if (tn.type == NodeType.END && dist <= 20.0f && !isArrivedState.value) {
                     isArrivedState.value = true
 
+                    // ── 목적지 도착: 모든 활성 배지에 애니메이션 ──
+                    activeChildNodes.entries.mapNotNull { (k, ch) ->
+                        val front = ch as? ViewNode2 ?: return@mapNotNull null
+                        val anchor = activeArNodes[k] ?: return@mapNotNull null
+                        val back = activeBackChildNodes[k] as? ViewNode2
+                        val node = fullRouteNodes.getOrNull(k) ?: return@mapNotNull null
+                        val mi = majorPointIndices.indexOf(k)
+                        val dir = when (node.type) {
+                            NodeType.END -> BadgeDirection.DESTINATION
+                            NodeType.TURN_POINT -> when {
+                                node.turnType == 17 -> BadgeDirection.LEFT
+                                node.turnType == 18 -> BadgeDirection.RIGHT
+                                else -> when (turnDirectionMap[mi]) {
+                                    true -> BadgeDirection.RIGHT
+                                    false -> BadgeDirection.LEFT
+                                    else -> BadgeDirection.STRAIGHT
+                                }
+                            }
+                            else -> return@mapNotNull null
+                        }
+                        Triple(front, back, Pair(anchor, dir))
+                    }.forEach { (front, back, anchorDir) ->
+                        val (anchor, dir) = anchorDir
+                        launchBadgeSpinAnim(
+                            front = front,
+                            back = back,
+                            anchor = anchor,
+                            direction = dir,
+                            spinMs = 800L,        // ← 목적지 전용 파라미터
+                            switchAngle = 120f,   // ← 목적지 전용 파라미터
+                            engine = engine,
+                            viewNodeManager = viewNodeManager,
+                            materialLoader = materialLoader,
+                            isMounted = isMounted,
+                            scope = coroutineScope,
+                        )
+                    }
+
                     val arrivalSpeech = tn.speech.ifBlank { "목적지에 도착했습니다." }
                     if (!hasSpokenArrival) {
                         coroutineScope.launch {
@@ -467,8 +506,41 @@ fun ArRealSceneView(
                     spokenForTurnIndex = currentTargetPointIndex
                 }
 
-                // 20m 이내 → 다음 턴
+                // 20m 이내 → 해당 배지 X축 180° 회전 + 120°에서 초록 swap, 다음 턴으로 진행
                 if (dist <= 20.0f) {
+                    if (tn.type == NodeType.TURN_POINT) {
+                        val animKey = majorPointIndices[currentTargetPointIndex]
+                        val animFront = activeChildNodes[animKey] as? ViewNode2
+                        val animBack = activeBackChildNodes[animKey] as? ViewNode2
+                        val animAnchor = activeArNodes[animKey]
+                        val animDir = when {
+                            tn.turnType == 17 -> BadgeDirection.LEFT
+                            tn.turnType == 18 -> BadgeDirection.RIGHT
+                            else -> when (turnDirectionMap[currentTargetPointIndex]) {
+                                true -> BadgeDirection.RIGHT
+                                false -> BadgeDirection.LEFT
+                                else -> BadgeDirection.STRAIGHT
+                            }
+                        }
+                        if (animFront != null && animAnchor != null) {
+                            activeChildNodes.remove(animKey)
+                            activeBackChildNodes.remove(animKey)
+                            // ── 턴 통과: 해당 배지 단독 애니메이션 ──
+                            launchBadgeSpinAnim(
+                                front = animFront,
+                                back = animBack,
+                                anchor = animAnchor,
+                                direction = animDir,
+                                spinMs = 800L,        // ← 턴 통과 전용 파라미터
+                                switchAngle = 120f,   // ← 턴 통과 전용 파라미터
+                                engine = engine,
+                                viewNodeManager = viewNodeManager,
+                                materialLoader = materialLoader,
+                                isMounted = isMounted,
+                                scope = coroutineScope,
+                            )
+                        }
+                    }
                     currentTargetPointIndex++
                 }
             }
@@ -704,4 +776,89 @@ private fun calcTurnFromBearing(i: Int, node: ArRouteNode, fullRouteNodes: List<
         bearingBetween(node, fullRouteNodes.getOrNull(ni) ?: node),
     )
     return if (kotlin.math.abs(ta) < 40f) null else ta >= 0f
+}
+
+/**
+ * 배지(ViewNode2) 단독 X축 스핀 애니메이션.
+ * [spinMs]ms 동안 X축 0→180° 회전하며, [switchAngle]° 도달 시 파랑→초록 ViewNode2 교체.
+ * 목적지 도착 / 턴 통과 두 곳에서 독립적으로 파라미터를 지정해 호출.
+ */
+private fun launchBadgeSpinAnim(
+    front: ViewNode2,
+    back: ViewNode2?,
+    anchor: AnchorNode,
+    direction: BadgeDirection,
+    spinMs: Long,
+    switchAngle: Float,
+    engine: com.google.android.filament.Engine,
+    viewNodeManager: ViewNode2.WindowManager,
+    materialLoader: MaterialLoader,
+    isMounted: androidx.compose.runtime.State<Boolean>,
+    scope: kotlinx.coroutines.CoroutineScope,
+) {
+    val startY = front.rotation.y
+    val startPitch = front.rotation.x
+    scope.launch {
+        var switched = false
+        var curFront = front
+        var curBack = back
+        val t0 = System.currentTimeMillis()
+        while (isMounted.value) {
+            val elapsed = System.currentTimeMillis() - t0
+            val progress = (elapsed.toFloat() / spinMs).coerceIn(0f, 1f)
+            val angle = progress * 180f
+
+            if (!switched && angle >= switchAngle) {
+                switched = true
+                val newFront = runCatching {
+                    ViewNode2(engine, viewNodeManager, materialLoader, unlit = true) {
+                        androidx.compose.material3.MaterialTheme {
+                            if (direction == BadgeDirection.RIGHT) {
+                                Box(modifier = Modifier.scale(-1f, -1f)) {
+                                    ArInWorldBadgeContent(direction = direction, isArrived = true)
+                                }
+                            } else {
+                                ArInWorldBadgeContent(direction = direction, isArrived = true)
+                            }
+                        }
+                    }.apply {
+                        rotation = Float3(startPitch + switchAngle, startY, 0f)
+                    }.also { n -> runCatching { n.materialInstance.setCullingMode(com.google.android.filament.Material.CullingMode.BACK) } }
+                }.getOrNull() ?: return@launch
+                runCatching { anchor.removeChildNode(curFront) }
+                runCatching { engine.renderableManager.destroy(curFront.entity) }
+                runCatching { curFront.destroy() }
+                anchor.addChildNode(newFront)
+                curFront = newFront
+
+                curBack?.let { oldBack ->
+                    val newBack = runCatching {
+                        ViewNode2(engine, viewNodeManager, materialLoader, unlit = true) {
+                            androidx.compose.material3.MaterialTheme {
+                                if (direction == BadgeDirection.RIGHT) {
+                                    Box(modifier = Modifier.scale(-1f, -1f)) {
+                                        ArInWorldBadgeContent(direction = direction, isArrived = true)
+                                    }
+                                } else {
+                                    ArInWorldBadgeContent(direction = direction, isArrived = true)
+                                }
+                            }
+                        }.apply {
+                            rotation = Float3(startPitch + switchAngle, startY + 180f, 0f)
+                        }.also { n -> runCatching { n.materialInstance.setCullingMode(com.google.android.filament.Material.CullingMode.BACK) } }
+                    }.getOrNull()
+                    runCatching { anchor.removeChildNode(oldBack) }
+                    runCatching { engine.renderableManager.destroy(oldBack.entity) }
+                    runCatching { oldBack.destroy() }
+                    curBack = newBack
+                    if (newBack != null) anchor.addChildNode(newBack)
+                }
+            }
+
+            runCatching { curFront.rotation = Float3(startPitch + angle, startY, 0f) }
+            runCatching { curBack?.rotation = Float3(startPitch + angle, startY + 180f, 0f) }
+            if (progress >= 1f) break
+            delay(16)
+        }
+    }
 }
