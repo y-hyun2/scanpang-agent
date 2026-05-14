@@ -151,7 +151,8 @@ private fun DialogPrimaryButton(
 private fun LogoutConfirmDialogPreview() {
     ScanPangTheme {
         Box(
-            modifier = Modifier.padding(20.dp),
+            modifier = Modifier
+                .padding(20.dp),
             contentAlignment = Alignment.Center,
         ) {
             LogoutConfirmDialog(onDismiss = {}, onConfirm = {})

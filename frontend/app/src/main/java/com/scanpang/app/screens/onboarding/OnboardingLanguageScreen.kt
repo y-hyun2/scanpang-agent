@@ -30,6 +30,7 @@ private data class LanguageOption(
     val code: String,
     val flag: String,
     val label: String,
+    val subLabel: String,
 )
 
 @Composable
@@ -41,10 +42,8 @@ fun OnboardingLanguageScreen(
     val prefs = remember { OnboardingPreferences(context) }
     val options = remember {
         listOf(
-            LanguageOption(OnboardingPreferences.LANG_KO, "🇰🇷", "한국어"),
-            LanguageOption(OnboardingPreferences.LANG_EN, "🇺🇸", "English"),
-            LanguageOption(OnboardingPreferences.LANG_MS, "🇲🇾", "Bahasa Melayu"),
-            LanguageOption(OnboardingPreferences.LANG_AR, "🇸🇦", "العربية"),
+            LanguageOption(OnboardingPreferences.LANG_KO, "🇰🇷", "한국어", "Korean"),
+            LanguageOption(OnboardingPreferences.LANG_EN, "🇺🇸", "English", "영어"),
         )
     }
     var selectedCode by remember {
@@ -73,8 +72,14 @@ fun OnboardingLanguageScreen(
                 Spacer(modifier = Modifier.height(ScanPangSpacing.lg))
                 Text(
                     text = "사용 언어를 선택해주세요",
-                    style = ScanPangType.title16SemiBold,
+                    style = ScanPangType.titleLarge,
                     color = ScanPangColors.OnSurfaceStrong,
+                )
+                Spacer(modifier = Modifier.height(ScanPangSpacing.xs))
+                Text(
+                    text = "선택한 언어로 음성 안내와 텍스트가 제공됩니다",
+                    style = ScanPangType.body14Regular,
+                    color = ScanPangColors.OnSurfaceMuted,
                 )
                 Spacer(modifier = Modifier.height(ScanPangSpacing.lg))
                 Column(
@@ -85,10 +90,10 @@ fun OnboardingLanguageScreen(
                             selected = selectedCode == opt.code,
                             onClick = { selectedCode = opt.code },
                         ) {
-                            OnboardingLanguageCardContent(
-                                flagEmoji = opt.flag,
-                                label = opt.label,
-                                selected = selectedCode == opt.code,
+                            OnboardingChoiceContent(
+                                leading = opt.flag,
+                                title = opt.label,
+                                subtitle = opt.subLabel,
                             )
                         }
                     }

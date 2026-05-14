@@ -66,16 +66,22 @@ fun OnboardingNameScreen(
                 Spacer(modifier = Modifier.height(ScanPangSpacing.lg))
                 Text(
                     text = "어떻게 불러드릴까요?",
-                    style = ScanPangType.title16SemiBold,
+                    style = ScanPangType.titleLarge,
                     color = ScanPangColors.OnSurfaceStrong,
                 )
-                Spacer(modifier = Modifier.height(ScanPangSpacing.sm))
+                Spacer(modifier = Modifier.height(ScanPangSpacing.xs))
                 Text(
-                    text = "이름을 입력해주세요",
+                    text = "AR 가이드와 인사할 때 사용됩니다",
                     style = ScanPangType.body14Regular,
                     color = ScanPangColors.OnSurfaceMuted,
                 )
                 Spacer(modifier = Modifier.height(ScanPangSpacing.lg))
+                Text(
+                    text = "이름",
+                    style = ScanPangType.caption12Medium,
+                    color = ScanPangColors.OnSurfaceMuted,
+                )
+                Spacer(modifier = Modifier.height(ScanPangSpacing.xs))
                 OutlinedTextField(
                     value = name,
                     onValueChange = { name = it },
