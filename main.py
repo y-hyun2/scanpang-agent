@@ -16,6 +16,10 @@ from agents.orchestrator_agent import run_orchestrator
 from core.session_store import get_session_store
 from schemas.restaurant import RestaurantDetailRequest
 from tools.restaurant_tools import get_restaurant_detail
+from schemas.search import SearchRequest, SearchResponse, SearchResultItem
+from schemas.place_detail import PlaceDetailRequest, PlaceDetailResponse
+from tools.open_hours_parser import is_open_now_combined as _is_open_now_combined
+import json as _json
 from rag.automation.worker import start_worker, stop_worker
 from core.db import get_pool, close_pool
 from api.h3_buildings import router as h3_buildings_router
@@ -134,3 +138,149 @@ async def restaurant_detail(req: RestaurantDetailRequest):
     if result is None:
         raise HTTPException(status_code=404, detail=f"식당 '{req.name}' 정보를 찾을 수 없습니다.")
     return result
+
+
+@app.post("/place/search", response_model=SearchResponse)
+async def place_search(req: SearchRequest):
+    """
+    store_details 통합 검색 — store_name ILIKE 매칭.
+    SearchDefaultScreen에서 사용자가 입력한 키워드로 호출.
+    """
+    q = (req.query or "").strip()
+    if not q:
+        return SearchResponse(query=req.query, count=0, results=[])
+
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        rows = await conn.fetch(
+            """
+            SELECT id, store_name, category, category_key, addr, phone,
+                   place_id, lat, lng, floor, image_urls, open_hours, details
+            FROM store_details
+            WHERE store_name ILIKE $1
+            ORDER BY last_updated DESC NULLS LAST
+            LIMIT $2
+            """,
+            f"%{q}%",
+            req.limit,
+        )
+
+    results: list[SearchResultItem] = []
+    for r in rows:
+        raw_imgs = r["image_urls"]
+        first_img: Optional[str] = None
+        if raw_imgs:
+            try:
+                imgs = raw_imgs if isinstance(raw_imgs, list) else _json.loads(raw_imgs)
+                if imgs:
+                    first_img = imgs[0]
+            except (ValueError, TypeError):
+                first_img = None
+
+        # details JSONB → schedule 추출 (정규화된 구조 있으면 그걸로 is_open_now 정확 판정)
+        raw_details = r["details"]
+        schedule = None
+        if raw_details:
+            try:
+                d = raw_details if isinstance(raw_details, dict) else _json.loads(raw_details)
+                if isinstance(d, dict):
+                    schedule = d.get("schedule")
+            except (ValueError, TypeError):
+                schedule = None
+
+        results.append(
+            SearchResultItem(
+                id=r["id"],
+                store_name=r["store_name"],
+                category=r["category"],
+                category_key=r["category_key"],
+                addr=r["addr"],
+                phone=r["phone"],
+                place_id=r["place_id"],
+                lat=r["lat"],
+                lng=r["lng"],
+                floor=r["floor"],
+                image_url=first_img,
+                is_open_now=_is_open_now_combined(r["open_hours"], schedule),
+            )
+        )
+
+    return SearchResponse(query=req.query, count=len(results), results=results)
+
+
+@app.post("/place/detail", response_model=PlaceDetailResponse)
+async def place_detail(req: PlaceDetailRequest):
+    """
+    PlaceDetailScreen 진입 시 호출 — store_details row 하나를 전부 펼쳐서 반환.
+    검색 결과(SearchResultItem.id)를 그대로 넘기면 됨.
+    """
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        row = await conn.fetchrow(
+            """
+            SELECT id, store_name, place_id, lat, lng,
+                   category, category_key, addr, phone, floor,
+                   homepage, place_url,
+                   open_hours, closed_days,
+                   image_urls, details, source, last_updated
+            FROM store_details
+            WHERE id = $1
+            """,
+            req.id,
+        )
+
+    if row is None:
+        raise HTTPException(status_code=404, detail=f"매장 '{req.id}' 정보를 찾을 수 없습니다.")
+
+    # image_urls / details 는 JSONB — asyncpg 가 list/dict 로 디코드하지만
+    # 안전을 위해 문자열 케이스도 방어적으로 처리.
+    raw_imgs = row["image_urls"]
+    image_urls: list[str]
+    if isinstance(raw_imgs, list):
+        image_urls = [str(x) for x in raw_imgs]
+    elif isinstance(raw_imgs, str) and raw_imgs:
+        try:
+            parsed = _json.loads(raw_imgs)
+            image_urls = [str(x) for x in parsed] if isinstance(parsed, list) else []
+        except (ValueError, TypeError):
+            image_urls = []
+    else:
+        image_urls = []
+
+    raw_details = row["details"]
+    details: dict
+    if isinstance(raw_details, dict):
+        details = raw_details
+    elif isinstance(raw_details, str) and raw_details:
+        try:
+            parsed = _json.loads(raw_details)
+            details = parsed if isinstance(parsed, dict) else {}
+        except (ValueError, TypeError):
+            details = {}
+    else:
+        details = {}
+
+    last_updated = row["last_updated"]
+    last_updated_iso = last_updated.isoformat() if last_updated else None
+
+    return PlaceDetailResponse(
+        id=row["id"],
+        store_name=row["store_name"],
+        place_id=row["place_id"],
+        lat=row["lat"],
+        lng=row["lng"],
+        category=row["category"],
+        category_key=row["category_key"],
+        addr=row["addr"],
+        phone=row["phone"],
+        floor=row["floor"],
+        homepage=row["homepage"],
+        place_url=row["place_url"],
+        open_hours=row["open_hours"],
+        closed_days=row["closed_days"],
+        is_open_now=_is_open_now_combined(row["open_hours"], details.get("schedule")),
+        image_urls=image_urls,
+        details=details,
+        source=row["source"],
+        last_updated=last_updated_iso,
+    )

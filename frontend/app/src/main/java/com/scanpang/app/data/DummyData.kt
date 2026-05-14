@@ -23,6 +23,13 @@ data class Place(
     val rating: Float = 0f,
     val latitude: Double = 37.5636,
     val longitude: Double = 126.9869,
+    // ── 통합 PlaceDetailScreen 에서 본문 자동 표시에 쓰이는 추가 필드 ──
+    val categoryKey: String = "",
+    val floor: String = "",
+    val parking: String = "",
+    val website: String = "",
+    val convenienceServices: String = "",
+    val departments: String = "",
 )
 
 data class MenuItem(
@@ -486,6 +493,35 @@ object DummyData {
             images = placeholderImage,
         ),
     )
+
+    /**
+     * 통합 PlaceDetailScreen 에서 categoryKey + placeId 로 더미 데이터를 조회.
+     * categoryKey 는 백엔드 store_details.category_key 또는 SavedPlaceNavTarget 매핑값.
+     * 매칭 없으면 null — 화면은 pop back 으로 fallback.
+     *
+     * 주의: restaurant 카테고리는 RestaurantPlace.place 를 풀어서 반환. menuItems/lastOrder 같은
+     * 식당 전용 필드는 PlaceDetailScreen 에서 별도로 halalRestaurants 를 재조회한다.
+     */
+    fun findPlaceById(categoryKey: String, placeId: String): Place? {
+        val pool: List<Place> = when (categoryKey) {
+            "restaurant", "halal_restaurant" -> halalRestaurants.map { it.place }
+            "prayer_room" -> prayerRooms
+            "tourist", "tourist_spot", "attraction" -> touristPlaces
+            "shopping", "mall" -> shoppingPlaces
+            "convenience", "convenience_store" -> convenienceStores
+            "cafe" -> cafes
+            "atm" -> atmPlaces
+            "bank" -> bankPlaces
+            "exchange" -> exchangePlaces
+            "subway", "subway_station" -> subwayPlaces
+            "restroom", "public_restroom" -> restroomPlaces
+            "lockers", "locker" -> lockerPlaces
+            "hospital" -> hospitalPlaces
+            "pharmacy" -> pharmacyPlaces
+            else -> emptyList()
+        }
+        return pool.firstOrNull { it.id == placeId } ?: pool.firstOrNull()
+    }
 
     /**
      * 통합 검색·결과 화면에서 더미에 어떤 목록이 들어 있는지 표시할 때 사용.

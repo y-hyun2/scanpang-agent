@@ -8,6 +8,7 @@ import android.net.Uri
 import android.widget.Toast
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -28,6 +29,7 @@ import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
+import androidx.compose.material.icons.rounded.AccessTime
 import androidx.compose.material.icons.rounded.Bookmark
 import androidx.compose.material.icons.rounded.BookmarkBorder
 import androidx.compose.material.icons.rounded.Cancel
@@ -35,6 +37,8 @@ import androidx.compose.material.icons.rounded.CheckCircle
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.Fullscreen
 import androidx.compose.material.icons.rounded.Info
+import androidx.compose.material.icons.rounded.NearMe
+import androidx.compose.material.icons.rounded.Phone
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.HorizontalDivider
@@ -57,6 +61,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.lifecycle.Lifecycle
@@ -64,7 +69,10 @@ import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
+import androidx.compose.runtime.LaunchedEffect
 import com.scanpang.app.data.Place
+import com.scanpang.app.data.RecentlyViewedEntry
+import com.scanpang.app.data.RecentlyViewedStore
 import com.scanpang.app.data.SavedPlaceEntry
 import com.scanpang.app.data.SavedPlaceNavTarget
 import com.scanpang.app.data.SavedPlacesStore
@@ -119,12 +127,26 @@ fun rememberDetailBookmark(
     category: String,
     distanceLine: String,
     tags: List<String>,
-    target: SavedPlaceNavTarget,
+    categoryKey: String,
 ): DetailBookmarkController {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
     val store = remember { SavedPlacesStore(context) }
+    val recentlyViewedStore = remember { RecentlyViewedStore(context) }
+    val target = remember(categoryKey) { SavedPlaceNavTarget.fromCategoryKey(categoryKey) }
     var bookmarked by remember(placeId) { mutableStateOf(store.isSaved(placeId)) }
+
+    LaunchedEffect(placeId) {
+        recentlyViewedStore.record(
+            RecentlyViewedEntry(
+                id = placeId,
+                name = placeName,
+                category = category,
+                distanceLine = distanceLine,
+                target = target,
+            ),
+        )
+    }
 
     DisposableEffect(lifecycleOwner, placeId) {
         val observer = LifecycleEventObserver { _, event ->
@@ -332,6 +354,7 @@ fun DetailTitleBookmarkRow(
     bookmarked: Boolean,
     onBookmarkClick: () -> Unit,
     modifier: Modifier = Modifier,
+    trailingContent: (@Composable () -> Unit)? = null,
 ) {
     Row(
         modifier = modifier.fillMaxWidth(),
@@ -344,6 +367,7 @@ fun DetailTitleBookmarkRow(
             color = ScanPangColors.OnSurfaceStrong,
             modifier = Modifier.weight(1f),
         )
+        trailingContent?.invoke()
         IconButton(onClick = onBookmarkClick) {
             Icon(
                 imageVector = if (bookmarked) Icons.Rounded.Bookmark else Icons.Rounded.BookmarkBorder,
@@ -376,6 +400,7 @@ fun DetailCategoryTagDistanceRow(
     categoryLabel: String,
     distanceText: String,
     modifier: Modifier = Modifier,
+    isOpen: Boolean? = null,
     trailing: (@Composable () -> Unit)? = null,
 ) {
     Row(
@@ -404,8 +429,22 @@ fun DetailCategoryTagDistanceRow(
             style = ScanPangType.detailMetaSubtitle13,
             color = ScanPangColors.OnSurfaceMuted,
             maxLines = 1,
-            modifier = Modifier.weight(1f, fill = false),
         )
+        if (isOpen != null) {
+            Box(
+                modifier = Modifier
+                    .size(ScanPangDimens.icon5)
+                    .clip(CircleShape)
+                    .background(if (isOpen) ScanPangColors.StatusOpen else ScanPangColors.Error),
+            )
+            Text(
+                text = if (isOpen) "영업 중" else "영업 종료",
+                style = ScanPangType.meta11SemiBold,
+                color = if (isOpen) ScanPangColors.StatusOpen else ScanPangColors.Error,
+                maxLines = 1,
+            )
+        }
+        Spacer(modifier = Modifier.weight(1f))
         trailing?.invoke()
     }
 }
@@ -696,4 +735,170 @@ fun DetailScreenDivider() {
 @Composable
 fun DetailContentBottomSpacer() {
     Spacer(modifier = Modifier.height(ScanPangDimens.detailContentBottomPad))
+}
+
+// ── 통합 PlaceDetailScreen 전용 헬퍼 3종 (외부 hufs-cdp 통합본에서 가져옴) ──
+
+/**
+ * 히어로 사진 없는 카테고리(atm/subway/restroom/locker) 용 — 뒤로가기 버튼만 있는 상단 영역.
+ */
+@Composable
+fun DetailBackOnlyArea(
+    onBack: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Box(
+        modifier = modifier
+            .fillMaxWidth()
+            .background(ScanPangColors.Surface)
+            .statusBarsPadding()
+            .height(56.dp),
+    ) {
+        Box(
+            modifier = Modifier
+                .padding(start = 16.dp)
+                .size(ScanPangDimens.arCircleBtn36)
+                .clip(CircleShape)
+                .background(ScanPangColors.Background)
+                .clickable(onClick = onBack)
+                .align(Alignment.CenterStart),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(
+                imageVector = Icons.AutoMirrored.Rounded.ArrowBack,
+                contentDescription = "뒤로",
+                modifier = Modifier.size(20.dp),
+                tint = ScanPangColors.OnSurfaceStrong,
+            )
+        }
+    }
+}
+
+/** 길안내(메인 CTA) + 전화(보조 사이드 버튼) 한 행 — 모든 Detail 화면 공통. */
+@Composable
+fun DetailCtaRow(
+    onNavigate: () -> Unit,
+    onPhoneClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Row(
+        modifier = modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(
+            modifier = Modifier
+                .weight(1f)
+                .height(ScanPangDimens.detailCtaHeight)
+                .clip(ScanPangShapes.radius14)
+                .background(ScanPangColors.Primary)
+                .clickable(onClick = onNavigate),
+            contentAlignment = Alignment.Center,
+        ) {
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Icon(
+                    imageVector = Icons.Rounded.NearMe,
+                    contentDescription = null,
+                    modifier = Modifier.size(20.dp),
+                    tint = Color.White,
+                )
+                Text(
+                    text = "길안내 시작",
+                    style = ScanPangType.detailSectionTitle15,
+                    color = Color.White,
+                )
+            }
+        }
+        Box(
+            modifier = Modifier
+                .size(ScanPangDimens.detailCtaSide)
+                .clip(ScanPangShapes.radius14)
+                .background(ScanPangColors.Background)
+                .clickable(onClick = onPhoneClick),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(
+                imageVector = Icons.Rounded.Phone,
+                contentDescription = "전화",
+                modifier = Modifier.size(22.dp),
+                tint = ScanPangColors.OnSurfaceMuted,
+            )
+        }
+    }
+}
+
+/** 오늘 영업 상태 카드 — isOpen + open_hours 문자열을 한 줄로, 식당이면 라스트오더까지. */
+@Composable
+fun DetailTodayVisitStatus(
+    isOpen: Boolean,
+    openHours: String,
+    lastOrder: String = "",
+    modifier: Modifier = Modifier,
+) {
+    val statusColor = if (isOpen) ScanPangColors.StatusOpen else ScanPangColors.Error
+    val cardBg = if (isOpen) ScanPangColors.DetailVisitOpenSurface else ScanPangColors.DetailVisitClosedSurface
+    Column(
+        modifier = modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(ScanPangSpacing.md),
+    ) {
+        DetailSectionHeader(title = "오늘 방문 가능 여부")
+        Surface(
+            modifier = Modifier.fillMaxWidth(),
+            shape = ScanPangShapes.radius12,
+            color = cardBg,
+        ) {
+            Column(
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(ScanPangSpacing.xs),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(8.dp)
+                            .clip(CircleShape)
+                            .background(statusColor),
+                    )
+                    Text(
+                        text = if (isOpen) "지금 영업 중" else "지금 영업 종료",
+                        style = ScanPangType.caption12Medium,
+                        color = statusColor,
+                    )
+                    Text(
+                        text = "·",
+                        style = ScanPangType.caption12Medium,
+                        color = ScanPangColors.OnSurfaceStrong,
+                    )
+                    Text(
+                        text = openHours,
+                        style = ScanPangType.caption12Medium,
+                        color = ScanPangColors.OnSurfaceStrong,
+                    )
+                }
+                if (lastOrder.isNotBlank()) {
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(ScanPangSpacing.xs),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Icon(
+                            imageVector = Icons.Rounded.AccessTime,
+                            contentDescription = null,
+                            modifier = Modifier.size(14.dp),
+                            tint = ScanPangColors.OnSurfaceMuted,
+                        )
+                        Text(
+                            text = "라스트오더 $lastOrder",
+                            style = ScanPangType.caption12Medium,
+                            color = ScanPangColors.OnSurfaceMuted,
+                        )
+                    }
+                }
+            }
+        }
+    }
 }

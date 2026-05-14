@@ -248,8 +248,10 @@ fun NearbyHalalRestaurantsScreen(
                     isOpen = place.isOpen,
                     trustTags = place.trustTags,
                     onClick = {
+                        // 통합 PlaceDetailScreen 으로 — id 없으니 DummyData 1번째로 폴백.
+                        // Phase B 에서 backend store_details.id 를 알게 되면 그걸로 교체.
                         navController.navigate(
-                            AppRoutes.restaurantDetailRoute(place.title)
+                            AppRoutes.placeDetailRoute("restaurant", "")
                         ) { launchSingleTop = true }
                     },
                 )

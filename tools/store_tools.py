@@ -18,6 +18,7 @@ from core.db import get_pool
 from tools.place_tools import check_kakao_open_status
 from tools.category_classifier import classify_category
 from tools.details_fetchers import fetch_by_category
+from tools.open_hours_normalizer import normalize_open_hours
 
 
 # 명동 기본 좌표 fallback
@@ -114,6 +115,14 @@ async def get_store_detail(
     floor      = fetched.get("floor", "") or None  # Naver Place base.road에서 추출
     details    = fetched.get("details", {}) or {}
     source     = fetched.get("source", "kakao" if kakao else "")
+
+    # ── ④-b open_hours 구조화 — LLM 1회로 weekly schedule 정규화 ────────────
+    # details.schedule 에 저장해 두면 /place/search·/place/detail 응답에서
+    # LLM 호출 없이 is_open_now 를 정확 판정할 수 있다.
+    if open_hours:
+        schedule = await normalize_open_hours(open_hours)
+        if schedule:
+            details["schedule"] = schedule
 
     # ── ⑤ store_details UPSERT ──────────────────────────────────────────────
     async with pool.acquire() as conn:

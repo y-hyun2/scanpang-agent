@@ -249,7 +249,7 @@ fun NearbyPrayerRoomsScreen(
                     subtitle = "${place.distance} · ${place.address}",
                     onClick = {
                         navController.navigate(
-                            AppRoutes.prayerRoomDetailRoute(place.name)
+                            AppRoutes.placeDetailRoute("prayer_room", "")
                         ) { launchSingleTop = true }
                     },
                 )

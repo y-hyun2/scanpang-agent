@@ -61,23 +61,12 @@ fun SavedPlaceNavTarget.toRecentIcon(): ImageVector = when (this) {
     SavedPlaceNavTarget.Pharmacy -> Icons.Rounded.Medication
 }
 
-/** SavedPlaceNavTarget → 해당 상세 화면 라우트. */
-fun SavedPlaceNavTarget.toDetailRoute(): String = when (this) {
-    SavedPlaceNavTarget.Restaurant -> AppRoutes.RestaurantDetail
-    SavedPlaceNavTarget.PrayerRoom -> AppRoutes.PrayerRoomDetail
-    SavedPlaceNavTarget.TouristSpot -> AppRoutes.TouristDetail
-    SavedPlaceNavTarget.Shopping -> AppRoutes.ShoppingDetail
-    SavedPlaceNavTarget.ConvenienceStore -> AppRoutes.ConvenienceDetail
-    SavedPlaceNavTarget.Cafe -> AppRoutes.CafeDetail
-    SavedPlaceNavTarget.Atm -> AppRoutes.AtmDetail
-    SavedPlaceNavTarget.Bank -> AppRoutes.BankDetail
-    SavedPlaceNavTarget.Exchange -> AppRoutes.ExchangeDetail
-    SavedPlaceNavTarget.Subway -> AppRoutes.SubwayDetail
-    SavedPlaceNavTarget.Restroom -> AppRoutes.RestroomDetail
-    SavedPlaceNavTarget.Lockers -> AppRoutes.LockersDetail
-    SavedPlaceNavTarget.Hospital -> AppRoutes.HospitalDetail
-    SavedPlaceNavTarget.Pharmacy -> AppRoutes.PharmacyDetail
-}
+/**
+ * SavedPlaceNavTarget + RecentlyViewedEntry.id → 통합 PlaceDetailScreen 라우트.
+ * placeId 가 있으면 findPlaceById 가 정확한 매장을 찾고, 없으면 카테고리 1번째로 폴백.
+ */
+fun RecentlyViewedEntry.toDetailRoute(): String =
+    AppRoutes.placeDetailRoute(target.toCategoryKey(), id)
 
 /**
  * 최근 본 장소 카드 행 — Home 미리보기/RecentlyViewedListScreen 전체 리스트가 동일하게 사용한다.

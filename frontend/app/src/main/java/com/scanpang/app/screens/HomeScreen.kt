@@ -327,7 +327,7 @@ private fun HomeTopSection(
             showMore = showMoreRecent,
             onMoreClick = { navController.navigate(AppRoutes.RecentlyViewed) },
             onItemClick = { entry ->
-                navController.navigate(entry.target.toDetailRoute())
+                navController.navigate(entry.toDetailRoute())
             },
         )
     }

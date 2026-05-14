@@ -28,7 +28,46 @@ enum class SavedPlaceNavTarget {
     Restroom,
     Lockers,
     Hospital,
-    Pharmacy,
+    Pharmacy;
+
+    /** 통합 PlaceDetailScreen 라우트용 categoryKey 로 변환. */
+    fun toCategoryKey(): String = when (this) {
+        Restaurant -> "restaurant"
+        PrayerRoom -> "prayer_room"
+        TouristSpot -> "tourist"
+        Shopping -> "shopping"
+        ConvenienceStore -> "convenience"
+        Cafe -> "cafe"
+        Atm -> "atm"
+        Bank -> "bank"
+        Exchange -> "exchange"
+        Subway -> "subway"
+        Restroom -> "restroom"
+        Lockers -> "lockers"
+        Hospital -> "hospital"
+        Pharmacy -> "pharmacy"
+    }
+
+    companion object {
+        /** categoryKey(backend or 화면) → enum. 매칭 없으면 Restaurant 로 폴백(보수적). */
+        fun fromCategoryKey(key: String): SavedPlaceNavTarget = when (key) {
+            "restaurant", "halal_restaurant" -> Restaurant
+            "prayer_room" -> PrayerRoom
+            "tourist", "tourist_spot", "attraction" -> TouristSpot
+            "shopping", "mall" -> Shopping
+            "convenience", "convenience_store" -> ConvenienceStore
+            "cafe" -> Cafe
+            "atm" -> Atm
+            "bank" -> Bank
+            "exchange" -> Exchange
+            "subway", "subway_station" -> Subway
+            "restroom", "public_restroom" -> Restroom
+            "lockers", "locker" -> Lockers
+            "hospital" -> Hospital
+            "pharmacy" -> Pharmacy
+            else -> Restaurant
+        }
+    }
 }
 
 class SavedPlacesStore(context: Context) {

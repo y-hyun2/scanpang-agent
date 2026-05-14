@@ -62,6 +62,7 @@ private enum class SavedSort {
 }
 
 private data class SavedPlaceRow(
+    val id: String,
     val title: String,
     val categoryLabel: String,
     val distanceLine: String,
@@ -87,6 +88,7 @@ private fun stripCategoryPrefix(line: String): String {
 }
 
 private fun SavedPlaceEntry.toUiRow(): SavedPlaceRow = SavedPlaceRow(
+    id = id,
     title = name,
     categoryLabel = category,
     distanceLine = stripCategoryPrefix(distanceLine),
@@ -95,24 +97,8 @@ private fun SavedPlaceEntry.toUiRow(): SavedPlaceRow = SavedPlaceRow(
     navTarget = target,
 )
 
-private fun NavController.navigateToSavedDetail(target: SavedPlaceNavTarget) {
-    val route = when (target) {
-        SavedPlaceNavTarget.Restaurant -> AppRoutes.RestaurantDetail
-        SavedPlaceNavTarget.PrayerRoom -> AppRoutes.PrayerRoomDetail
-        SavedPlaceNavTarget.TouristSpot -> AppRoutes.TouristDetail
-        SavedPlaceNavTarget.Shopping -> AppRoutes.ShoppingDetail
-        SavedPlaceNavTarget.ConvenienceStore -> AppRoutes.ConvenienceDetail
-        SavedPlaceNavTarget.Cafe -> AppRoutes.CafeDetail
-        SavedPlaceNavTarget.Atm -> AppRoutes.AtmDetail
-        SavedPlaceNavTarget.Bank -> AppRoutes.BankDetail
-        SavedPlaceNavTarget.Exchange -> AppRoutes.ExchangeDetail
-        SavedPlaceNavTarget.Subway -> AppRoutes.SubwayDetail
-        SavedPlaceNavTarget.Restroom -> AppRoutes.RestroomDetail
-        SavedPlaceNavTarget.Lockers -> AppRoutes.LockersDetail
-        SavedPlaceNavTarget.Hospital -> AppRoutes.HospitalDetail
-        SavedPlaceNavTarget.Pharmacy -> AppRoutes.PharmacyDetail
-    }
-    navigate(route) { launchSingleTop = true }
+private fun NavController.navigateToSavedDetail(target: SavedPlaceNavTarget, placeId: String) {
+    navigate(AppRoutes.placeDetailRoute(target.toCategoryKey(), placeId)) { launchSingleTop = true }
 }
 
 @Composable
@@ -312,7 +298,7 @@ fun SavedPlacesScreen(
                         title = row.title,
                         categoryLabel = row.categoryLabel,
                         distanceLine = row.distanceLine,
-                        onClick = { navController.navigateToSavedDetail(row.navTarget) },
+                        onClick = { navController.navigateToSavedDetail(row.navTarget, row.id) },
                     )
                 }
             }

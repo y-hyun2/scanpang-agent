@@ -37,6 +37,14 @@ interface ScanPangApi {
     @POST("restaurant/detail")
     suspend fun getRestaurantDetail(@Body request: RestaurantDetailRequest): GeneralRestaurantDetail
 
+    // ── Search ──
+    @POST("place/search")
+    suspend fun searchPlaces(@Body request: SearchRequest): SearchResponse
+
+    // ── Place Detail ──
+    @POST("place/detail")
+    suspend fun getPlaceDetail(@Body request: PlaceDetailRequest): PlaceDetailResponse
+
     // ── Spatial: H3 청크 단위 건물 ──
     @GET("buildings")
     suspend fun getBuildings(
@@ -332,6 +340,64 @@ data class GeneralRestaurantDetail(
     val longitude: Double? = null,
     val source: String = "general",
     val is_open_today: Boolean = true,
+)
+
+// ── Search DTOs ──
+
+data class SearchRequest(
+    val query: String,
+    val limit: Int = 50,
+)
+
+data class SearchResultItem(
+    val id: String = "",
+    val store_name: String = "",
+    val category: String? = null,
+    val category_key: String? = null,
+    val addr: String? = null,
+    val phone: String? = null,
+    val place_id: String? = null,
+    val lat: Double? = null,
+    val lng: Double? = null,
+    val floor: String? = null,
+    val image_url: String? = null,
+    val is_open_now: Boolean? = null,
+)
+
+data class SearchResponse(
+    val query: String = "",
+    val count: Int = 0,
+    val results: List<SearchResultItem> = emptyList(),
+)
+
+// ── Place Detail DTOs ──
+
+data class PlaceDetailRequest(
+    val id: String,
+)
+
+data class PlaceDetailResponse(
+    val id: String = "",
+    val store_name: String = "",
+    val place_id: String? = null,
+    val lat: Double? = null,
+    val lng: Double? = null,
+    val category: String? = null,
+    val category_key: String? = null,
+    val addr: String? = null,
+    val phone: String? = null,
+    val floor: String? = null,
+    val homepage: String? = null,
+    val place_url: String? = null,
+    val open_hours: String? = null,
+    val closed_days: String? = null,
+    val is_open_now: Boolean? = null,
+    val image_urls: List<String> = emptyList(),
+    // 카테고리별 자유형 dict — 메뉴/환율/진료과목 등.
+    // Gson 디폴트로 LinkedTreeMap 디코드 → 사용처에서 캐스팅.
+    val details: Map<String, Any> = emptyMap(),
+    val source: String? = null,
+    val last_updated: String? = null,
 )
 
 // ── Spatial DTOs ──

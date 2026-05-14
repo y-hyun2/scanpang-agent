@@ -114,7 +114,7 @@ fun RecentlyViewedListScreen(
                     RecentlyViewedRow(
                         entry = entry,
                         onClick = {
-                            navController.navigate(entry.target.toDetailRoute()) {
+                            navController.navigate(entry.toDetailRoute()) {
                                 launchSingleTop = true
                             }
                         },

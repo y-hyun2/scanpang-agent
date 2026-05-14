@@ -55,6 +55,20 @@ class ScanPangViewModel : ViewModel() {
     private val _convenienceResult = MutableStateFlow<ConvenienceResponse?>(null)
     val convenienceResult: StateFlow<ConvenienceResponse?> = _convenienceResult
 
+    // ── Search ──
+    private val _searchResults = MutableStateFlow<List<SearchResultItem>>(emptyList())
+    val searchResults: StateFlow<List<SearchResultItem>> = _searchResults
+
+    private val _searchQuery = MutableStateFlow("")
+    val searchQuery: StateFlow<String> = _searchQuery
+
+    // ── Place Detail ──
+    private val _placeDetail = MutableStateFlow<PlaceDetailResponse?>(null)
+    val placeDetail: StateFlow<PlaceDetailResponse?> = _placeDetail
+
+    /** 마지막으로 요청한 detail id — 같은 화면 진입 시 중복 호출 회피용. */
+    private var _lastPlaceDetailId: String? = null
+
     // ── Spatial: H3 청크 ──
     private val _buildingsChunk = MutableStateFlow<List<Building>>(emptyList())
     val buildingsChunk: StateFlow<List<Building>> = _buildingsChunk
@@ -211,6 +225,69 @@ class ScanPangViewModel : ViewModel() {
                 _loading.value = false
             }
         }
+    }
+
+    // ── Search API ──
+
+    fun searchPlaces(query: String, limit: Int = 50) {
+        _searchQuery.value = query
+        val trimmed = query.trim()
+        if (trimmed.isEmpty()) {
+            _searchResults.value = emptyList()
+            return
+        }
+        viewModelScope.launch {
+            _loading.value = true
+            Log.d("ScanPangVM", "searchPlaces START (q=$trimmed)")
+            try {
+                val response = api.searchPlaces(SearchRequest(query = trimmed, limit = limit))
+                Log.d("ScanPangVM", "searchPlaces OK: ${response.count} results")
+                _searchResults.value = response.results
+            } catch (e: Exception) {
+                Log.e("ScanPangVM", "searchPlaces FAILED", e)
+                _searchResults.value = emptyList()
+            } finally {
+                _loading.value = false
+            }
+        }
+    }
+
+    fun clearSearch() {
+        _searchQuery.value = ""
+        _searchResults.value = emptyList()
+    }
+
+    /**
+     * 통합 PlaceDetailScreen 에서 backend store_details row 를 가져온다.
+     * 빈 id 면 호출 안 함 — Phase A 시절 NearbyHalal 등에서 id 없이 진입한 경우
+     * 화면이 DummyData 폴백으로 동작.
+     */
+    fun loadPlaceDetail(id: String) {
+        if (id.isBlank()) {
+            _placeDetail.value = null
+            _lastPlaceDetailId = null
+            return
+        }
+        if (id == _lastPlaceDetailId && _placeDetail.value != null) return
+        _lastPlaceDetailId = id
+        viewModelScope.launch {
+            _loading.value = true
+            Log.d("ScanPangVM", "loadPlaceDetail START (id=$id)")
+            try {
+                _placeDetail.value = api.getPlaceDetail(PlaceDetailRequest(id = id))
+                Log.d("ScanPangVM", "loadPlaceDetail OK: ${_placeDetail.value?.store_name}")
+            } catch (e: Exception) {
+                Log.e("ScanPangVM", "loadPlaceDetail FAILED for id=$id", e)
+                _placeDetail.value = null
+            } finally {
+                _loading.value = false
+            }
+        }
+    }
+
+    fun clearPlaceDetail() {
+        _placeDetail.value = null
+        _lastPlaceDetailId = null
     }
 
     // ── Spatial API ──

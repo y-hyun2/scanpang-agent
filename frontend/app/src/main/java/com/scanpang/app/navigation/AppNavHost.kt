@@ -27,23 +27,10 @@ import com.scanpang.app.screens.onboarding.OnboardingNameScreen
 import com.scanpang.app.screens.onboarding.OnboardingPreferenceScreen
 import com.scanpang.app.screens.NearbyHalalRestaurantsScreen
 import com.scanpang.app.screens.NearbyPrayerRoomsScreen
-import com.scanpang.app.screens.AtmDetailScreen
-import com.scanpang.app.screens.BankDetailScreen
-import com.scanpang.app.screens.CafeDetailScreen
-import com.scanpang.app.screens.ConvenienceStoreDetailScreen
-import com.scanpang.app.screens.ExchangeDetailScreen
-import com.scanpang.app.screens.HospitalDetailScreen
-import com.scanpang.app.screens.LockersDetailScreen
-import com.scanpang.app.screens.PharmacyDetailScreen
-import com.scanpang.app.screens.PrayerRoomDetailScreen
+import com.scanpang.app.screens.PlaceDetailScreen
 import com.scanpang.app.screens.profile.ProfileScreen
 import com.scanpang.app.screens.QiblaDirectionScreen
-import com.scanpang.app.screens.RestaurantDetailScreen
-import com.scanpang.app.screens.RestroomDetailScreen
 import com.scanpang.app.screens.SavedPlacesScreen
-import com.scanpang.app.screens.ShoppingDetailScreen
-import com.scanpang.app.screens.SubwayDetailScreen
-import com.scanpang.app.screens.TouristSpotDetailScreen
 import com.scanpang.app.screens.SearchDefaultScreen
 import com.scanpang.app.screens.ar.ArExploreScreen
 import com.scanpang.app.screens.ar.ArNavigationMapScreen
@@ -76,29 +63,24 @@ object AppRoutes {
     const val SettingsNotification = "settings_notification"
     const val NearbyHalal = "nearby_halal"
     const val NearbyPrayer = "nearby_prayer"
-    const val RestaurantDetail = "restaurant_detail"
-    fun restaurantDetailRoute(name: String, address: String = ""): String {
-        val encodedName = URLEncoder.encode(name, StandardCharsets.UTF_8.name())
-        val encodedAddr = URLEncoder.encode(address, StandardCharsets.UTF_8.name())
-        return "$RestaurantDetail/$encodedName/$encodedAddr"
+
+    /**
+     * 통합 Detail 라우트 베이스. 실제 이동은 [placeDetailRoute] 가 만든
+     * `place_detail/{categoryKey}/{placeId}` 형태의 URL 로 한다.
+     *
+     * categoryKey 는 backend store_details.category_key 또는
+     * [com.scanpang.app.data.SavedPlaceNavTarget.toCategoryKey] 값.
+     * placeId 는 DummyData 의 Place.id 또는 backend store_details.id —
+     * 매칭 없으면 [com.scanpang.app.data.DummyData.findPlaceById] 가 카테고리 1번째로 폴백.
+     */
+    const val PlaceDetail = "place_detail"
+
+    fun placeDetailRoute(categoryKey: String, id: String = ""): String {
+        val encCat = URLEncoder.encode(categoryKey.ifBlank { "restaurant" }, StandardCharsets.UTF_8.name())
+        val encId = URLEncoder.encode(id, StandardCharsets.UTF_8.name())
+        return "$PlaceDetail/$encCat/$encId"
     }
-    const val PrayerRoomDetail = "prayer_room_detail"
-    fun prayerRoomDetailRoute(name: String): String {
-        val encoded = URLEncoder.encode(name, StandardCharsets.UTF_8.name())
-        return "$PrayerRoomDetail/$encoded"
-    }
-    const val TouristDetail = "tourist_detail"
-    const val ShoppingDetail = "shopping_detail"
-    const val ConvenienceDetail = "convenience_detail"
-    const val CafeDetail = "cafe_detail"
-    const val AtmDetail = "atm_detail"
-    const val BankDetail = "bank_detail"
-    const val ExchangeDetail = "exchange_detail"
-    const val SubwayDetail = "subway_detail"
-    const val RestroomDetail = "restroom_detail"
-    const val LockersDetail = "lockers_detail"
-    const val HospitalDetail = "hospital_detail"
-    const val PharmacyDetail = "pharmacy_detail"
+
     const val ArExplore = "ar_explore"
     const val ArNavMap = "ar_nav_map"
     fun arNavMapRoute(destName: String = ""): String {
@@ -144,38 +126,25 @@ fun AppNavHost(
         composable(AppRoutes.SettingsNotification) { NotificationSettingsScreen(navController = navController) }
         composable(AppRoutes.NearbyHalal) { NearbyHalalRestaurantsScreen(navController = navController) }
         composable(AppRoutes.NearbyPrayer) { NearbyPrayerRoomsScreen(navController = navController) }
-        composable(AppRoutes.RestaurantDetail) { RestaurantDetailScreen(navController = navController) }
         composable(
-            route = "${AppRoutes.RestaurantDetail}/{name}/{address}",
+            route = "${AppRoutes.PlaceDetail}/{categoryKey}/{placeId}",
             arguments = listOf(
-                navArgument("name") { type = NavType.StringType; defaultValue = "" },
-                navArgument("address") { type = NavType.StringType; defaultValue = "" },
+                navArgument("categoryKey") { type = NavType.StringType; defaultValue = "restaurant" },
+                navArgument("placeId") { type = NavType.StringType; defaultValue = "" },
             ),
         ) { entry ->
-            val name = runCatching { URLDecoder.decode(entry.arguments?.getString("name").orEmpty(), StandardCharsets.UTF_8.name()) }.getOrDefault("")
-            val address = runCatching { URLDecoder.decode(entry.arguments?.getString("address").orEmpty(), StandardCharsets.UTF_8.name()) }.getOrDefault("")
-            RestaurantDetailScreen(navController = navController, placeName = name, placeAddress = address)
+            val categoryKey = runCatching {
+                URLDecoder.decode(entry.arguments?.getString("categoryKey").orEmpty(), StandardCharsets.UTF_8.name())
+            }.getOrDefault("restaurant")
+            val placeId = runCatching {
+                URLDecoder.decode(entry.arguments?.getString("placeId").orEmpty(), StandardCharsets.UTF_8.name())
+            }.getOrDefault("")
+            PlaceDetailScreen(
+                navController = navController,
+                categoryKey = categoryKey,
+                placeId = placeId,
+            )
         }
-        composable(AppRoutes.PrayerRoomDetail) { PrayerRoomDetailScreen(navController = navController) }
-        composable(
-            route = "${AppRoutes.PrayerRoomDetail}/{name}",
-            arguments = listOf(navArgument("name") { type = NavType.StringType; defaultValue = "" }),
-        ) { entry ->
-            val name = runCatching { URLDecoder.decode(entry.arguments?.getString("name").orEmpty(), StandardCharsets.UTF_8.name()) }.getOrDefault("")
-            PrayerRoomDetailScreen(navController = navController, placeName = name)
-        }
-        composable(AppRoutes.TouristDetail) { TouristSpotDetailScreen(navController = navController) }
-        composable(AppRoutes.ShoppingDetail) { ShoppingDetailScreen(navController = navController) }
-        composable(AppRoutes.ConvenienceDetail) { ConvenienceStoreDetailScreen(navController = navController) }
-        composable(AppRoutes.CafeDetail) { CafeDetailScreen(navController = navController) }
-        composable(AppRoutes.AtmDetail) { AtmDetailScreen(navController = navController) }
-        composable(AppRoutes.BankDetail) { BankDetailScreen(navController = navController) }
-        composable(AppRoutes.ExchangeDetail) { ExchangeDetailScreen(navController = navController) }
-        composable(AppRoutes.SubwayDetail) { SubwayDetailScreen(navController = navController) }
-        composable(AppRoutes.RestroomDetail) { RestroomDetailScreen(navController = navController) }
-        composable(AppRoutes.LockersDetail) { LockersDetailScreen(navController = navController) }
-        composable(AppRoutes.HospitalDetail) { HospitalDetailScreen(navController = navController) }
-        composable(AppRoutes.PharmacyDetail) { PharmacyDetailScreen(navController = navController) }
         composable(AppRoutes.ArExplore) { ArExploreScreen(navController = navController) }
         composable(AppRoutes.ArNavMap) { ArNavigationMapScreen(navController = navController, destinationName = "") }
         composable(
