@@ -62,6 +62,12 @@ object AppRoutes {
 
     const val SearchSavedStateClearQueryKey = "clear_search_query"
 
+    /**
+     * Home 의 quick action 등에서 검색 탭을 띄우면서 입력칸에 미리 채워넣을 검색어를 전달할 때 쓰는
+     * savedStateHandle 키. SearchDefaultScreen 진입 시 값이 있으면 query 로 반영하고 null 로 리셋.
+     */
+    const val SearchSavedStatePendingQueryKey = "pending_search_query"
+
     fun searchResultsRoute(query: String): String {
         val encoded = URLEncoder.encode(query, StandardCharsets.UTF_8.name())
         return "$SearchResults/$encoded"
@@ -287,4 +293,23 @@ fun AppNavHost(
 private object AuthProviderArg {
     const val Kakao = "kakao"
     const val Google = "google"
+}
+
+/**
+ * Home 의 quick action 등에서 검색 탭을 띄우면서 입력칸에 미리 채워넣을 검색어를 전달.
+ * SearchDefaultScreen 이 [AppRoutes.SearchSavedStatePendingQueryKey] 값을 읽어 query 로 적용.
+ */
+fun NavController.navigateToSearchWithQuery(prefillQuery: String) {
+    navigate(AppRoutes.Search) {
+        popUpTo(AppRoutes.Home) {
+            saveState = true
+            inclusive = false
+        }
+        launchSingleTop = true
+        restoreState = true
+    }
+    runCatching {
+        getBackStackEntry(AppRoutes.Search).savedStateHandle[AppRoutes.SearchSavedStatePendingQueryKey] =
+            prefillQuery
+    }
 }

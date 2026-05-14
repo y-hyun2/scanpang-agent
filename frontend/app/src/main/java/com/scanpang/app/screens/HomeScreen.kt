@@ -1,5 +1,8 @@
 package com.scanpang.app.screens
 
+import android.Manifest
+import android.content.pm.PackageManager
+import android.location.Geocoder
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -17,18 +20,17 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.AltRoute
 import androidx.compose.material.icons.rounded.ChevronRight
+import androidx.compose.material.icons.rounded.Coffee
 import androidx.compose.material.icons.rounded.Explore
 import androidx.compose.material.icons.rounded.Mosque
 import androidx.compose.material.icons.rounded.NearMe
 import androidx.compose.material.icons.rounded.Restaurant
-import androidx.compose.material.icons.rounded.Translate
+import androidx.compose.material.icons.rounded.Whatshot
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
-import android.Manifest
-import android.content.pm.PackageManager
-import android.location.Geocoder
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -36,23 +38,61 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
-import androidx.core.content.ContextCompat
-import androidx.lifecycle.viewmodel.compose.viewModel
-import com.google.android.gms.location.LocationServices
-import com.scanpang.app.data.remote.ScanPangViewModel
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.core.content.ContextCompat
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavController
-import java.util.Locale
+import com.google.android.gms.location.LocationServices
+import com.scanpang.app.components.RecentlyViewedRow
+import com.scanpang.app.components.toDetailRoute
 import com.scanpang.app.data.OnboardingPreferences
+import com.scanpang.app.data.RecentlyViewedEntry
+import com.scanpang.app.data.RecentlyViewedStore
+import com.scanpang.app.data.ValueAdded
+import com.scanpang.app.data.remote.ScanPangViewModel
 import com.scanpang.app.navigation.AppRoutes
+import com.scanpang.app.navigation.navigateToSearchWithQuery
 import com.scanpang.app.ui.theme.ScanPangColors
 import com.scanpang.app.ui.theme.ScanPangDimens
 import com.scanpang.app.ui.theme.ScanPangShapes
 import com.scanpang.app.ui.theme.ScanPangSpacing
 import com.scanpang.app.ui.theme.ScanPangType
+import java.util.Locale
+
+/**
+ * 홈 빠른액션 카드 한 장의 스펙. 라벨/아이콘과, NavController 가 들어오면 어디로 보낼지 결정한다.
+ * ValueAdded 분기별로 [quickActionsFor] 가 3장을 만들어 [HomeScreen] 으로 흘려준다.
+ */
+private data class HomeQuickAction(
+    val title: String,
+    val icon: ImageVector,
+    val navigate: (NavController) -> Unit,
+)
+
+private fun quickActionsFor(value: ValueAdded): List<HomeQuickAction> = when (value) {
+    ValueAdded.HALAL -> listOf(
+        HomeQuickAction("할랄 식당", Icons.Rounded.Restaurant) { it.navigate(AppRoutes.NearbyHalal) },
+        HomeQuickAction("기도실", Icons.Rounded.Mosque) { it.navigate(AppRoutes.NearbyPrayer) },
+        HomeQuickAction("관광명소", Icons.Rounded.Whatshot) { it.navigateToSearchWithQuery("관광지") },
+    )
+    ValueAdded.VEGAN -> listOf(
+        HomeQuickAction("비건 식당", Icons.Rounded.Restaurant) { it.navigateToSearchWithQuery("비건 식당") },
+        HomeQuickAction("비건 카페", Icons.Rounded.Coffee) { it.navigateToSearchWithQuery("비건 카페") },
+        HomeQuickAction("관광명소", Icons.Rounded.Whatshot) { it.navigateToSearchWithQuery("관광지") },
+    )
+    ValueAdded.GENERAL -> listOf(
+        HomeQuickAction("식당", Icons.Rounded.Restaurant) { it.navigateToSearchWithQuery("식당") },
+        HomeQuickAction("카페", Icons.Rounded.Coffee) { it.navigateToSearchWithQuery("카페") },
+        HomeQuickAction("관광명소", Icons.Rounded.Whatshot) { it.navigateToSearchWithQuery("관광지") },
+    )
+}
 
 @Composable
 fun HomeScreen(
@@ -60,68 +100,32 @@ fun HomeScreen(
     modifier: Modifier = Modifier,
     viewModel: ScanPangViewModel = viewModel(),
 ) {
+    val context = LocalContext.current
+    val onboardingPrefs = remember(context) { OnboardingPreferences(context) }
+    val recentlyViewedStore = remember(context) { RecentlyViewedStore(context) }
+    val lifecycleOwner = LocalLifecycleOwner.current
+
+    // 미설정 사용자(예: 신규 데모) 는 GENERAL 로 본다 — 키블라 카드 미노출 + 일반 quick actions.
+    val valueAdded = remember(context) { onboardingPrefs.getValueAdded() ?: ValueAdded.GENERAL }
+    val displayName = remember(context) { onboardingPrefs.getDisplayName() }
+    val quickActions = remember(valueAdded) { quickActionsFor(valueAdded) }
+    val showQiblaCard = valueAdded == ValueAdded.HALAL
+
+    // ── 우리 백엔드 통합 ─────────────────────────────────────────────────────
+    // 기도시간·키블라는 API에서 실시간 fetch (DummyData 사용 안 함).
     LaunchedEffect(Unit) {
         viewModel.loadPrayerTimesAndQibla()
     }
-
     val prayerTimes by viewModel.prayerTimes.collectAsState()
     val qibla by viewModel.qibla.collectAsState()
-
     val qiblaText = qibla?.let { "키블라 방향: ${it.direction.toInt()}°" } ?: "키블라 방향: 292°"
     val nextPrayerText = prayerTimes?.let { "다음 기도: ${it.next_prayer} ${it.next_prayer_time}" } ?: "다음 기도: Dhuhr 12:15"
 
-    Scaffold(
-        modifier = modifier.fillMaxSize(),
-        containerColor = ScanPangColors.Surface,
-        contentWindowInsets = androidx.compose.foundation.layout.WindowInsets(0, 0, 0, 0),
-    ) { _ ->
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(ScanPangColors.Surface)
-                .statusBarsPadding()
-                .verticalScroll(rememberScrollState())
-                .padding(bottom = ScanPangDimens.mainTabContentBottomInset),
-        ) {
-            HomeTopSection(
-                navController = navController,
-                qiblaText = qiblaText,
-                nextPrayerText = nextPrayerText,
-            )
-
-            // ⚠️ DEBUG: AR 모델 미리보기 진입 — 실내 테스트용. 검증 끝나면 이 블록 삭제.
-            androidx.compose.material3.Button(
-                onClick = { navController.navigate(AppRoutes.ArDebugPreview) },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = ScanPangSpacing.lg, vertical = ScanPangSpacing.sm),
-            ) {
-                Text("🛠 AR 디버그 미리보기")
-            }
-        }
-    }
-}
-
-@Composable
-private fun HomeTopSection(
-    navController: NavController,
-    qiblaText: String = "키블라 방향: 남서 232°",
-    nextPrayerText: String = "다음 기도: Dhuhr 12:15",
-) {
-    val context = LocalContext.current
-    val savedName = remember(context) {
-        OnboardingPreferences(context).getDisplayName()
-    }
-    val greetingLine = if (!savedName.isNullOrBlank()) {
-        "안녕하세요, ${savedName}님!"
-    } else {
-        "안녕하세요!"
-    }
-
-    // GPS + 역지오코딩으로 현재 위치 표시
+    // 현재 위치 — GPS + 역지오코딩 (권한 없거나 실패 시 fallback 문구).
     var locationText by remember { mutableStateOf("현재 위치를 가져오는 중...") }
     LaunchedEffect(Unit) {
-        val hasPermission = ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED ||
+        val hasPermission =
+            ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED ||
             ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED
         if (!hasPermission) {
             locationText = "위치 권한이 필요합니다"
@@ -151,6 +155,80 @@ private fun HomeTopSection(
         }.addOnFailureListener {
             locationText = "위치 가져오기 실패"
         }
+    }
+
+    // ── 최근 본 매장 ─────────────────────────────────────────────────────────
+    // Home 미리보기는 최신 2건만. 나머지는 RecentlyViewedListScreen 에서 본다.
+    var recentlyViewed by remember {
+        mutableStateOf(recentlyViewedStore.getAll().take(MAX_RECENT_HOME))
+    }
+    var hasMoreRecent by remember { mutableStateOf(recentlyViewedStore.getAll().size > MAX_RECENT_HOME) }
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                val all = recentlyViewedStore.getAll()
+                recentlyViewed = all.take(MAX_RECENT_HOME)
+                hasMoreRecent = all.size > MAX_RECENT_HOME
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+
+    Scaffold(
+        modifier = modifier.fillMaxSize(),
+        containerColor = ScanPangColors.Surface,
+        contentWindowInsets = androidx.compose.foundation.layout.WindowInsets(0, 0, 0, 0),
+    ) { _ ->
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(ScanPangColors.Surface)
+                .statusBarsPadding()
+                .verticalScroll(rememberScrollState())
+                .padding(bottom = ScanPangDimens.mainTabContentBottomInset),
+        ) {
+            HomeTopSection(
+                navController = navController,
+                displayName = displayName,
+                showQiblaCard = showQiblaCard,
+                qiblaText = qiblaText,
+                nextPrayerText = nextPrayerText,
+                locationText = locationText,
+                quickActions = quickActions,
+                recentlyViewed = recentlyViewed,
+                showMoreRecent = hasMoreRecent,
+            )
+
+            // ⚠️ DEBUG: AR 모델 미리보기 진입 — 실내 테스트용. 검증 끝나면 이 블록 삭제.
+            androidx.compose.material3.Button(
+                onClick = { navController.navigate(AppRoutes.ArDebugPreview) },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = ScanPangSpacing.lg, vertical = ScanPangSpacing.sm),
+            ) {
+                Text("🛠 AR 디버그 미리보기")
+            }
+        }
+    }
+}
+
+@Composable
+private fun HomeTopSection(
+    navController: NavController,
+    displayName: String?,
+    showQiblaCard: Boolean,
+    qiblaText: String,
+    nextPrayerText: String,
+    locationText: String,
+    quickActions: List<HomeQuickAction>,
+    recentlyViewed: List<RecentlyViewedEntry>,
+    showMoreRecent: Boolean,
+) {
+    val greetingLine = if (!displayName.isNullOrBlank()) {
+        "안녕하세요, ${displayName}님!"
+    } else {
+        "안녕하세요!"
     }
     Column(
         modifier = Modifier
@@ -224,52 +302,16 @@ private fun HomeTopSection(
             }
         }
 
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(vertical = ScanPangDimens.homeSectionGap),
-        ) {
-            Row(
+        if (showQiblaCard) {
+            Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .clip(ScanPangShapes.radius14)
-                    .background(ScanPangColors.PrimarySoft)
-                    .clickable { navController.navigate(AppRoutes.Qibla) }
-                    .padding(horizontal = ScanPangSpacing.lg, vertical = ScanPangDimens.homeQiblaRowVertical),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(ScanPangSpacing.md),
+                    .padding(vertical = ScanPangDimens.homeSectionGap),
             ) {
-                Column(
-                    modifier = Modifier.weight(1f),
-                    verticalArrangement = Arrangement.spacedBy(ScanPangSpacing.xs),
-                ) {
-                    Row(
-                        horizontalArrangement = Arrangement.spacedBy(ScanPangSpacing.xs),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Icon(
-                            imageVector = Icons.Rounded.Explore,
-                            contentDescription = null,
-                            modifier = Modifier.size(ScanPangDimens.tabIcon),
-                            tint = ScanPangColors.Primary,
-                        )
-                        Text(
-                            text = qiblaText,
-                            style = ScanPangType.title14,
-                            color = ScanPangColors.OnSurfaceStrong,
-                        )
-                    }
-                    Text(
-                        text = nextPrayerText,
-                        style = ScanPangType.caption12Medium,
-                        color = ScanPangColors.OnSurfaceMuted,
-                    )
-                }
-                Icon(
-                    imageVector = Icons.Rounded.ChevronRight,
-                    contentDescription = null,
-                    modifier = Modifier.size(ScanPangDimens.icon20),
-                    tint = ScanPangColors.Primary,
+                QiblaSummaryCard(
+                    qiblaText = qiblaText,
+                    nextPrayerText = nextPrayerText,
+                    onClick = { navController.navigate(AppRoutes.Qibla) },
                 )
             }
         }
@@ -280,32 +322,82 @@ private fun HomeTopSection(
                 .padding(vertical = ScanPangDimens.homeSectionGap),
             horizontalArrangement = Arrangement.spacedBy(ScanPangSpacing.md),
         ) {
-            QuickActionChip(
-                title = "할랄 식당",
-                icon = Icons.Rounded.Restaurant,
-                modifier = Modifier.weight(1f),
-                onClick = { navController.navigate(AppRoutes.NearbyHalal) },
-            )
-            QuickActionChip(
-                title = "기도실",
-                icon = Icons.Rounded.Mosque,
-                modifier = Modifier.weight(1f),
-                onClick = { navController.navigate(AppRoutes.NearbyPrayer) },
-            )
-            QuickActionChip(
-                title = "실시간 번역",
-                icon = Icons.Rounded.Translate,
-                modifier = Modifier.weight(1f),
-                onClick = { },
+            quickActions.forEach { action ->
+                QuickActionChip(
+                    title = action.title,
+                    icon = action.icon,
+                    modifier = Modifier.weight(1f),
+                    onClick = { action.navigate(navController) },
+                )
+            }
+        }
+
+        RecentlyViewedSection(
+            recentlyViewed = recentlyViewed,
+            showMore = showMoreRecent,
+            onMoreClick = { navController.navigate(AppRoutes.RecentlyViewed) },
+            onItemClick = { entry ->
+                navController.navigate(entry.target.toDetailRoute())
+            },
+        )
+    }
+}
+
+@Composable
+private fun QiblaSummaryCard(
+    qiblaText: String,
+    nextPrayerText: String,
+    onClick: () -> Unit,
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(ScanPangShapes.radius14)
+            .background(ScanPangColors.PrimarySoft)
+            .clickable(onClick = onClick)
+            .padding(horizontal = ScanPangSpacing.lg, vertical = ScanPangDimens.homeQiblaRowVertical),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(ScanPangSpacing.md),
+    ) {
+        Column(
+            modifier = Modifier.weight(1f),
+            verticalArrangement = Arrangement.spacedBy(ScanPangSpacing.xs),
+        ) {
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(ScanPangSpacing.xs),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Icon(
+                    imageVector = Icons.Rounded.Explore,
+                    contentDescription = null,
+                    modifier = Modifier.size(ScanPangDimens.tabIcon),
+                    tint = ScanPangColors.Primary,
+                )
+                Text(
+                    text = qiblaText,
+                    style = ScanPangType.title14,
+                    color = ScanPangColors.OnSurfaceStrong,
+                )
+            }
+            Text(
+                text = nextPrayerText,
+                style = ScanPangType.caption12Medium,
+                color = ScanPangColors.OnSurfaceMuted,
             )
         }
+        Icon(
+            imageVector = Icons.Rounded.ChevronRight,
+            contentDescription = null,
+            modifier = Modifier.size(ScanPangDimens.icon20),
+            tint = ScanPangColors.Primary,
+        )
     }
 }
 
 @Composable
 private fun QuickActionChip(
     title: String,
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    icon: ImageVector,
     modifier: Modifier = Modifier,
     onClick: () -> Unit,
 ) {
@@ -333,3 +425,68 @@ private fun QuickActionChip(
         )
     }
 }
+
+@Composable
+private fun RecentlyViewedSection(
+    recentlyViewed: List<RecentlyViewedEntry>,
+    showMore: Boolean,
+    onMoreClick: () -> Unit,
+    onItemClick: (RecentlyViewedEntry) -> Unit,
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(top = ScanPangSpacing.md),
+        verticalArrangement = Arrangement.spacedBy(ScanPangSpacing.sm),
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                text = "최근 본 장소",
+                style = ScanPangType.sectionTitle16,
+                color = ScanPangColors.OnSurfaceStrong,
+            )
+            // "더보기" 는 누적 기록이 미리보기(2건)보다 많을 때만 의미가 있어 그때만 노출.
+            if (showMore) {
+                Text(
+                    text = "더보기",
+                    style = ScanPangType.caption12Medium,
+                    color = ScanPangColors.Primary,
+                    modifier = Modifier.clickable(onClick = onMoreClick),
+                )
+            }
+        }
+        if (recentlyViewed.isEmpty()) {
+            RecentlyViewedEmpty()
+        } else {
+            Column(verticalArrangement = Arrangement.spacedBy(ScanPangSpacing.sm)) {
+                recentlyViewed.forEach { entry ->
+                    RecentlyViewedRow(entry = entry, onClick = { onItemClick(entry) })
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun RecentlyViewedEmpty() {
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(ScanPangShapes.radius14)
+            .background(ScanPangColors.Background)
+            .padding(horizontal = ScanPangSpacing.lg, vertical = ScanPangSpacing.xl),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(
+            text = "아직 본 장소가 없어요",
+            style = ScanPangType.body14Regular,
+            color = ScanPangColors.OnSurfaceMuted,
+        )
+    }
+}
+
+private const val MAX_RECENT_HOME = 2
