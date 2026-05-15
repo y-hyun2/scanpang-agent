@@ -385,7 +385,7 @@ fun ArExploreScreen(
                         viewModel.updateLocationForChunk(currentLat, currentLng)
 
                         val now2 = System.currentTimeMillis()
-                        if (now2 - lastVisibilityCalcTime > 1000) {
+                        if (now2 - lastVisibilityCalcTime > 300) {
                             lastVisibilityCalcTime = now2
 
                             val cache = viewModel.buildingsCache.value
@@ -401,7 +401,7 @@ fun ArExploreScreen(
                                         val r = FloatArray(1)
                                         Location.distanceBetween(currentLat, currentLng, center.first, center.second, r)
                                         val dist = r[0]
-                                        if (dist >= 100f) return@mapNotNull null
+                                        if (dist >= 70f) return@mapNotNull null
 
                                         // FOV 필터 — 사용자 시야 안에 들어온 부분만
                                         val firstRing = b.geom.coordinates.firstOrNull()?.firstOrNull() ?: return@mapNotNull null
@@ -421,24 +421,26 @@ fun ArExploreScreen(
                                     }
                                     .sortedBy { it.dist }
 
-                                // Ray-polygon intersection 기반 occlusion
+                                // Occlusion 필터링 — 사용자 → 후보 마커 ray가 더 가까운 건물 polygon을 통과하면 가려진 걸로
                                 val visibleCandidates = mutableListOf<BuildingCandidate>()
                                 for (cand in candidates) {
+                                    // 후보 마커 위치 (front edge midpoint)
+                                    val candMarkerPos = computeFrontEdgeMidpoint(
+                                        cand.visiblePolygon, currentLat, currentLng
+                                    ) ?: Pair(cand.centerLat, cand.centerLng)
+
                                     val isOccluded = visibleCandidates.any { occluder ->
-                                        // 거리 차 5m 미만이면 옆 건물 — 가린다고 판단 안 함
+                                        // 거리 차 5m 미만이면 옆에 나란히 있는 거 — 가린다고 판단 안 함
                                         if (cand.dist - occluder.dist < 5f) return@any false
-                                        
+
+                                        // occluder polygon (위경도 외곽 ring)
+                                        val occluderPoly = occluder.b.geom.coordinates.firstOrNull()
+                                            ?.firstOrNull()?.map { Pair(it[0], it[1]) } ?: return@any false
+
                                         // 사용자 → 후보 마커 ray가 occluder polygon을 통과하는지
-                                        val occluderPoly = occluder.b.geom.coordinates.firstOrNull()?.firstOrNull()
-                                            ?.map { Pair(it[0], it[1]) } ?: return@any false
-                                        
-                                        // 마커 위치 (front edge midpoint)
-                                        val markerPos = computeFrontEdgeMidpoint(cand.visiblePolygon, currentLat, currentLng)
-                                            ?: Pair(cand.centerLat, cand.centerLng)
-                                        
                                         isRayBlockedByPolygon(
                                             currentLng, currentLat,
-                                            markerPos.second, markerPos.first,   // Pair<lat, lng> → lng, lat 순
+                                            candMarkerPos.second, candMarkerPos.first,   // lat, lng → lng, lat
                                             occluderPoly,
                                         )
                                     }
@@ -473,7 +475,9 @@ fun ArExploreScreen(
                                         cand.visiblePolygon, currentLat, currentLng
                                     ) ?: Pair(cand.centerLat, cand.centerLng)
 
-                                    val labelAltitude = currentAltitude + (cand.b.render_height / 2.0)
+                                    // 땅 높이 ≈ 사용자 위치 - 키(1.5m 가정)
+                                    val groundAltitude = currentAltitude - 1.5
+                                    val labelAltitude = groundAltitude + (cand.b.render_height / 2.0)
 
                                     if (id !in existingIds) {
                                         // 새 건물 — anchor 신규 생성
@@ -497,21 +501,22 @@ fun ArExploreScreen(
                                             Log.e("ArExplore", "건물 앵커 실패 ${cand.b.bld_nm}: ${e.message}")
                                         }
                                     } else {
-                                        // 기존 건물 — 위치가 3m 이상 바뀌었을 때만 anchor 갱신
+                                        // 기존 건물 — markerPos 3m 이상 변할 때만 anchor 재생성
+                                        // (작은 변화는 ARCore 자동 추적이 더 부드럽게 처리)
                                         val existingPoi = dynamicPois.firstOrNull { it.id == id } ?: return@forEach
                                         val r = FloatArray(1)
                                         Location.distanceBetween(
                                             existingPoi.latitude, existingPoi.longitude,
                                             markerPos.first, markerPos.second, r,
                                         )
-                                        if (r[0] > 1.5f) {
-                                            geospatialAnchors[id]?.detach()
+                                        if (r[0] > 3f) {
                                             try {
-                                                val anchor = earth.createAnchor(
+                                                val newAnchor = earth.createAnchor(
                                                     markerPos.first, markerPos.second, labelAltitude,
                                                     0f, 0f, 0f, 1f,
                                                 )
-                                                geospatialAnchors[id] = anchor
+                                                geospatialAnchors[id]?.detach()
+                                                geospatialAnchors[id] = newAnchor
                                                 val idx = dynamicPois.indexOfFirst { it.id == id }
                                                 if (idx != -1) {
                                                     dynamicPois[idx] = dynamicPois[idx].copy(
@@ -523,6 +528,7 @@ fun ArExploreScreen(
                                                 Log.e("ArExplore", "앵커 갱신 실패 ${cand.b.bld_nm}: ${e.message}")
                                             }
                                         }
+                                        // 3m 이내 변화면 anchor 그대로 — ARCore가 자동으로 부드럽게 추적
                                     }
                                 }
 
@@ -560,7 +566,7 @@ fun ArExploreScreen(
                                     val x = ((clipCoords[0] / clipCoords[3] + 1.0f) / 2.0f) * screenWidthPx
                                     val y = ((1.0f - clipCoords[1] / clipCoords[3]) / 2.0f) * screenHeightPx
                                     newPositions[id] = Offset(x, y)
-                                }    
+                                }
                             }
                         }
                     }
@@ -1239,7 +1245,7 @@ private fun buildFovPolygon(
     userLat: Double,
     userLng: Double,
     heading: Double,
-    fovDeg: Double = 65.0,
+    fovDeg: Double =60.0,
     maxDistM: Double = 200.0,
 ): List<Pair<Double, Double>> {
     val halfFov = fovDeg / 2.0
@@ -1346,8 +1352,15 @@ private fun computeFrontEdgeMidpoint(
     userLat: Double,
     userLng: Double,
 ): Pair<Double, Double>? {
-    if (visiblePolygon.size < 2) return null
+    if (visiblePolygon.isEmpty()) return null
 
+    // vertex 1개 — 그 점 자체를 마커 위치로 (시야 가장자리에 살짝 걸친 경우)
+    if (visiblePolygon.size == 1) {
+        val p = visiblePolygon[0]
+        return Pair(p.second, p.first)   // Pair<lat, lng>
+    }
+
+    // vertex 2개 이상 — 모서리 중점 중 사용자에게 가장 가까운 것
     var bestMidLng = 0.0
     var bestMidLat = 0.0
     var bestDist = Double.MAX_VALUE
@@ -1374,8 +1387,10 @@ private fun computeFrontEdgeMidpoint(
 }
 
 /**
- * 사용자 → 마커까지의 ray가 occluder polygon을 통과하는지.
- * 통과하면 occluder가 마커를 가림.
+ * 사용자 → target까지의 ray가 occluder polygon을 통과하는지.
+ * polygon의 어떤 edge와도 교차하면 true (가려진 것).
+ *
+ * 좌표는 모두 (lng, lat) 형식. polygon은 닫힌 ring (마지막 점이 첫 점과 같지 않아도 자동 연결).
  */
 private fun isRayBlockedByPolygon(
     userLng: Double, userLat: Double,
@@ -1397,6 +1412,10 @@ private fun isRayBlockedByPolygon(
     return false
 }
 
+/**
+ * 두 선분 (x1,y1)-(x2,y2)와 (x3,y3)-(x4,y4)가 교차하는지.
+ * 표준 orientation 테스트.
+ */
 private fun segmentsIntersect(
     x1: Double, y1: Double, x2: Double, y2: Double,
     x3: Double, y3: Double, x4: Double, y4: Double,
