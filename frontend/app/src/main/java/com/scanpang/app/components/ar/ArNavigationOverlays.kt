@@ -22,6 +22,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.rounded.VolumeOff
 import androidx.compose.material.icons.automirrored.rounded.VolumeUp
 import androidx.compose.material.icons.rounded.ArrowUpward
 import androidx.compose.material.icons.rounded.CameraAlt
@@ -194,7 +195,7 @@ fun ArNavDestinationPill(
 @Composable
 fun BoxScope.ArNavSideVolumeCamera(
     onVolumeClick: () -> Unit,
-    onCameraClick: () -> Unit,
+    isTtsOn: Boolean = true,
     spaceAugmentOn: Boolean = false,
     onSpaceAugmentToggle: () -> Unit = {},
 ) {
@@ -209,14 +210,9 @@ fun BoxScope.ArNavSideVolumeCamera(
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         ArNavWhiteFab(
-            icon = Icons.AutoMirrored.Rounded.VolumeUp,
-            contentDescription = "볼륨",
+            icon = if (isTtsOn) Icons.AutoMirrored.Rounded.VolumeUp else Icons.AutoMirrored.Rounded.VolumeOff,
+            contentDescription = if (isTtsOn) "음성 안내 켜짐" else "음성 안내 꺼짐",
             onClick = onVolumeClick,
-        )
-        ArNavWhiteFab(
-            icon = Icons.Rounded.CameraAlt,
-            contentDescription = "촬영",
-            onClick = onCameraClick,
         )
         // 공간증강 ON/OFF 토글 — ON일 때 primary 색 배경, OFF일 때 흰색
         Surface(

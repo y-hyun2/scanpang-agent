@@ -102,6 +102,7 @@ fun ArRealSceneView(
     spaceAugmentEnabled: Boolean = false,
     /** 공간증강 쿼리 요청. 부모가 백엔드 호출(viewModel.queryPlace)을 처리. */
     onPlaceQueryRequest: (heading: Double, lat: Double, lng: Double, alt: Double, pitch: Double) -> Unit = { _, _, _, _, _ -> },
+    voiceOn: Boolean = true,
 ) {
     val context = LocalContext.current
     val engine = rememberEngine()
@@ -160,6 +161,9 @@ fun ArRealSceneView(
     DisposableEffect(ttsController) {
         ttsController.start()
         onDispose { ttsController.shutdown() }
+    }
+    LaunchedEffect(voiceOn) {
+        if (!voiceOn) ttsController.stop()
     }
 
     // 화면이 dispose 됐는지 추적 — 비동기 코루틴이 destroy된 리소스에 접근하는 걸 방지.
@@ -238,7 +242,7 @@ fun ArRealSceneView(
                     coroutineScope.launch {
                         delay(2000)
                         if (!isMounted.value) return@launch
-                        runCatching { ttsController.speakIfEnabled(message, voiceOn = true) }
+                        runCatching { ttsController.speakIfEnabled(message, voiceOn = voiceOn) }
                     }
                     hasSpokenDeparture = true
                 }
@@ -434,7 +438,7 @@ fun ArRealSceneView(
                         coroutineScope.launch {
                             delay(2000)
                             if (!isMounted.value) return@launch
-                            runCatching { ttsController.speakIfEnabled(arrivalSpeech, voiceOn = true) }
+                            runCatching { ttsController.speakIfEnabled(arrivalSpeech, voiceOn = voiceOn) }
                         }
                         hasSpokenArrival = true
                     }
@@ -516,7 +520,7 @@ fun ArRealSceneView(
                     coroutineScope.launch {
                         delay(2000)
                         if (!isMounted.value) return@launch
-                        runCatching { ttsController.speakIfEnabled(message, voiceOn = true) }
+                        runCatching { ttsController.speakIfEnabled(message, voiceOn = voiceOn) }
                     }
                     spokenForTurnIndex = currentTargetPointIndex
                 }

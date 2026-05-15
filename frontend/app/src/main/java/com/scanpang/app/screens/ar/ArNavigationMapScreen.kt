@@ -110,6 +110,7 @@ fun ArNavigationMapScreen(
     }
     var activeTab by remember { mutableStateOf(NAV_TAB_MAP) }
     var aiQuery by remember { mutableStateOf("") }
+    var isTtsOn by remember { mutableStateOf(true) }
 
     // 공간증강 (주변 건물 인식) 상태
     var spaceAugmentEnabled by remember { mutableStateOf(true) }
@@ -134,6 +135,7 @@ fun ArNavigationMapScreen(
                 destLng = dLng
             },
             spaceAugmentEnabled = spaceAugmentEnabled,
+            voiceOn = isTtsOn,
             onPlaceQueryRequest = { heading, lat, lng, alt, pitch ->
                 viewModel.queryPlace(
                     heading = heading,
@@ -177,8 +179,8 @@ fun ArNavigationMapScreen(
         )
 
         ArNavSideVolumeCamera(
-            onVolumeClick = { },
-            onCameraClick = { },
+            onVolumeClick = { isTtsOn = !isTtsOn },
+            isTtsOn = isTtsOn,
             spaceAugmentOn = spaceAugmentEnabled,
             onSpaceAugmentToggle = { spaceAugmentEnabled = !spaceAugmentEnabled },
         )
