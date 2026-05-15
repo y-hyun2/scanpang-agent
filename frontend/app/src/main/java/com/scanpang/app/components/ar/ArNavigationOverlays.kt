@@ -1,8 +1,7 @@
 package com.scanpang.app.components.ar
 
-import androidx.compose.animation.core.animateDpAsState
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -10,6 +9,7 @@ import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -43,14 +43,19 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.foundation.layout.statusBarsPadding
@@ -397,20 +402,14 @@ fun ArNavBottomSheet(
     mapTabSelected: Boolean,
     onSelectMap: () -> Unit,
     onSelectAgent: () -> Unit,
-    expanded: Boolean,
-    onToggleExpanded: () -> Unit,
     modifier: Modifier = Modifier,
     mapContent: @Composable () -> Unit,
     agentContent: @Composable () -> Unit,
 ) {
-    // 펼쳐졌을 때 = 전체 높이, 접혔을 때 = 드래그 핸들 + 탭 행만 (지도/AI 콘텐츠 숨김)
-    val collapsedHeight = ScanPangDimens.arNavBottomSheetDragH + ScanPangDimens.arNavTabRowHeight
-    val expandedHeight = ScanPangDimens.arChatAreaMaxHeight
-    val animatedHeight by animateDpAsState(
-        targetValue = if (expanded) expandedHeight else collapsedHeight,
-        animationSpec = tween(durationMillis = 250),
-        label = "bottomSheetHeight",
-    )
+    val density = LocalDensity.current
+    val minH = ScanPangDimens.arNavBottomSheetDragH + ScanPangDimens.arNavTabRowHeight
+    val maxH = ScanPangDimens.arChatAreaMaxHeight
+    var contentHeight by remember { mutableStateOf(minH) }
 
     Surface(
         modifier = modifier.fillMaxWidth(),
@@ -421,14 +420,27 @@ fun ArNavBottomSheet(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(animatedHeight),
+                .height(contentHeight + ScanPangDimens.bottomBarContainerHeight),
         ) {
-            // 드래그 핸들 영역 — 클릭하면 시트 펼침/접힘 토글
+            // 드래그 핸들 영역 — 위아래로 드래그해 시트 높이 조절
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(ScanPangDimens.arNavBottomSheetDragH)
-                    .clickable(onClick = onToggleExpanded),
+                    .pointerInput(minH, maxH, density) {
+                        detectVerticalDragGestures(
+                            onVerticalDrag = { _, delta ->
+                                val dpDelta = with(density) { delta.toDp() }
+                                contentHeight = (contentHeight - dpDelta).coerceIn(minH, maxH)
+                            },
+                            onDragEnd = {
+                                contentHeight = if (contentHeight < (minH + maxH) / 2) minH else maxH
+                            },
+                            onDragCancel = {
+                                contentHeight = if (contentHeight < (minH + maxH) / 2) minH else maxH
+                            },
+                        )
+                    },
                 contentAlignment = Alignment.Center,
             ) {
                 Box(
@@ -464,6 +476,7 @@ fun ArNavBottomSheet(
                     agentContent()
                 }
             }
+            Spacer(Modifier.height(ScanPangDimens.bottomBarContainerHeight))
         }
     }
 }
