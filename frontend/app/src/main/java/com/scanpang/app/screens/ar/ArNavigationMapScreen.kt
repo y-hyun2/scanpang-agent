@@ -159,7 +159,7 @@ fun ArNavigationMapScreen(
 
         ArNavTopHud(
             modifier = Modifier.align(Alignment.TopStart),
-            onHomeClick = { navController.popBackStack() },
+            onCameraClick = { },
             onSearchClick = {
                 navController.navigate(AppRoutes.ArExplore) { launchSingleTop = true }
             },

@@ -72,7 +72,7 @@ import com.scanpang.app.ui.theme.ScanPangType
 @Composable
 fun ArNavTopHud(
     modifier: Modifier = Modifier,
-    onHomeClick: () -> Unit,
+    onCameraClick: () -> Unit,
     onSearchClick: () -> Unit,
     destinationPill: @Composable () -> Unit,
 ) {
@@ -102,9 +102,9 @@ fun ArNavTopHud(
                 ),
         ) {
             ArNavWhiteFab(
-                icon = Icons.Rounded.Home,
-                contentDescription = "홈",
-                onClick = onHomeClick,
+                icon = Icons.Rounded.CameraAlt,
+                contentDescription = "화면 캡처",
+                onClick = onCameraClick,
                 modifier = Modifier.align(Alignment.CenterStart),
             )
             Box(Modifier.align(Alignment.Center)) {
