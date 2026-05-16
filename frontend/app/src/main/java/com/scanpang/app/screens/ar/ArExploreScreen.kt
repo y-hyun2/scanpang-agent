@@ -1,16 +1,24 @@
 package com.scanpang.app.screens.ar
 
 import android.Manifest
+import android.app.Activity
 import android.content.pm.PackageManager
+import android.graphics.Bitmap
+import android.graphics.Rect
 import android.location.Location
 import android.opengl.Matrix
+import android.os.Handler
+import android.os.Looper
 import android.speech.SpeechRecognizer
 import android.util.Log
+import android.view.PixelCopy
+import android.view.View
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -69,6 +77,10 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.foundation.layout.offset
 import androidx.compose.ui.unit.IntOffset
@@ -191,6 +203,8 @@ fun ArExploreScreen(
     var showArSearchResults by remember { mutableStateOf(false) }
 
     var isFrozen by remember { mutableStateOf(false) }
+    var frozenBitmap by remember { mutableStateOf<ImageBitmap?>(null) }
+    val activityView = LocalView.current
     var isTtsOn by remember { mutableStateOf(true) }
 
     var isSttListening by remember { mutableStateOf(false) }
@@ -367,7 +381,7 @@ fun ArExploreScreen(
                     // ARCore 위치를 채팅 에이전트에 실시간 반영 → /ar/agent/chat 호출 시 정확한 위치 전달
                     agentService.updatePosition(currentLat, currentLng, currentHeading)
 
-                    if (hasAchievedHighAccuracy) {
+                    if (hasAchievedHighAccuracy && !isFrozen) {
                         trackingMessage = "위치 파악 완료 (오차: ${"%.1f".format(pose.horizontalAccuracy)}m)"
 
                         // 거리 업데이트
@@ -544,37 +558,50 @@ fun ArExploreScreen(
                             "VPS 정밀 탐색 중... (오차: ${"%.1f".format(pose.horizontalAccuracy)}m / 1.5m 미만 필요)"
                     }
 
-                    // 앵커 → 화면 좌표 투영
-                    val newPositions = mutableMapOf<String, Offset>()
-                    val viewMatrix = FloatArray(16)
-                    camera.getViewMatrix(viewMatrix, 0)
-                    val projMatrix = FloatArray(16)
-                    camera.getProjectionMatrix(projMatrix, 0, 0.1f, 100.0f)
+                    // 앵커 → 화면 좌표 투영 (프리즈 중에는 마지막 위치 유지)
+                    if (!isFrozen) {
+                        val newPositions = mutableMapOf<String, Offset>()
+                        val viewMatrix = FloatArray(16)
+                        camera.getViewMatrix(viewMatrix, 0)
+                        val projMatrix = FloatArray(16)
+                        camera.getProjectionMatrix(projMatrix, 0, 0.1f, 100.0f)
 
-                    geospatialAnchors.forEach { (id, anchor) ->
-                        if (anchor.trackingState == TrackingState.TRACKING) {
-                            val anchorPose = anchor.pose
-                            val anchorTranslation = floatArrayOf(
-                                anchorPose.tx(), anchorPose.ty(), anchorPose.tz(), 1f,
-                            )
-                            val viewCoords = FloatArray(4)
-                            Matrix.multiplyMV(viewCoords, 0, viewMatrix, 0, anchorTranslation, 0)
-                            if (viewCoords[2] <= 0) {
-                                val clipCoords = FloatArray(4)
-                                Matrix.multiplyMV(clipCoords, 0, projMatrix, 0, viewCoords, 0)
-                                if (clipCoords[3] != 0f) {
-                                    val x = ((clipCoords[0] / clipCoords[3] + 1.0f) / 2.0f) * screenWidthPx
-                                    val y = ((1.0f - clipCoords[1] / clipCoords[3]) / 2.0f) * screenHeightPx
-                                    newPositions[id] = Offset(x, y)
+                        geospatialAnchors.forEach { (id, anchor) ->
+                            if (anchor.trackingState == TrackingState.TRACKING) {
+                                val anchorPose = anchor.pose
+                                val anchorTranslation = floatArrayOf(
+                                    anchorPose.tx(), anchorPose.ty(), anchorPose.tz(), 1f,
+                                )
+                                val viewCoords = FloatArray(4)
+                                Matrix.multiplyMV(viewCoords, 0, viewMatrix, 0, anchorTranslation, 0)
+                                if (viewCoords[2] <= 0) {
+                                    val clipCoords = FloatArray(4)
+                                    Matrix.multiplyMV(clipCoords, 0, projMatrix, 0, viewCoords, 0)
+                                    if (clipCoords[3] != 0f) {
+                                        val x = ((clipCoords[0] / clipCoords[3] + 1.0f) / 2.0f) * screenWidthPx
+                                        val y = ((1.0f - clipCoords[1] / clipCoords[3]) / 2.0f) * screenHeightPx
+                                        newPositions[id] = Offset(x, y)
+                                    }
                                 }
                             }
                         }
+                        anchorScreenPositions = newPositions
                     }
-                    anchorScreenPositions = newPositions
                 },
             )
 
             // 화면 고정 시 반투명 오버레이
+            // ── 프리징된 화면 (캡처 이미지) ──
+            frozenBitmap?.let { bmp ->
+                Image(
+                    bitmap = bmp,
+                    contentDescription = null,
+                    modifier = Modifier.fillMaxSize(),
+                    contentScale = ContentScale.Crop,
+                )
+            }
+
+            // 화면 고정 시 반투명 오버레이 (프리징됨 표시)
             if (isFrozen) {
                 Box(
                     modifier = Modifier
@@ -651,6 +678,13 @@ fun ArExploreScreen(
                 ArDynamicPoiMarkers(
                     dynamicPois = dynamicPois,
                     anchorScreenPositions = anchorScreenPositions,
+                    onPoiClick = { poi ->
+                        // 마커 클릭 시 정보 패널 띄움 (도슨트는 안 부름)
+                        selectedPoi = poi.name
+                        selectedPoiOverlay = poi.arOverlay
+                        selectedPoiDocent = null
+                        activeDetailTab = ArPoiTabBuilding
+                    },
                 )
 
                 ArExploreSideColumn(
@@ -659,7 +693,25 @@ fun ArExploreScreen(
                         val msg = if (isTtsOn) "음성 안내 켜짐" else "음성 안내 꺼짐"
                         scope.launch { snackbarHostState.showSnackbar(msg) }
                     },
-                    onCameraClick = { isFrozen = !isFrozen },
+                    onCameraClick = {
+                        if (isFrozen) {
+                            // 프리즈 해제
+                            isFrozen = false
+                            frozenBitmap = null
+                        } else {
+                            // 캡처 → 프리즈
+                            captureArScene(activityView) { bitmap ->
+                                if (bitmap != null) {
+                                    frozenBitmap = bitmap.asImageBitmap()
+                                    isFrozen = true
+                                } else {
+                                    scope.launch {
+                                        snackbarHostState.showSnackbar("화면 캡처에 실패했어요")
+                                    }
+                                }
+                            }
+                        }
+                    },
                     isTtsOn = isTtsOn,
                     isFrozen = isFrozen,
                     isTtsPlaying = isTtsPlaying,
@@ -1004,6 +1056,7 @@ fun ArExploreScreen(
 private fun BoxScope.ArDynamicPoiMarkers(
     dynamicPois: List<DynamicPoi>,
     anchorScreenPositions: Map<String, Offset>,
+    onPoiClick: (DynamicPoi) -> Unit,
 ) {
     dynamicPois.forEach { poi ->
         val screenPos = anchorScreenPositions[poi.id] ?: return@forEach
@@ -1017,7 +1070,7 @@ private fun BoxScope.ArDynamicPoiMarkers(
                     if (poi.category.isNotEmpty()) append("${poi.category} · ")
                     append("${"%.0f".format(poi.distance)}m")
                 },
-                onClick = null,
+                onClick = { onPoiClick(poi) },
             )
         }
     }
@@ -1245,7 +1298,7 @@ private fun buildFovPolygon(
     userLat: Double,
     userLng: Double,
     heading: Double,
-    fovDeg: Double =60.0,
+    fovDeg: Double = 60.0,
     maxDistM: Double = 200.0,
 ): List<Pair<Double, Double>> {
     val halfFov = fovDeg / 2.0
@@ -1432,4 +1485,40 @@ private fun direction(
     x1: Double, y1: Double, x2: Double, y2: Double, x3: Double, y3: Double,
 ): Double {
     return (x3 - x1) * (y2 - y1) - (y3 - y1) * (x2 - x1)
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 스크린 프리징 — PixelCopy로 현재 화면 캡처
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * 현재 화면(ARScene + UI overlay 포함)을 Bitmap으로 캡처.
+ * PixelCopy.request의 callback은 비동기로 실행됨.
+ */
+private fun captureArScene(view: View, onCaptured: (Bitmap?) -> Unit) {
+    val window = (view.context as? Activity)?.window
+    if (window == null || view.width <= 0 || view.height <= 0) {
+        onCaptured(null)
+        return
+    }
+    try {
+        val bitmap = Bitmap.createBitmap(view.width, view.height, Bitmap.Config.ARGB_8888)
+        val location = IntArray(2)
+        view.getLocationInWindow(location)
+        val rect = Rect(
+            location[0], location[1],
+            location[0] + view.width, location[1] + view.height,
+        )
+        PixelCopy.request(
+            window, rect, bitmap,
+            { result ->
+                if (result == PixelCopy.SUCCESS) onCaptured(bitmap)
+                else onCaptured(null)
+            },
+            Handler(Looper.getMainLooper()),
+        )
+    } catch (e: Exception) {
+        Log.e("ArExplore", "캡처 실패: ${e.message}")
+        onCaptured(null)
+    }
 }
