@@ -23,7 +23,9 @@ TMAP_API_KEY = os.getenv("TMAP_API_KEY", "")
 
 PRAYER_ROOMS_PATH = os.path.join(os.path.dirname(__file__), "..", "rag", "data", "prayer_rooms.json")
 
-# 카테고리별 Kakao 코드 및 기본 반경(m)
+# 카테고리별 Kakao 그룹 코드 및 기본 반경(m).
+# Kakao 그룹 코드가 없는 카테고리(exchange, restroom, locker, prayer_room)는
+# convenience_agent에서 별도 라우팅 (kakao_keyword / seoul_openapi / static_json).
 CATEGORY_CONFIG = {
     "convenience_store": {"code": "CS2", "radius": 300},
     "cafe":              {"code": "CE7", "radius": 300},
@@ -36,6 +38,9 @@ CATEGORY_CONFIG = {
     "parking":           {"code": "PK6", "radius": 300},
     "subway":            {"code": "SW8", "radius": 1000},
     "tourist_info":      {"code": "AT4", "radius": 1000},
+    "tourist":           {"code": "AT4", "radius": 1000},   # 프론트 별칭
+    "accommodation":     {"code": "AD5", "radius": 1000},   # 호텔/숙박
+    "cultural":          {"code": "CT1", "radius": 1000},   # 문화시설(영화·박물관·미술관)
 }
 
 DEFAULT_RADIUS = {
@@ -172,22 +177,24 @@ async def kakao_keyword_search(keyword: str, lat: float, lng: float, radius: int
 
 
 async def seoul_restroom_search(lat: float, lng: float, radius: int) -> list[dict]:
-    """서울시 공중화장실 Open API (OA-22586)"""
+    """서울시 공중화장실 위치정보 (OA-22586, service=mgisToiletPoi).
+    응답 필드: OBJECTID, ADDR_NEW, ADDR_OLD, COORD_X, COORD_Y, CONTS_NAME(건물명),
+              GU_NAME, TEL_NO, VALUE_01(유형), VALUE_02(개방시간), ..."""
     if not SEOUL_RESTROOM_API_KEY:
         return []
 
-    url = f"http://openapi.seoul.go.kr:8088/{SEOUL_RESTROOM_API_KEY}/json/SearchPublicToiletPOIService/1/1000/"
+    url = f"http://openapi.seoul.go.kr:8088/{SEOUL_RESTROOM_API_KEY}/json/mgisToiletPoi/1/1000/"
     async with httpx.AsyncClient(timeout=10) as client:
         resp = await client.get(url)
         resp.raise_for_status()
         data = resp.json()
 
-    rows = data.get("SearchPublicToiletPOIService", {}).get("row", [])
+    rows = data.get("mgisToiletPoi", {}).get("row", [])
     results = []
     for row in rows:
         try:
-            r_lat = float(row.get("Y_WGS84") or 0)
-            r_lng = float(row.get("X_WGS84") or 0)
+            r_lat = float(row.get("COORD_Y") or 0)
+            r_lng = float(row.get("COORD_X") or 0)
         except (ValueError, TypeError):
             continue
         if r_lat == 0 or r_lng == 0:
@@ -195,14 +202,17 @@ async def seoul_restroom_search(lat: float, lng: float, radius: int) -> list[dic
         dist = haversine_m(lat, lng, r_lat, r_lng)
         if dist <= radius:
             results.append({
-                "name": row.get("FNAME", "공중화장실"),
+                "name":       row.get("CONTS_NAME") or "공중화장실",
                 "distance_m": round(dist, 1),
-                "lat": r_lat,
-                "lng": r_lng,
-                "address": "개방형 화장실",
-                "phone": "",
-                "open_hours": "",
-                "extra": {},
+                "lat":        r_lat,
+                "lng":        r_lng,
+                "address":    row.get("ADDR_NEW") or row.get("ADDR_OLD") or "",
+                "phone":      row.get("TEL_NO") or "",
+                "open_hours": row.get("VALUE_02") or "",
+                "extra": {
+                    "type":       row.get("VALUE_01") or "",  # 공중/개방 등
+                    "has_disabled": bool(row.get("VALUE_05")),
+                },
             })
 
     results = sorted(results, key=lambda x: x["distance_m"])[:5]

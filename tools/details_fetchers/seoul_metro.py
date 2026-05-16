@@ -167,10 +167,10 @@ async def _db_exits(station: str, line: Optional[str]) -> list[dict]:
 
 async def _fst_exit(client: httpx.AsyncClient, key: str,
                     station: str, line: Optional[str]) -> list[dict]:
-    """빠른하차정보 API — 키 활성화 안 됐으면 (403) 빈 리스트."""
+    """빠른하차정보 API — 역명(`stnNm`) 파라미터로 직접 필터. 키 비활성/403이면 빈 리스트."""
     try:
-        params = {"serviceKey": key, "pageNo": 1, "numOfRows": 50, "dataType": "JSON"}
-        # 파라미터 이름은 응답 확정 후 보강. 일단 키만으로 호출하고 응답에서 필터.
+        params = {"serviceKey": key, "pageNo": 1, "numOfRows": 100,
+                  "dataType": "JSON", "stnNm": station}
         r = await client.get(f"{_FST_BASE}/getFstExit", params=params)
         if r.status_code != 200:
             return []
@@ -179,20 +179,9 @@ async def _fst_exit(client: httpx.AsyncClient, key: str,
         print(f"[seoul_metro] FstExit 호출 실패: {e}")
         return []
 
-    if not rows:
-        return []
-
-    # 응답에서 역명·호선으로 필터 (필드명은 응답 보고 추후 조정)
-    out = []
-    for r in rows:
-        nm  = r.get("subwayStationName") or r.get("statnNm") or ""
-        ln  = r.get("subwayRouteName")   or r.get("lineNm")  or ""
-        if station and station not in nm:
-            continue
-        if line and line not in ln:
-            continue
-        out.append(r)
-    return out
+    if line:
+        rows = [r for r in rows if line in (r.get("lineNm") or "")]
+    return rows
 
 
 # ───────────────────────── fetch (entry point) ─────────────────────────
@@ -227,30 +216,27 @@ async def fetch(
     coords   = await get_all_exits_coords(station, line or "", exit_nos,
                                           center_lat=lat, center_lng=lng) if exit_nos else {}
 
-    # 출구 데이터 통합 (DB 시설 + 카카오 좌표 + FstExit 하차문)
+    # 출구 데이터 통합 (DB 시설 + 카카오 좌표). 빠른하차정보는 역 단위.
     exits = []
-    fst_by_exit = _group_fst_by_exit(fst_rows)
     for e in db_exits_rows:
-        no  = e["exit_no"]
-        xy  = coords.get(no)
-        out = {
+        no = e["exit_no"]
+        xy = coords.get(no)
+        exits.append({
             "exit_no":    no,
             "facilities": e["facilities"][:12],
             "lat":        xy[0] if xy else None,
             "lng":        xy[1] if xy else None,
-        }
-        if no in fst_by_exit:
-            out["fast_alight"] = fst_by_exit[no]
-        exits.append(out)
+        })
 
-    # 시간표 요약 (양방향 첫·막차)
+    fast_alights = _summarize_fst(fst_rows)
+
+    # 시간표 요약 (양방향 첫·막차). 일부 시간만 비어있으면 양쪽 fallback.
     sched = schedule or {}
     up    = sched.get("weekday_up",   {})
     down  = sched.get("weekday_down", {})
-    if up.get("first") or down.get("first"):
-        open_hours = f"{up.get('first','')}~{up.get('last','')}"
-    else:
-        open_hours = ""
+    first = up.get("first") or down.get("first") or ""
+    last  = up.get("last")  or down.get("last")  or ""
+    open_hours = f"{first}~{last}" if (first or last) else ""
 
     return {
         "phone":      (station_row or {}).get("telno", "") or "",
@@ -265,25 +251,35 @@ async def fetch(
             "exits":         exits,
             "schedule":      sched,
             "exit_count":    len(exits),
+            "fast_alights":  fast_alights,
         },
         "source": "tago_subway",
     }
 
 
-def _group_fst_by_exit(rows: list[dict]) -> dict[str, list[dict]]:
-    """빠른하차정보 행을 출구번호별로 묶음. 응답 필드는 추후 정확히 매핑."""
-    by_exit: dict[str, list[dict]] = {}
+def _summarize_fst(rows: list[dict]) -> list[dict]:
+    """빠른하차정보 → 역 단위 요약. 출구번호 매핑이 API에 없어서 역 통째로.
+    상하행+방면 같은 묶음을 하나로 dedup. 예:
+      {direction: '회현', updown: '하행', door: '10-4', fac: '에스컬레이터',
+       walk_pos: '명동 B4', fac_pos: '회현 방면10-4, 충무로 방면1-1'}
+    """
+    seen: set[tuple] = set()
+    out: list[dict] = []
     for r in rows:
-        # 가능한 필드명들 — 응답 보고 정확히 정함
-        exit_no = str(r.get("exitNo") or r.get("exitNumber") or r.get("entrcNo") or "")
-        if not exit_no:
+        key = (r.get("drtnInfo"), r.get("upbdnbSe"),
+               r.get("qckgffVhclDoorNo"), r.get("plfmCmgFac"))
+        if key in seen:
             continue
-        by_exit.setdefault(exit_no, []).append({
-            "car_door":    r.get("plfmCmgFac") or r.get("trainDoor") or "",
-            "direction":   r.get("upbdnbSe")   or r.get("drtnInfo")  or "",
-            "facility":    r.get("mvmnFac")    or r.get("facility")  or "",
+        seen.add(key)
+        out.append({
+            "direction": r.get("drtnInfo")         or "",  # '회현', '충무로'
+            "updown":    r.get("upbdnbSe")         or "",  # '상행' / '하행'
+            "door":      r.get("qckgffVhclDoorNo") or "",  # '10-4'
+            "fac":       r.get("plfmCmgFac")       or "",  # '에스컬레이터'
+            "walk_pos":  r.get("fwkPstnNm")        or "",  # '명동 B4'
+            "fac_pos":   r.get("facPstnNm")        or "",  # '회현 방면10-4, 충무로 방면1-1'
         })
-    return by_exit
+    return out
 
 
 # ───────────────────────── helpers ─────────────────────────

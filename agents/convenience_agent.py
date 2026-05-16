@@ -38,7 +38,7 @@ Given a user message, return the most relevant facility category and detected la
 
 Categories:
 convenience_store, cafe, restaurant, pharmacy, hospital,
-bank, atm, shopping, parking, subway, tourist_info,
+bank, atm, shopping, parking, subway, tourist, accommodation, cultural,
 exchange, restroom, locker, prayer_room
 
 Return JSON only:
