@@ -1,124 +1,201 @@
 """
 seoul_metro.py
-지하철역 상세 — 국토교통부 TAGO 지하철정보 API.
+지하철역 상세 — 4개 소스 통합:
+  1. Supabase `subway_exits` (CSV 시드, 출구별 시설명 풍부) — 1차
+  2. TAGO API `GetKwrdFndSubwaySttnList` + `Schdul` — 역 ID·시간표·라인 정보
+  3. 카카오 로컬 — 출구별 위경도 (lazy 캐시)
+  4. 빠른하차정보 (B553766/inout/getFstExit) — 하차문 정보. 키 활성화 시 자동 호출.
 
-Base URL: https://apis.data.go.kr/1613000/SubwayInfo
-4개 엔드포인트를 chain:
-  1. GetKwrdFndSubwaySttnList         — 키워드 → 역 ID (railOprIsttCd, lnCd, stinCd)
-  2. GetSubwaySttnExitAcctoCfrFcltyList — 출구별 주변 시설
-  3. GetSubwaySttnExitAcctoBusRouteList — 출구별 버스 노선 (선택)
-  4. GetSubwaySttnAcctoSchdulList       — 역별 시간표 (첫차/막차)
+키:
+  TAGO_API_KEY  — 위 1·2·4 모두 동일 마스터 키 (.env)
 
-키: .env TAGO_API_KEY (data.go.kr 마스터 키 — TourAPI/Store/PublicRestroom과 동일)
+매장명 '명동역', '명동역 4호선', '명동역 1번 출구' 등에서 역명·호선 추출.
 """
 
 import asyncio
 import os
-from collections import defaultdict
+import re
 from typing import Optional
 
 import httpx
 
-_BASE = "https://apis.data.go.kr/1613000/SubwayInfo"
-_COMMON = {"_type": "json", "numOfRows": 100, "pageNo": 1}
+from core.db import get_pool
+from tools.details_fetchers._subway_exit_geocoder import get_all_exits_coords
 
+
+_TAGO_BASE = "https://apis.data.go.kr/1613000/SubwayInfo"
+_FST_BASE  = "https://apis.data.go.kr/B553766/inout"
+_COMMON    = {"_type": "json", "numOfRows": 200, "pageNo": 1}
+
+_LINE_RE = re.compile(r"(\d+호선|경의중앙선|수인분당선|분당선|신분당선|공항철도|"
+                      r"경춘선|경강선|서해선|우이신설선|김포골드라인|신림선|용인경전철)")
+
+
+# ───────────────────────── 입력 파싱 ─────────────────────────
+
+def _parse_query(store_name: str) -> tuple[str, Optional[str]]:
+    """매장명에서 (역명, 호선) 추출.
+    예) '명동역 4호선' → ('명동', '4호선')
+        '을지로입구역'   → ('을지로입구', None)
+    """
+    s = (store_name or "").strip()
+    line = None
+    m = _LINE_RE.search(s)
+    if m:
+        line = m.group(1)
+        s = s.replace(line, "").strip()
+    # '...역' suffix 제거
+    s = re.sub(r"역\s*\d*번?\s*출구$", "", s)
+    s = s.rstrip("역").strip()
+    return s, line
+
+
+# ───────────────────────── TAGO ─────────────────────────
 
 def _items(resp_json: dict) -> list[dict]:
-    """data.go.kr 표준 응답 → items.item 리스트 (단건이면 dict, 다건이면 list)."""
     try:
-        body = resp_json.get("response", {}).get("body", {})
+        body  = resp_json.get("response", {}).get("body", {})
         items = body.get("items", {}).get("item", [])
-        if isinstance(items, list):
-            return items
+        if isinstance(items, list): return items
         return [items] if items else []
     except Exception:
         return []
 
 
-async def _search_station(client: httpx.AsyncClient, key: str, name: str) -> Optional[dict]:
-    """역명 키워드로 검색 → 첫 매칭 역 row."""
+async def _tago_station(client: httpx.AsyncClient, key: str,
+                        station: str, line: Optional[str]) -> Optional[dict]:
+    """TAGO 키워드 검색 → 정확 일치 + 호선 매칭 row."""
     try:
         r = await client.get(
-            f"{_BASE}/GetKwrdFndSubwaySttnList",
-            params={"serviceKey": key, "subwayStationName": name, **_COMMON},
+            f"{_TAGO_BASE}/GetKwrdFndSubwaySttnList",
+            params={"serviceKey": key, "subwayStationName": station, **_COMMON},
         )
         r.raise_for_status()
         rows = _items(r.json())
     except Exception as e:
-        print(f"[seoul_metro] 역 검색 실패 ({name!r}): {e}")
+        print(f"[seoul_metro] TAGO 역 검색 실패 ({station!r}): {e}")
         return None
 
     if not rows:
         return None
 
-    # 정확 일치 우선, 없으면 첫 결과
-    norm = name.replace("역", "").strip()
-    for row in rows:
-        sn = (row.get("subwayStationName") or "").replace("역", "").strip()
-        if norm == sn:
-            return row
-    return rows[0]
+    norm = station.replace("역", "").strip()
+    candidates = [r for r in rows
+                  if (r.get("subwayStationName") or "").replace("역", "").strip() == norm]
+    if not candidates:
+        candidates = rows
+
+    if line:
+        for r in candidates:
+            if line in (r.get("subwayRouteName") or ""):
+                return r
+    return candidates[0]
 
 
-async def _fetch_exits(client: httpx.AsyncClient, key: str, station: dict) -> list[dict]:
-    """출구별 주변 시설 목록."""
-    try:
-        r = await client.get(
-            f"{_BASE}/GetSubwaySttnExitAcctoCfrFcltyList",
-            params={
-                "serviceKey":         key,
-                "subwayStationId":    station.get("subwayStationId", ""),
-                **_COMMON,
-            },
-        )
-        r.raise_for_status()
-        return _items(r.json())
-    except Exception as e:
-        print(f"[seoul_metro] 출구 시설 조회 실패: {e}")
-        return []
+def _hhmm(t: str) -> str:
+    """'000100' / '0001' → '00:01'. 4자리 미만/비숫자 → ''."""
+    if not t or not t.isdigit() or len(t) < 4:
+        return ""
+    return f"{t[:2]}:{t[2:4]}"
 
 
-async def _fetch_schedule(client: httpx.AsyncClient, key: str, station: dict) -> list[dict]:
-    """역별 시간표 (첫차/막차)."""
-    try:
-        r = await client.get(
-            f"{_BASE}/GetSubwaySttnAcctoSchdulList",
-            params={
-                "serviceKey":         key,
-                "subwayStationId":    station.get("subwayStationId", ""),
-                **_COMMON,
-            },
-        )
-        r.raise_for_status()
-        return _items(r.json())
-    except Exception as e:
-        print(f"[seoul_metro] 시간표 조회 실패: {e}")
-        return []
+async def _tago_schedule(client: httpx.AsyncClient, key: str, sid: str) -> dict:
+    """평일 상하행 첫차/막차 시각."""
+    async def fetch(updown: str) -> list[dict]:
+        try:
+            r = await client.get(
+                f"{_TAGO_BASE}/GetSubwaySttnAcctoSchdulList",
+                params={"serviceKey": key, "subwayStationId": sid,
+                        "dailyTypeCode": "01", "upDownTypeCode": updown, **_COMMON},
+            )
+            r.raise_for_status()
+            return _items(r.json())
+        except Exception as e:
+            print(f"[seoul_metro] TAGO 시간표({updown}) 실패: {e}")
+            return []
+
+    up, down = await asyncio.gather(fetch("U"), fetch("D"))
+
+    def minmax(rows: list[dict]) -> tuple[str, str]:
+        times = [t for r in rows
+                 if (t := (r.get("depTime") or "")).isdigit() and len(t) >= 4]
+        if not times:
+            return "", ""
+        return _hhmm(min(times)), _hhmm(max(times))
+
+    up_first,   up_last   = minmax(up)
+    down_first, down_last = minmax(down)
+    return {
+        "weekday_up":   {"first": up_first,   "last": up_last,
+                         "toward": (up[0].get("endSubwayStationNm") if up else "")},
+        "weekday_down": {"first": down_first, "last": down_last,
+                         "toward": (down[0].get("endSubwayStationNm") if down else "")},
+    }
 
 
-def _summarize_schedule(rows: list[dict]) -> dict:
-    """시간표 rows에서 평일 첫차/막차 추출. 응답 필드명은 실제 호출로 확인 후 조정 필요."""
-    if not rows:
-        return {}
-    # 가능한 필드명들 — API 응답 본 후 정확히 매핑
-    first = min((r.get("startTime", "") or r.get("startSubwayTime", "") for r in rows), default="")
-    last  = max((r.get("endTime", "") or r.get("endSubwayTime", "") for r in rows),   default="")
-    return {"first_train": first, "last_train": last}
+# ───────────────────────── DB 출구 시설 ─────────────────────────
 
-
-def _summarize_exits(rows: list[dict]) -> list[dict]:
-    """출구번호별로 시설명 묶어 반환."""
-    by_exit: dict[str, list[str]] = defaultdict(list)
+async def _db_exits(station: str, line: Optional[str]) -> list[dict]:
+    """subway_exits 테이블 → [{exit_no, facilities: [...]}].
+    CSV에 일부 역은 '서울역'처럼 '역'까지 포함 — 두 변형 다 검색."""
+    pool = await get_pool()
+    variants = [station, f"{station}역"]
+    async with pool.acquire() as conn:
+        if line:
+            rows = await conn.fetch(
+                "SELECT exit_no, facility_name FROM subway_exits "
+                "WHERE station_name = ANY($1::text[]) AND line=$2 "
+                "ORDER BY (CASE WHEN exit_no ~ '^[0-9]+$' THEN exit_no::int ELSE 99 END), "
+                "facility_name",
+                variants, line,
+            )
+        else:
+            rows = await conn.fetch(
+                "SELECT exit_no, facility_name FROM subway_exits "
+                "WHERE station_name = ANY($1::text[]) "
+                "ORDER BY line, exit_no, facility_name",
+                variants,
+            )
+    by_exit: dict[str, list[str]] = {}
     for r in rows:
-        exit_no = str(r.get("exitNo", "") or r.get("exitNumber", ""))
-        facility = r.get("cfFacility", "") or r.get("facilityName", "") or r.get("impFaclNm", "")
-        if exit_no and facility:
-            by_exit[exit_no].append(facility)
-    return [
-        {"exit_no": k, "facilities": v[:10]}
-        for k, v in sorted(by_exit.items(), key=lambda x: int(x[0]) if x[0].isdigit() else 99)
-    ]
+        by_exit.setdefault(r["exit_no"], []).append(r["facility_name"])
+    return [{"exit_no": k, "facilities": [f for f in v if f]}
+            for k, v in by_exit.items()]
 
+
+# ───────────────────────── 빠른하차정보 ─────────────────────────
+
+async def _fst_exit(client: httpx.AsyncClient, key: str,
+                    station: str, line: Optional[str]) -> list[dict]:
+    """빠른하차정보 API — 키 활성화 안 됐으면 (403) 빈 리스트."""
+    try:
+        params = {"serviceKey": key, "pageNo": 1, "numOfRows": 50, "dataType": "JSON"}
+        # 파라미터 이름은 응답 확정 후 보강. 일단 키만으로 호출하고 응답에서 필터.
+        r = await client.get(f"{_FST_BASE}/getFstExit", params=params)
+        if r.status_code != 200:
+            return []
+        rows = _items(r.json())
+    except Exception as e:
+        print(f"[seoul_metro] FstExit 호출 실패: {e}")
+        return []
+
+    if not rows:
+        return []
+
+    # 응답에서 역명·호선으로 필터 (필드명은 응답 보고 추후 조정)
+    out = []
+    for r in rows:
+        nm  = r.get("subwayStationName") or r.get("statnNm") or ""
+        ln  = r.get("subwayRouteName")   or r.get("lineNm")  or ""
+        if station and station not in nm:
+            continue
+        if line and line not in ln:
+            continue
+        out.append(r)
+    return out
+
+
+# ───────────────────────── fetch (entry point) ─────────────────────────
 
 async def fetch(
     store_name: str,
@@ -127,42 +204,90 @@ async def fetch(
     building_ufid: str = "",
     category_name: str = "",
 ) -> dict:
-    """매장명에서 역 키워드 추출 → TAGO 4개 API chain → details 패키징."""
+    """역명+호선 추출 → 4개 소스 통합 → store_details 표준 출력."""
     key = os.getenv("TAGO_API_KEY", "")
-    if not key or not store_name:
+    station, line = _parse_query(store_name)
+    if not station:
         return {}
 
-    # 매장명에서 역명만 추출 (예: "명동역 ATM" → "명동역", "을지로입구역" → "을지로입구역")
-    query = store_name.strip()
-    if "역 " in query:
-        query = query.split("역", 1)[0] + "역"
-
     async with httpx.AsyncClient(timeout=15) as c:
-        station = await _search_station(c, key, query)
-        if not station:
-            return {}
-
-        exits, schedule = await asyncio.gather(
-            _fetch_exits(c, key, station),
-            _fetch_schedule(c, key, station),
+        station_row, db_exits_rows = await asyncio.gather(
+            _tago_station(c, key, station, line) if key else _noop_none(),
+            _db_exits(station, line),
         )
 
-    exits_summary = _summarize_exits(exits)
-    sched_summary = _summarize_schedule(schedule)
+        sid    = (station_row or {}).get("subwayStationId", "")
+        schedule, fst_rows = await asyncio.gather(
+            _tago_schedule(c, key, sid) if (key and sid) else _noop_dict(),
+            _fst_exit(c, key, station, line)   if key       else _noop_list(),
+        )
+
+    # 출구 좌표 (DB cache hit이면 카카오 호출 X)
+    exit_nos = [e["exit_no"] for e in db_exits_rows if e["exit_no"]]
+    coords   = await get_all_exits_coords(station, line or "", exit_nos,
+                                          center_lat=lat, center_lng=lng) if exit_nos else {}
+
+    # 출구 데이터 통합 (DB 시설 + 카카오 좌표 + FstExit 하차문)
+    exits = []
+    fst_by_exit = _group_fst_by_exit(fst_rows)
+    for e in db_exits_rows:
+        no  = e["exit_no"]
+        xy  = coords.get(no)
+        out = {
+            "exit_no":    no,
+            "facilities": e["facilities"][:12],
+            "lat":        xy[0] if xy else None,
+            "lng":        xy[1] if xy else None,
+        }
+        if no in fst_by_exit:
+            out["fast_alight"] = fst_by_exit[no]
+        exits.append(out)
+
+    # 시간표 요약 (양방향 첫·막차)
+    sched = schedule or {}
+    up    = sched.get("weekday_up",   {})
+    down  = sched.get("weekday_down", {})
+    if up.get("first") or down.get("first"):
+        open_hours = f"{up.get('first','')}~{up.get('last','')}"
+    else:
+        open_hours = ""
 
     return {
-        "phone":       station.get("telno", "") or station.get("phoneNumber", ""),
-        "addr":        station.get("subwayRouteName", "") or station.get("address", ""),
-        "homepage":    "",
-        "open_hours":  f"{sched_summary.get('first_train', '')} - {sched_summary.get('last_train', '')}".strip(" -"),
-        "image_urls":  [],
+        "phone":      (station_row or {}).get("telno", "") or "",
+        "addr":       "",
+        "homepage":   "",
+        "open_hours": open_hours,
+        "image_urls": [],
         "details": {
-            "subway_station_id":   station.get("subwayStationId", ""),
-            "station_name":        station.get("subwayStationName", ""),
-            "line":                station.get("subwayRouteName", ""),
-            "exits":               exits_summary,
-            "first_train":         sched_summary.get("first_train", ""),
-            "last_train":          sched_summary.get("last_train", ""),
+            "station_name":  (station_row or {}).get("subwayStationName", station),
+            "line":          (station_row or {}).get("subwayRouteName", line or ""),
+            "station_id":    sid,
+            "exits":         exits,
+            "schedule":      sched,
+            "exit_count":    len(exits),
         },
         "source": "tago_subway",
     }
+
+
+def _group_fst_by_exit(rows: list[dict]) -> dict[str, list[dict]]:
+    """빠른하차정보 행을 출구번호별로 묶음. 응답 필드는 추후 정확히 매핑."""
+    by_exit: dict[str, list[dict]] = {}
+    for r in rows:
+        # 가능한 필드명들 — 응답 보고 정확히 정함
+        exit_no = str(r.get("exitNo") or r.get("exitNumber") or r.get("entrcNo") or "")
+        if not exit_no:
+            continue
+        by_exit.setdefault(exit_no, []).append({
+            "car_door":    r.get("plfmCmgFac") or r.get("trainDoor") or "",
+            "direction":   r.get("upbdnbSe")   or r.get("drtnInfo")  or "",
+            "facility":    r.get("mvmnFac")    or r.get("facility")  or "",
+        })
+    return by_exit
+
+
+# ───────────────────────── helpers ─────────────────────────
+
+async def _noop_none(): return None
+async def _noop_dict(): return {}
+async def _noop_list(): return []
