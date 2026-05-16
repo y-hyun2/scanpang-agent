@@ -22,6 +22,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.rounded.Send
 import androidx.compose.material.icons.automirrored.rounded.VolumeOff
 import androidx.compose.material.icons.automirrored.rounded.VolumeUp
 import androidx.compose.material.icons.rounded.ArrowUpward
@@ -38,16 +39,22 @@ import androidx.compose.material.icons.rounded.ArrowUpward
 import androidx.compose.material.icons.rounded.CurrencyExchange
 import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material3.Icon
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.OutlinedTextFieldDefaults
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextField
+import androidx.compose.material3.TextFieldDefaults
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
@@ -624,103 +631,106 @@ fun ArNavAgentPanelContent(
     }
 }
 
+private val ArNavAgentUserBubbleBlue = Color(0xFF1A73E8)
+
 @Composable
 fun ArNavAiGuideTabWithTextField(
     query: String,
     onQueryChange: (String) -> Unit,
-    userMessage: String,
-    agentMessage: String,
+    onSend: (String) -> Unit,
+    messages: List<ArAgentChatMessage>,
     placeholder: String,
     modifier: Modifier = Modifier,
 ) {
+    val listState = rememberLazyListState()
+    LaunchedEffect(messages.size) {
+        if (messages.isNotEmpty()) listState.animateScrollToItem(messages.size - 1)
+    }
+
     Column(
         modifier = modifier
             .fillMaxSize()
+            .background(ScanPangColors.ArBottomChatScrim)
             .padding(horizontal = ScanPangDimens.arTopBarHorizontal)
             .padding(bottom = ScanPangDimens.arChatAreaBottomPad),
         verticalArrangement = Arrangement.spacedBy(ScanPangDimens.arChatBubbleGap),
     ) {
-        Column(
+        LazyColumn(
+            state = listState,
             modifier = Modifier
-                .weight(1f)
-                .fillMaxWidth(),
-            verticalArrangement = Arrangement.Bottom,
-            horizontalAlignment = Alignment.CenterHorizontally,
+                .fillMaxWidth()
+                .weight(1f),
+            verticalArrangement = Arrangement.spacedBy(ScanPangDimens.arChatBubbleGap),
         ) {
-            Column(
-                verticalArrangement = Arrangement.spacedBy(ScanPangSpacing.md),
-                modifier = Modifier.fillMaxWidth(),
-            ) {
+            items(messages) { msg ->
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.End,
+                    horizontalArrangement = if (msg.isUser) Arrangement.End else Arrangement.Start,
                 ) {
                     Surface(
-                        shape = ScanPangShapes.arBubbleUser,
-                        color = ScanPangColors.Primary,
-                        shadowElevation = ScanPangDimens.arPoiCardShadowElevation,
+                        shape = if (msg.isUser) ScanPangShapes.arBubbleUser else ScanPangShapes.arBubbleAgent,
+                        color = if (msg.isUser) ArNavAgentUserBubbleBlue else Color.White,
+                        shadowElevation = if (msg.isUser) 0.dp else 2.dp,
                     ) {
                         Text(
-                            text = userMessage,
-                            modifier = Modifier.padding(
-                                horizontal = ScanPangDimens.arTopBarHorizontal,
-                                vertical = ScanPangDimens.icon10,
-                            ),
-                            style = ScanPangType.arNavTab13Inactive,
-                            color = Color.White,
-                            maxLines = 3,
-                        )
-                    }
-                }
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.Start,
-                ) {
-                    Surface(
-                        shape = ScanPangShapes.arBubbleAgent,
-                        color = ScanPangColors.ArOverlayWhite93,
-                        shadowElevation = ScanPangDimens.arPoiCardShadowElevation,
-                    ) {
-                        Text(
-                            text = agentMessage,
-                            modifier = Modifier.padding(
-                                horizontal = ScanPangDimens.arTopBarHorizontal,
-                                vertical = ScanPangDimens.icon10,
-                            ),
-                            style = ScanPangType.arNavTab13Inactive,
-                            color = ScanPangColors.OnSurfaceStrong,
-                            maxLines = 4,
+                            text = msg.text,
+                            modifier = Modifier.padding(ScanPangSpacing.md),
+                            style = ScanPangType.arChatBody14,
+                            color = if (msg.isUser) Color.White else ScanPangColors.OnSurfaceStrong,
                         )
                     }
                 }
             }
         }
-        OutlinedTextField(
-            value = query,
-            onValueChange = onQueryChange,
+        Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(ScanPangDimens.arNavGuideInputHeight),
-            placeholder = {
-                Text(
-                    text = placeholder,
-                    style = ScanPangType.arNavGuideInput13,
-                    color = ScanPangColors.OnSurfacePlaceholder,
+                .clip(ScanPangShapes.arInputPill)
+                .background(ScanPangColors.ArOverlayWhite93)
+                .padding(horizontal = ScanPangDimens.arInputInnerPadH, vertical = 0.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(ScanPangSpacing.sm),
+        ) {
+            ArMicSttButton(isListening = false, onClick = {})
+            TextField(
+                value = query,
+                onValueChange = onQueryChange,
+                modifier = Modifier.weight(1f),
+                placeholder = {
+                    Text(
+                        text = placeholder,
+                        style = ScanPangType.searchPlaceholderRegular,
+                        color = ScanPangColors.OnSurfacePlaceholder,
+                    )
+                },
+                textStyle = ScanPangType.body15Medium.copy(color = ScanPangColors.OnSurfaceStrong),
+                singleLine = true,
+                keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(imeAction = ImeAction.Send),
+                keyboardActions = androidx.compose.foundation.text.KeyboardActions(
+                    onSend = { if (query.isNotBlank()) onSend(query) }
+                ),
+                colors = TextFieldDefaults.colors(
+                    focusedContainerColor = Color.Transparent,
+                    unfocusedContainerColor = Color.Transparent,
+                    disabledContainerColor = Color.Transparent,
+                    focusedIndicatorColor = Color.Transparent,
+                    unfocusedIndicatorColor = Color.Transparent,
+                    disabledIndicatorColor = Color.Transparent,
+                    cursorColor = ScanPangColors.Primary,
+                ),
+            )
+            IconButton(
+                onClick = { if (query.isNotBlank()) onSend(query) },
+                enabled = query.isNotBlank(),
+            ) {
+                Icon(
+                    imageVector = Icons.AutoMirrored.Rounded.Send,
+                    contentDescription = "전송",
+                    modifier = Modifier.size(ScanPangDimens.icon16),
+                    tint = if (query.isNotBlank()) ScanPangColors.Primary else ScanPangColors.OnSurfaceMuted,
                 )
-            },
-            textStyle = ScanPangType.arNavGuideInput13.copy(color = ScanPangColors.OnSurfaceStrong),
-            singleLine = true,
-            shape = ScanPangShapes.arInputPill,
-            colors = OutlinedTextFieldDefaults.colors(
-                focusedTextColor = ScanPangColors.OnSurfaceStrong,
-                unfocusedTextColor = ScanPangColors.OnSurfaceStrong,
-                focusedBorderColor = ScanPangColors.Primary,
-                unfocusedBorderColor = ScanPangColors.OutlineSubtle,
-                focusedContainerColor = ScanPangColors.ArOverlayWhite85,
-                unfocusedContainerColor = ScanPangColors.ArOverlayWhite85,
-                cursorColor = ScanPangColors.Primary,
-            ),
-        )
+            }
+        }
     }
 }
 
