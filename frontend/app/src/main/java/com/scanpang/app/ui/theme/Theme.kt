@@ -108,7 +108,7 @@ object ScanPangColors {
     /** AR 하단 시트 드래그 핸들 */
     val ArNavDragHandle = Color(0xFFD1D5DB)
     /** AR 길안내 하단 시트 배경 */
-    val ArNavBottomSheetBackground = Color(0xCCFFFFFF)
+    val ArNavBottomSheetBackground = Color(0xB3FFFFFF)
     /** AR 장소 상세 플로팅 패널 rgba(255,255,255,0.9) */
     val DetailArPanelSurface = Color(0xE6FFFFFF)
     /** AR 매장 카드 상단 rgba(255,255,255,0.93) */
@@ -385,7 +385,7 @@ object ScanPangShapes {
         bottomStart = 4.dp,
         bottomEnd = 20.dp,
     )
-    val arNavBottomSheetTop = RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp)
+    val arNavBottomSheetTop = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp)
     val arNavNextStepChip = RoundedCornerShape(bottomStart = 12.dp, bottomEnd = 12.dp)
     val arNavDragBar = RoundedCornerShape(2.dp)
     val detailArStoreCard = RoundedCornerShape(20.dp)

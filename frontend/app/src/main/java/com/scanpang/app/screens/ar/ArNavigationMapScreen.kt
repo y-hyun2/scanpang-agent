@@ -1,6 +1,5 @@
 package com.scanpang.app.screens.ar
 
-import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -23,7 +22,6 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
-import androidx.compose.ui.zIndex
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.scanpang.app.data.remote.ScanPangViewModel
 import androidx.compose.ui.Modifier
@@ -111,7 +109,7 @@ fun ArNavigationMapScreen(
     }
     var activeTab by remember { mutableStateOf(NAV_TAB_MAP) }
     var aiQuery by remember { mutableStateOf("") }
-    var bottomSheetExpanded by remember { mutableStateOf(true) }
+    var isTtsOn by remember { mutableStateOf(true) }
 
     // 공간증강 (주변 건물 인식) 상태
     var spaceAugmentEnabled by remember { mutableStateOf(true) }
@@ -136,6 +134,7 @@ fun ArNavigationMapScreen(
                 destLng = dLng
             },
             spaceAugmentEnabled = spaceAugmentEnabled,
+            voiceOn = isTtsOn,
             onPlaceQueryRequest = { heading, lat, lng, alt, pitch ->
                 viewModel.queryPlace(
                     heading = heading,
@@ -159,7 +158,7 @@ fun ArNavigationMapScreen(
 
         ArNavTopHud(
             modifier = Modifier.align(Alignment.TopStart),
-            onHomeClick = { navController.popBackStack() },
+            onCameraClick = { },
             onSearchClick = {
                 navController.navigate(AppRoutes.ArExplore) { launchSingleTop = true }
             },
@@ -179,33 +178,25 @@ fun ArNavigationMapScreen(
         )
 
         ArNavSideVolumeCamera(
-            onVolumeClick = { },
-            onCameraClick = { },
+            onVolumeClick = { isTtsOn = !isTtsOn },
+            isTtsOn = isTtsOn,
             spaceAugmentOn = spaceAugmentEnabled,
             onSpaceAugmentToggle = { spaceAugmentEnabled = !spaceAugmentEnabled },
         )
 
-        // 레이어 순서 (아래→위):
-        //   갤럭시 시스템 탭바 → 지도 시트 → 스캔팡 탭바 (z-order 높음)
-        // 맵 펼침: 지도 시트 z-order 올려 스캔팡 탭바까지 덮음.
         Box(
             modifier = Modifier
                 .align(Alignment.BottomCenter)
                 .fillMaxWidth()
-                .background(ScanPangColors.Surface)
                 .navigationBarsPadding(),
         ) {
             ArNavBottomSheet(
                 mapTabSelected = activeTab == NAV_TAB_MAP,
                 onSelectMap = { activeTab = NAV_TAB_MAP },
                 onSelectAgent = { activeTab = NAV_TAB_AI },
-                expanded = bottomSheetExpanded,
-                onToggleExpanded = { bottomSheetExpanded = !bottomSheetExpanded },
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
-                    .fillMaxWidth()
-                    .padding(bottom = 62.dp)
-                    .zIndex(if (bottomSheetExpanded) 2f else 0f),
+                    .fillMaxWidth(),
                 mapContent = {
                     ArNavMiniMap(
                         userLat = userLat,
@@ -247,8 +238,7 @@ fun ArNavigationMapScreen(
                 onExploreClick = { /* 이미 AR 길안내 중 */ },
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
-                    .fillMaxWidth()
-                    .zIndex(if (bottomSheetExpanded) 0f else 2f),
+                    .fillMaxWidth(),
             )
         }
 
