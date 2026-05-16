@@ -1,5 +1,10 @@
 package com.scanpang.app.screens.profile
 
+import android.Manifest
+import android.content.pm.PackageManager
+import android.os.Build
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -22,10 +27,12 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import androidx.core.content.ContextCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
@@ -36,9 +43,11 @@ import com.scanpang.app.components.ProfileSettingsToggleRow
 import com.scanpang.app.data.AppSettingsPreferences
 import com.scanpang.app.data.OnboardingPreferences
 import com.scanpang.app.data.ValueAdded
+import com.scanpang.app.notifications.PrayerAlarmScheduler
 import com.scanpang.app.ui.theme.ScanPangColors
 import com.scanpang.app.ui.theme.ScanPangDimens
 import com.scanpang.app.ui.theme.ScanPangSpacing
+import kotlinx.coroutines.launch
 
 /**
  * 내 정보 → 알림 설정.
@@ -70,6 +79,13 @@ fun NotificationSettingsScreen(
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
     val showPrayerAlarm = valueAdded == ValueAdded.HALAL
+
+    val coroutineScope = rememberCoroutineScope()
+
+    // Android 13+ 알림 권한 요청 launcher (호이스팅 — 조건 내 선언 불가)
+    val notificationPermLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { /* 허용 여부와 무관하게 알람은 예약됨. 권한 없으면 알림만 안 뜸 */ }
 
     var pushEnabled by remember { mutableStateOf(prefs.isPushEnabled()) }
     var prayerAlarmEnabled by remember { mutableStateOf(prefs.isPrayerAlarmEnabled()) }
@@ -129,9 +145,28 @@ fun NotificationSettingsScreen(
                                 icon = Icons.Rounded.Mosque,
                                 iconTint = ScanPangColors.Primary,
                                 checked = prayerAlarmEnabled,
-                                onCheckedChange = {
-                                    prayerAlarmEnabled = it
-                                    prefs.setPrayerAlarmEnabled(it)
+                                onCheckedChange = { enabled ->
+                                    prayerAlarmEnabled = enabled
+                                    prefs.setPrayerAlarmEnabled(enabled)
+                                    if (enabled) {
+                                        // Android 13+ 알림 권한 없으면 요청
+                                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+                                            ContextCompat.checkSelfPermission(
+                                                context, Manifest.permission.POST_NOTIFICATIONS
+                                            ) != PackageManager.PERMISSION_GRANTED
+                                        ) {
+                                            notificationPermLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+                                        }
+                                        coroutineScope.launch {
+                                            PrayerAlarmScheduler.scheduleForToday(
+                                                context,
+                                                prefs.getLastKnownLat(),
+                                                prefs.getLastKnownLng(),
+                                            )
+                                        }
+                                    } else {
+                                        PrayerAlarmScheduler.cancelAll(context)
+                                    }
                                 },
                                 showDividerBelow = true,
                             )
