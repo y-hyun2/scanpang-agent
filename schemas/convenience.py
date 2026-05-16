@@ -1,3 +1,5 @@
+from typing import Optional
+
 from pydantic import BaseModel
 
 
@@ -18,6 +20,7 @@ class Facility(BaseModel):
     address: str = ""
     phone: str = ""
     open_hours: str = ""
+    is_open_now: Optional[bool] = None   # 백엔드 계산. None=판정 불가
     extra: dict = {}       # 카테고리별 추가 필드 (wheelchair, locker 크기 등)
 
 

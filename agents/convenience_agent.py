@@ -25,6 +25,7 @@ from tools.convenience_tools import (
     seoul_locker_search,
     seoul_restroom_search,
 )
+from tools.open_hours_parser import is_open_now_combined
 
 load_dotenv()
 
@@ -137,8 +138,10 @@ async def run_convenience_agent(req: ConvenienceRequest) -> ConvenienceResponse:
     else:
         raw = []
 
-    # Step 4: 거리순 정렬 → 상위 5개
+    # Step 4: 거리순 정렬 → 상위 5개 + open_hours 기반 is_open_now 계산
     raw_sorted = sorted(raw, key=lambda x: x["distance_m"])[:5]
+    for f in raw_sorted:
+        f["is_open_now"] = is_open_now_combined(f.get("open_hours") or "", None)
     facilities = [Facility(**f) for f in raw_sorted]
 
     # Step 5: speech 생성

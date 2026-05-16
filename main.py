@@ -91,7 +91,14 @@ async def place_store(req: StoreRequest):
     """
     사용자가 층별 매장 탭 → 매장 상세 정보 반환 (Kakao on-demand + Chroma 캐싱)
     """
-    return await get_store_detail(req.place_id, req.store_name)
+    detail = await get_store_detail(req.place_id, req.store_name)
+    if isinstance(detail, dict):
+        details = detail.get("details") or {}
+        schedule = details.get("schedule") if isinstance(details, dict) else None
+        detail["is_open_now"] = _is_open_now_combined(
+            detail.get("open_hours") or "", schedule,
+        )
+    return detail
 
 
 @app.post("/convenience/query")
