@@ -92,10 +92,12 @@ def _pick_public_restroom(rows: list[dict], store_name: str) -> dict:
 
 
 def _pick_seoul_restroom(rows: list[dict], store_name: str) -> dict:
-    """서울시 OA-22586 fallback."""
+    """서울시 mgisToiletPoi (OA-22586) fallback.
+    convenience_tools.seoul_restroom_search가 extra에 풍부한 필드를 이미 채워 옴."""
     sel = _name_match(rows, store_name, key="name")
     if not sel:
         return {}
+    extra = sel.get("extra", {}) or {}
     return {
         "phone":       sel.get("phone", ""),
         "addr":        sel.get("address", ""),
@@ -103,8 +105,15 @@ def _pick_seoul_restroom(rows: list[dict], store_name: str) -> dict:
         "open_hours":  sel.get("open_hours", ""),
         "image_urls":  [],
         "details": {
-            "distance_m": sel.get("distance_m"),
-            "note":       sel.get("address", ""),
+            "open_type":          extra.get("open_type", ""),
+            "days_closed":        extra.get("days_closed", ""),
+            "has_male":           extra.get("has_male", False),
+            "has_female":         extra.get("has_female", False),
+            "has_disabled":       extra.get("has_disabled", False),
+            "has_diaper_table":   extra.get("has_diaper_table", False),
+            "has_emergency_bell": extra.get("has_emergency_bell", False),
+            "extra_facilities":   extra.get("extra_facilities", []),
+            "distance_m":         sel.get("distance_m"),
         },
         "source": "seoul_openapi",
     }

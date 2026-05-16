@@ -51,6 +51,44 @@ DEFAULT_RADIUS = {
 }
 
 
+def _split_pipe(v: str | None) -> list[str]:
+    """'남자|여자|' → ['남자','여자']. 공백/None은 빈 리스트."""
+    if not v or not isinstance(v, str):
+        return []
+    return [p.strip() for p in v.split("|") if p.strip()]
+
+
+def _clean_pipe(v: str | None) -> str:
+    """'기타|05:00~23:00|' → '05:00~23:00'. 첫 토큰이 분류 라벨이면 떼고
+    실제 시간 텍스트만. 토큰 1개면 그대로."""
+    parts = _split_pipe(v)
+    if not parts:
+        return ""
+    if len(parts) == 1:
+        return parts[0]
+    # 첫 토큰이 '기타','정시','상시' 같은 분류라면 두 번째 이후 우선
+    label = {"기타", "정시", "상시", "수시"}
+    if parts[0] in label:
+        return " ".join(parts[1:])
+    return " ".join(parts)
+
+
+def _restroom_extra(row: dict) -> dict:
+    """mgisToiletPoi row → 화장실 UI 필드. building_type/manager 류는 제외."""
+    sexes      = _split_pipe(row.get("VALUE_04"))   # ['남자','여자']
+    facilities = _split_pipe(row.get("VALUE_06"))   # ['기저귀교환대','비상벨',...]
+    return {
+        "open_type":          (_split_pipe(row.get("VALUE_01")) or [""])[0],  # '공공개방'
+        "days_closed":        (_split_pipe(row.get("VALUE_03")) or [""])[0],  # '일요일'
+        "has_male":           "남자" in sexes,
+        "has_female":         "여자" in sexes,
+        "has_disabled":       bool(_split_pipe(row.get("VALUE_05"))),
+        "has_diaper_table":   any("기저귀" in f for f in facilities),
+        "has_emergency_bell": any("비상" in f or "벨" in f for f in facilities),
+        "extra_facilities":   facilities,  # 위 플래그에 안 잡힌 항목 노출용
+    }
+
+
 def haversine_m(lat1: float, lng1: float, lat2: float, lng2: float) -> float:
     """두 좌표 사이의 거리(m) 계산"""
     R = 6371000
@@ -208,11 +246,8 @@ async def seoul_restroom_search(lat: float, lng: float, radius: int) -> list[dic
                 "lng":        r_lng,
                 "address":    row.get("ADDR_NEW") or row.get("ADDR_OLD") or "",
                 "phone":      row.get("TEL_NO") or "",
-                "open_hours": row.get("VALUE_02") or "",
-                "extra": {
-                    "type":       row.get("VALUE_01") or "",  # 공중/개방 등
-                    "has_disabled": bool(row.get("VALUE_05")),
-                },
+                "open_hours": _clean_pipe(row.get("VALUE_02")),
+                "extra":      _restroom_extra(row),
             })
 
     results = sorted(results, key=lambda x: x["distance_m"])[:5]
