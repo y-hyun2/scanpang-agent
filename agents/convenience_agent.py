@@ -22,8 +22,8 @@ from tools.convenience_tools import (
     kakao_category_search,
     kakao_keyword_search,
     prayer_room_search,
+    public_restroom_search,
     seoul_locker_search,
-    seoul_restroom_search,
 )
 from tools.open_hours_parser import is_open_now_combined
 
@@ -130,7 +130,7 @@ async def run_convenience_agent(req: ConvenienceRequest) -> ConvenienceResponse:
     elif category == "exchange":
         raw = await kakao_keyword_search("환전", req.lat, req.lng, radius)
     elif category == "restroom":
-        raw = await seoul_restroom_search(req.lat, req.lng, radius)
+        raw = await public_restroom_search(req.lat, req.lng, radius)
     elif category == "locker":
         raw = await seoul_locker_search(req.lat, req.lng, radius)
     elif category == "prayer_room":

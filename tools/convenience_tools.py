@@ -6,7 +6,6 @@ convenience_tools.py
 - 수동 JSON (기도실)
 """
 
-import asyncio
 import json
 import os
 from math import atan2, cos, radians, sin, sqrt
@@ -17,7 +16,6 @@ from dotenv import load_dotenv
 load_dotenv()
 
 KAKAO_REST_API_KEY = os.getenv("KAKAO_REST_API_KEY", "")
-SEOUL_RESTROOM_API_KEY = os.getenv("SEOUL_RESTROOM_API_KEY", "")
 SEOUL_LOCKER_API_KEY = os.getenv("SEOUL_LOCKER_API_KEY", "")
 TMAP_API_KEY = os.getenv("TMAP_API_KEY", "")
 
@@ -49,44 +47,6 @@ DEFAULT_RADIUS = {
     "locker":      1000,
     "prayer_room": 1000,
 }
-
-
-def _split_pipe(v: str | None) -> list[str]:
-    """'남자|여자|' → ['남자','여자']. 공백/None은 빈 리스트."""
-    if not v or not isinstance(v, str):
-        return []
-    return [p.strip() for p in v.split("|") if p.strip()]
-
-
-def _clean_pipe(v: str | None) -> str:
-    """'기타|05:00~23:00|' → '05:00~23:00'. 첫 토큰이 분류 라벨이면 떼고
-    실제 시간 텍스트만. 토큰 1개면 그대로."""
-    parts = _split_pipe(v)
-    if not parts:
-        return ""
-    if len(parts) == 1:
-        return parts[0]
-    # 첫 토큰이 '기타','정시','상시' 같은 분류라면 두 번째 이후 우선
-    label = {"기타", "정시", "상시", "수시"}
-    if parts[0] in label:
-        return " ".join(parts[1:])
-    return " ".join(parts)
-
-
-def _restroom_extra(row: dict) -> dict:
-    """mgisToiletPoi row → 화장실 UI 필드. building_type/manager 류는 제외."""
-    sexes      = _split_pipe(row.get("VALUE_04"))   # ['남자','여자']
-    facilities = _split_pipe(row.get("VALUE_06"))   # ['기저귀교환대','비상벨',...]
-    return {
-        "open_type":          (_split_pipe(row.get("VALUE_01")) or [""])[0],  # '공공개방'
-        "days_closed":        (_split_pipe(row.get("VALUE_03")) or [""])[0],  # '일요일'
-        "has_male":           "남자" in sexes,
-        "has_female":         "여자" in sexes,
-        "has_disabled":       bool(_split_pipe(row.get("VALUE_05"))),
-        "has_diaper_table":   any("기저귀" in f for f in facilities),
-        "has_emergency_bell": any("비상" in f or "벨" in f for f in facilities),
-        "extra_facilities":   facilities,  # 위 플래그에 안 잡힌 항목 노출용
-    }
 
 
 def haversine_m(lat1: float, lng1: float, lat2: float, lng2: float) -> float:
@@ -214,53 +174,54 @@ async def kakao_keyword_search(keyword: str, lat: float, lng: float, radius: int
     ]
 
 
-async def seoul_restroom_search(lat: float, lng: float, radius: int) -> list[dict]:
-    """서울시 공중화장실 위치정보 (OA-22586, service=mgisToiletPoi).
-    응답 필드: OBJECTID, ADDR_NEW, ADDR_OLD, COORD_X, COORD_Y, CONTS_NAME(건물명),
-              GU_NAME, TEL_NO, VALUE_01(유형), VALUE_02(개방시간), ..."""
-    if not SEOUL_RESTROOM_API_KEY:
-        return []
+def _yn(v) -> bool:
+    """data.go.kr boolean — 'Y'/'N' 또는 빈값."""
+    return (v or "").upper() == "Y"
 
-    url = f"http://openapi.seoul.go.kr:8088/{SEOUL_RESTROOM_API_KEY}/json/mgisToiletPoi/1/1000/"
-    async with httpx.AsyncClient(timeout=10) as client:
-        resp = await client.get(url)
-        resp.raise_for_status()
-        data = resp.json()
 
-    rows = data.get("mgisToiletPoi", {}).get("row", [])
+def _pos_int(v) -> bool:
+    """문자열로 들어오는 칸 수 — 0 초과면 True."""
+    try:
+        return int(v or 0) > 0
+    except (ValueError, TypeError):
+        return False
+
+
+async def public_restroom_search(lat: float, lng: float, radius: int) -> list[dict]:
+    """data.go.kr 행정안전부 공중화장실정보 (15155058) — 단일 출처.
+    전국 53k+건 캐시(rag/data/public_restrooms.json)에서 반경 내 검색.
+    응답 row 필드: RSTRM_NM, SE_NM, MNG_INST_NM, LCTN_ROAD_NM_ADDR, TELNO,
+                  OPN_HR(_DTL), MALE/FEMALE_TOILT_CNT, ..._FRDBL_..._CHLD_...,
+                  DIAP_EXCHCON_EN, EMRGNCBLL_INSTL_YN, RSTRM_ENTRAN_CCTV_INSTL_EN,
+                  WSTE_PRCS_MTH_NM, WGS84_LAT, WGS84_LOT."""
+    from tools.details_fetchers._public_restroom_cache import find_nearest
+    rows = await find_nearest(lat, lng, radius_m=radius)
     results = []
-    for row in rows:
-        try:
-            r_lat = float(row.get("COORD_Y") or 0)
-            r_lng = float(row.get("COORD_X") or 0)
-        except (ValueError, TypeError):
-            continue
-        if r_lat == 0 or r_lng == 0:
-            continue
-        dist = haversine_m(lat, lng, r_lat, r_lng)
-        if dist <= radius:
-            results.append({
-                "name":       row.get("CONTS_NAME") or "공중화장실",
-                "distance_m": round(dist, 1),
-                "lat":        r_lat,
-                "lng":        r_lng,
-                "address":    row.get("ADDR_NEW") or row.get("ADDR_OLD") or "",
-                "phone":      row.get("TEL_NO") or "",
-                "open_hours": _clean_pipe(row.get("VALUE_02")),
-                "extra":      _restroom_extra(row),
-            })
-
-    results = sorted(results, key=lambda x: x["distance_m"])[:5]
-
-    # TMAP fallback: 상위 5개 운영시간 병렬 조회
-    hours_list = await asyncio.gather(
-        *[_tmap_open_hours(r["name"], r["lat"], r["lng"]) for r in results]
-    )
-    for r, hours in zip(results, hours_list):
-        if hours:
-            r["open_hours"] = hours
-
-    return results
+    for r in rows:
+        results.append({
+            "name":       r.get("RSTRM_NM") or "공중화장실",
+            "distance_m": r.get("_distance_m") or 0.0,
+            "lat":        float(r.get("WGS84_LAT") or lat),
+            "lng":        float(r.get("WGS84_LOT") or lng),
+            "address":    r.get("LCTN_ROAD_NM_ADDR") or r.get("LCTN_LOTNO_ADDR") or "",
+            "phone":      r.get("TELNO") or "",
+            "open_hours": r.get("OPN_HR_DTL") or r.get("OPN_HR") or "",
+            "extra": {
+                "type":               r.get("SE_NM") or "",            # 공중/개방
+                "mng_inst":           r.get("MNG_INST_NM") or "",
+                "male_toilt_cnt":     r.get("MALE_TOILT_CNT") or "",
+                "female_toilt_cnt":   r.get("FEMALE_TOILT_CNT") or "",
+                "has_disabled":       _pos_int(r.get("MALE_FRDBL_TOILT_CNT"))
+                                       or _pos_int(r.get("FEMALE_FRDBL_TOILT_CNT")),
+                "has_child":          _pos_int(r.get("MALE_CHLD_TOILT_CNT"))
+                                       or _pos_int(r.get("FEMALE_CHLD_TOILT_CNT")),
+                "has_diaper_table":   _yn(r.get("DIAP_EXCHCON_EN")),
+                "has_emergency_bell": _yn(r.get("EMRGNCBLL_INSTL_YN")),
+                "has_cctv":           _yn(r.get("RSTRM_ENTRAN_CCTV_INSTL_EN")),
+                "waste_method":       r.get("WSTE_PRCS_MTH_NM") or "",
+            },
+        })
+    return results[:5]
 
 
 async def seoul_locker_search(lat: float, lng: float, radius: int) -> list[dict]:

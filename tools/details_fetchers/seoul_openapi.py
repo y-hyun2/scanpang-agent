@@ -3,13 +3,12 @@ seoul_openapi.py
 화장실 / 물품보관함 fetcher.
 
 화장실(restroom):
-  1순위 — data.go.kr 행정안전부 공중화장실정보 (전국 53k+, 풍부한 필드)
-  2순위 — 서울시 OpenAPI OA-22586 (현재 서버 오류 중)
+  data.go.kr 행정안전부 공중화장실정보 (전국 53k+건, 단일 출처)
 물품보관함(locker):
-  1순위 — 서울시 OpenAPI OA-22731 (전용 데이터)
+  서울시 OpenAPI OA-22731 (subwayLockerInfo)
 """
 
-from tools.convenience_tools import seoul_restroom_search, seoul_locker_search
+from tools.convenience_tools import seoul_locker_search
 from tools.details_fetchers._public_restroom_cache import find_nearest as find_public_restroom
 
 _SEARCH_RADIUS = 500
@@ -34,13 +33,9 @@ async def fetch(
         return _pick_locker(rows, store_name)
 
     if is_restroom:
-        # 1순위: data.go.kr 공중화장실 (전국·풍부도 높음)
+        # data.go.kr 행정안전부 공중화장실 (전국 53k+건 단일 출처)
         public_rows = await find_public_restroom(lat, lng, radius_m=_SEARCH_RADIUS)
-        if public_rows:
-            return _pick_public_restroom(public_rows, store_name)
-        # 2순위: 서울시 OA-22586 fallback
-        seoul_rows = await seoul_restroom_search(lat, lng, _SEARCH_RADIUS)
-        return _pick_seoul_restroom(seoul_rows, store_name)
+        return _pick_public_restroom(public_rows, store_name)
 
     return {}
 
@@ -88,34 +83,6 @@ def _pick_public_restroom(rows: list[dict], store_name: str) -> dict:
             "distance_m":        sel.get("_distance_m"),
         },
         "source": "public_restroom",
-    }
-
-
-def _pick_seoul_restroom(rows: list[dict], store_name: str) -> dict:
-    """서울시 mgisToiletPoi (OA-22586) fallback.
-    convenience_tools.seoul_restroom_search가 extra에 풍부한 필드를 이미 채워 옴."""
-    sel = _name_match(rows, store_name, key="name")
-    if not sel:
-        return {}
-    extra = sel.get("extra", {}) or {}
-    return {
-        "phone":       sel.get("phone", ""),
-        "addr":        sel.get("address", ""),
-        "homepage":    "",
-        "open_hours":  sel.get("open_hours", ""),
-        "image_urls":  [],
-        "details": {
-            "open_type":          extra.get("open_type", ""),
-            "days_closed":        extra.get("days_closed", ""),
-            "has_male":           extra.get("has_male", False),
-            "has_female":         extra.get("has_female", False),
-            "has_disabled":       extra.get("has_disabled", False),
-            "has_diaper_table":   extra.get("has_diaper_table", False),
-            "has_emergency_bell": extra.get("has_emergency_bell", False),
-            "extra_facilities":   extra.get("extra_facilities", []),
-            "distance_m":         sel.get("distance_m"),
-        },
-        "source": "seoul_openapi",
     }
 
 
