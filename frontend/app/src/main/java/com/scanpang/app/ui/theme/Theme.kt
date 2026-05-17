@@ -87,10 +87,6 @@ object ScanPangColors {
     val ArPoiSubtitle = Color(0x991C1B1F)
     /** AR 입력창 전송 칩 배경 rgba(107,114,128,0.1) */
     val ArSendChipBackground = Color(0x1A6B7280)
-    /** AR 화면 고정 틴트 rgba(232,240,254,0.09) */
-    val ArFreezeTint = Color(0x17E8F0FE)
-    /** AR 동결 시 카메라 FAB (Primary ~80%) */
-    val ArPrimaryTranslucent = Color(0xCC1A73E8)
     /** AR 추천 태그(할랄) 배경 */
     val ArRecommendTagHalalBackground = Color(0xFFF0F4FF)
     /** AR 검색 패널 테두리 */

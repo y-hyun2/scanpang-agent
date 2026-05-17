@@ -102,7 +102,6 @@ fun HomeScreen(
 ) {
     val context = LocalContext.current
     val onboardingPrefs = remember(context) { OnboardingPreferences(context) }
-    val appSettingsPrefs = remember(context) { com.scanpang.app.data.AppSettingsPreferences(context) }
     val recentlyViewedStore = remember(context) { RecentlyViewedStore(context) }
     val lifecycleOwner = LocalLifecycleOwner.current
 
@@ -135,7 +134,6 @@ fun HomeScreen(
         val fusedClient = LocationServices.getFusedLocationProviderClient(context)
         fusedClient.lastLocation.addOnSuccessListener { loc ->
             if (loc != null) {
-                appSettingsPrefs.setLastKnownLocation(loc.latitude, loc.longitude)
                 try {
                     @Suppress("DEPRECATION")
                     val geocoder = Geocoder(context, Locale.KOREAN)

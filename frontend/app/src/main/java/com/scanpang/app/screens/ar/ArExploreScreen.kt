@@ -1,24 +1,16 @@
 package com.scanpang.app.screens.ar
 
 import android.Manifest
-import android.app.Activity
 import android.content.pm.PackageManager
-import android.graphics.Bitmap
-import android.graphics.Rect
 import android.location.Location
 import android.opengl.Matrix
-import android.os.Handler
-import android.os.Looper
 import android.speech.SpeechRecognizer
 import android.util.Log
-import android.view.PixelCopy
-import android.view.View
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -45,7 +37,6 @@ import androidx.compose.material.icons.rounded.FilterList
 import androidx.compose.material.icons.rounded.Home
 import androidx.compose.material.icons.rounded.History
 import androidx.compose.material.icons.rounded.KeyboardArrowDown
-import androidx.compose.material.icons.rounded.Pause
 import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -77,10 +68,6 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.ImageBitmap
-import androidx.compose.ui.graphics.asImageBitmap
-import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.foundation.layout.offset
 import androidx.compose.ui.unit.IntOffset
@@ -202,9 +189,6 @@ fun ArExploreScreen(
     var isSearchOpen by remember { mutableStateOf(false) }
     var showArSearchResults by remember { mutableStateOf(false) }
 
-    var isFrozen by remember { mutableStateOf(false) }
-    var frozenBitmap by remember { mutableStateOf<ImageBitmap?>(null) }
-    val activityView = LocalView.current
     var isTtsOn by remember { mutableStateOf(true) }
 
     var isSttListening by remember { mutableStateOf(false) }
@@ -301,6 +285,7 @@ fun ArExploreScreen(
     val engine = rememberEngine()
     val api = remember { RetrofitClient.api }
     var hasAchievedHighAccuracy by remember { mutableStateOf(false) }
+    var showInitOverlay by remember { mutableStateOf(true) }
     var trackingMessage by remember { mutableStateOf("ARCore 초기화 중...") }
     var currentHeading by remember { mutableStateOf(0.0) }
     var currentAltitude by remember { mutableStateOf(0.0) }
@@ -327,6 +312,11 @@ fun ArExploreScreen(
         }
     }
 
+    LaunchedEffect(Unit) {
+        kotlinx.coroutines.delay(2000)
+        showInitOverlay = false
+    }
+
     Scaffold(
         modifier = modifier.fillMaxSize(),
         containerColor = Color.Transparent,
@@ -341,7 +331,7 @@ fun ArExploreScreen(
                 planeRenderer = false,
                 sessionConfiguration = { _, config ->
                     config.geospatialMode = Config.GeospatialMode.ENABLED
-                    config.depthMode = Config.DepthMode.AUTOMATIC
+                    config.depthMode = Config.DepthMode.DISABLED
                 },
                 onSessionUpdated = { session, frame ->
                     val earth = session.earth ?: return@ARScene
@@ -381,7 +371,7 @@ fun ArExploreScreen(
                     // ARCore 위치를 채팅 에이전트에 실시간 반영 → /ar/agent/chat 호출 시 정확한 위치 전달
                     agentService.updatePosition(currentLat, currentLng, currentHeading)
 
-                    if (hasAchievedHighAccuracy && !isFrozen) {
+                    if (hasAchievedHighAccuracy) {
                         trackingMessage = "위치 파악 완료 (오차: ${"%.1f".format(pose.horizontalAccuracy)}m)"
 
                         // 거리 업데이트
@@ -558,8 +548,8 @@ fun ArExploreScreen(
                             "VPS 정밀 탐색 중... (오차: ${"%.1f".format(pose.horizontalAccuracy)}m / 1.5m 미만 필요)"
                     }
 
-                    // 앵커 → 화면 좌표 투영 (프리즈 중에는 마지막 위치 유지)
-                    if (!isFrozen) {
+                    // 앵커 → 화면 좌표 투영
+                    run {
                         val newPositions = mutableMapOf<String, Offset>()
                         val viewMatrix = FloatArray(16)
                         camera.getViewMatrix(viewMatrix, 0)
@@ -590,24 +580,20 @@ fun ArExploreScreen(
                 },
             )
 
-            // 화면 고정 시 반투명 오버레이
-            // ── 프리징된 화면 (캡처 이미지) ──
-            frozenBitmap?.let { bmp ->
-                Image(
-                    bitmap = bmp,
-                    contentDescription = null,
-                    modifier = Modifier.fillMaxSize(),
-                    contentScale = ContentScale.Crop,
-                )
-            }
-
-            // 화면 고정 시 반투명 오버레이 (프리징됨 표시)
-            if (isFrozen) {
+            // AR 엔진 초기화 중 노이즈 화면 가림 (2초 타임아웃)
+            if (showInitOverlay) {
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
-                        .background(ScanPangColors.ArFreezeTint),
-                )
+                        .background(Color.Black.copy(alpha = 0.55f)),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text(
+                        text = "위치 파악 중...",
+                        style = ScanPangType.arStatusPill15,
+                        color = Color.White,
+                    )
+                }
             }
 
             // ── 상단 바 ──
@@ -651,16 +637,9 @@ fun ArExploreScreen(
                         contentAlignment = Alignment.Center,
                     ) {
                         ArExploreStatusPill(
-                            isFrozen = isFrozen,
                             selectedFilters = categorySelection,
                             hasHighAccuracy = hasAchievedHighAccuracy,
-                            onClick = {
-                                if (isFrozen) {
-                                    isFrozen = false
-                                } else {
-                                    isFilterOpen = true
-                                }
-                            },
+                            onClick = { isFilterOpen = true },
                         )
                     }
                     ArCircleIconButton(
@@ -693,27 +672,7 @@ fun ArExploreScreen(
                         val msg = if (isTtsOn) "음성 안내 켜짐" else "음성 안내 꺼짐"
                         scope.launch { snackbarHostState.showSnackbar(msg) }
                     },
-                    onCameraClick = {
-                        if (isFrozen) {
-                            // 프리즈 해제
-                            isFrozen = false
-                            frozenBitmap = null
-                        } else {
-                            // 캡처 → 프리즈
-                            captureArScene(activityView) { bitmap ->
-                                if (bitmap != null) {
-                                    frozenBitmap = bitmap.asImageBitmap()
-                                    isFrozen = true
-                                } else {
-                                    scope.launch {
-                                        snackbarHostState.showSnackbar("화면 캡처에 실패했어요")
-                                    }
-                                }
-                            }
-                        }
-                    },
                     isTtsOn = isTtsOn,
-                    isFrozen = isFrozen,
                     isTtsPlaying = isTtsPlaying,
                 )
             }
@@ -1078,48 +1037,11 @@ private fun BoxScope.ArDynamicPoiMarkers(
 
 @Composable
 private fun ArExploreStatusPill(
-    isFrozen: Boolean,
     selectedFilters: Set<String>,
     hasHighAccuracy: Boolean = true,
     onClick: () -> Unit,
 ) {
     when {
-        isFrozen -> {
-            Surface(
-                modifier = Modifier
-                    .height(ScanPangDimens.arStatusPillHeight)
-                    .clip(CircleShape)
-                    .clickable(onClick = onClick),
-                shape = CircleShape,
-                color = ScanPangColors.Primary,
-            ) {
-                Row(
-                    modifier = Modifier.padding(horizontal = ScanPangDimens.arStatusPillHorizontalPad),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(ScanPangSpacing.xs),
-                ) {
-                    Icon(
-                        imageVector = Icons.Rounded.Pause,
-                        contentDescription = null,
-                        modifier = Modifier.size(ScanPangDimens.icon18),
-                        tint = Color.White,
-                    )
-                    Text(
-                        text = "화면 고정 중",
-                        style = ScanPangType.arStatusPill15,
-                        color = Color.White,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                    Icon(
-                        imageVector = Icons.Rounded.KeyboardArrowDown,
-                        contentDescription = null,
-                        modifier = Modifier.size(ScanPangDimens.arNavDestinationChevron),
-                        tint = Color.White,
-                    )
-                }
-            }
-        }
         !hasHighAccuracy -> {
             Surface(
                 modifier = Modifier
@@ -1487,38 +1409,3 @@ private fun direction(
     return (x3 - x1) * (y2 - y1) - (y3 - y1) * (x2 - x1)
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// 스크린 프리징 — PixelCopy로 현재 화면 캡처
-// ─────────────────────────────────────────────────────────────────────────────
-
-/**
- * 현재 화면(ARScene + UI overlay 포함)을 Bitmap으로 캡처.
- * PixelCopy.request의 callback은 비동기로 실행됨.
- */
-private fun captureArScene(view: View, onCaptured: (Bitmap?) -> Unit) {
-    val window = (view.context as? Activity)?.window
-    if (window == null || view.width <= 0 || view.height <= 0) {
-        onCaptured(null)
-        return
-    }
-    try {
-        val bitmap = Bitmap.createBitmap(view.width, view.height, Bitmap.Config.ARGB_8888)
-        val location = IntArray(2)
-        view.getLocationInWindow(location)
-        val rect = Rect(
-            location[0], location[1],
-            location[0] + view.width, location[1] + view.height,
-        )
-        PixelCopy.request(
-            window, rect, bitmap,
-            { result ->
-                if (result == PixelCopy.SUCCESS) onCaptured(bitmap)
-                else onCaptured(null)
-            },
-            Handler(Looper.getMainLooper()),
-        )
-    } catch (e: Exception) {
-        Log.e("ArExplore", "캡처 실패: ${e.message}")
-        onCaptured(null)
-    }
-}

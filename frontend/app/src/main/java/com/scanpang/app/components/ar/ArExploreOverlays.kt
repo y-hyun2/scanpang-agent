@@ -1069,9 +1069,7 @@ fun ArExploreFilterPanelFigma(
 @Composable
 fun BoxScope.ArExploreSideColumn(
     onTtsClick: () -> Unit,
-    onCameraClick: () -> Unit,
     isTtsOn: Boolean,
-    isFrozen: Boolean,
     isTtsPlaying: Boolean = false,
 ) {
     Column(
@@ -1092,13 +1090,6 @@ fun BoxScope.ArExploreSideColumn(
             surfaceColor = ScanPangColors.ArOverlayWhite85,
             iconTint = if (isTtsOn) ScanPangColors.OnSurfaceStrong else ScanPangColors.ArTtsOffIconTint,
             modifier = Modifier.headsetPulseIfTtsPlaying(isTtsPlaying && isTtsOn),
-        )
-        ArExploreRoundSideButton(
-            icon = Icons.Rounded.CameraAlt,
-            contentDescription = "화면 고정",
-            onClick = onCameraClick,
-            surfaceColor = if (isFrozen) ScanPangColors.ArPrimaryTranslucent else ScanPangColors.ArOverlayWhite93,
-            iconTint = if (isFrozen) Color.White else ScanPangColors.OnSurfaceStrong,
         )
     }
 }
