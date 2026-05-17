@@ -424,7 +424,7 @@ fun ArRealSceneView(
                             anchor = anchor,
                             direction = dir,
                             spinMs = 800L,        // ← 목적지 전용 파라미터
-                            switchAngle = 120f,   // ← 목적지 전용 파라미터
+                            switchAngle = 90f,    // ← 목적지 전용 파라미터
                             engine = engine,
                             viewNodeManager = viewNodeManager,
                             materialLoader = materialLoader,
@@ -816,7 +816,7 @@ private fun launchBadgeSpinAnim(
     scope: kotlinx.coroutines.CoroutineScope,
 ) {
     val startY = front.rotation.y
-    val startPitch = front.rotation.x
+    val startPitch = 0f
     scope.launch {
         var switched = false
         var curFront = front
@@ -832,16 +832,10 @@ private fun launchBadgeSpinAnim(
                 val newFront = runCatching {
                     ViewNode2(engine, viewNodeManager, materialLoader, unlit = true) {
                         androidx.compose.material3.MaterialTheme {
-                            if (direction == BadgeDirection.RIGHT) {
-                                Box(modifier = Modifier.scale(-1f, -1f)) {
-                                    ArInWorldBadgeContent(direction = direction, isArrived = true)
-                                }
-                            } else {
-                                ArInWorldBadgeContent(direction = direction, isArrived = true)
-                            }
+                            ArInWorldBadgeContent(direction = direction, isArrived = true)
                         }
                     }.apply {
-                        rotation = Float3(startPitch + switchAngle, startY, 0f)
+                        rotation = Float3(90f, startY, 0f)
                     }.also { n -> runCatching { n.materialInstance.setCullingMode(com.google.android.filament.Material.CullingMode.BACK) } }
                 }.getOrNull() ?: return@launch
                 runCatching { anchor.removeChildNode(curFront) }
@@ -854,16 +848,10 @@ private fun launchBadgeSpinAnim(
                     val newBack = runCatching {
                         ViewNode2(engine, viewNodeManager, materialLoader, unlit = true) {
                             androidx.compose.material3.MaterialTheme {
-                                if (direction == BadgeDirection.RIGHT) {
-                                    Box(modifier = Modifier.scale(-1f, -1f)) {
-                                        ArInWorldBadgeContent(direction = direction, isArrived = true)
-                                    }
-                                } else {
-                                    ArInWorldBadgeContent(direction = direction, isArrived = true)
-                                }
+                                ArInWorldBadgeContent(direction = direction, isArrived = true)
                             }
                         }.apply {
-                            rotation = Float3(startPitch + switchAngle, startY + 180f, 0f)
+                            rotation = Float3(90f, startY + 180f, 0f)
                         }.also { n -> runCatching { n.materialInstance.setCullingMode(com.google.android.filament.Material.CullingMode.BACK) } }
                     }.getOrNull()
                     runCatching { anchor.removeChildNode(oldBack) }
@@ -874,8 +862,14 @@ private fun launchBadgeSpinAnim(
                 }
             }
 
-            runCatching { curFront.rotation = Float3(startPitch + angle, startY, 0f) }
-            runCatching { curBack?.rotation = Float3(startPitch + angle, startY + 180f, 0f) }
+            if (switched) {
+                // 초록 배지: 90° → 0° (반대편에서 펼쳐지며 나타남)
+                runCatching { curFront.rotation = Float3(180f - angle, startY, 0f) }
+                runCatching { curBack?.rotation = Float3(180f - angle, startY + 180f, 0f) }
+            } else {
+                runCatching { curFront.rotation = Float3(angle, startY, 0f) }
+                runCatching { curBack?.rotation = Float3(angle, startY + 180f, 0f) }
+            }
             if (progress >= 1f) break
             delay(16)
         }
