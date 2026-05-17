@@ -275,7 +275,8 @@ fun ArNavigationMapScreen(
                 modifier = Modifier
                     .align(Alignment.TopCenter)
                     .fillMaxWidth()
-                    .fillMaxHeight(0.75f),
+                    .fillMaxHeight()
+                    .padding(bottom = ScanPangDimens.arChatAreaMaxHeight + ScanPangDimens.bottomBarContainerHeight),
             )
         }
 
