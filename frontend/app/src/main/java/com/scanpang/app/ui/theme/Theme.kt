@@ -265,7 +265,7 @@ object ScanPangDimens {
     val arPoiOneTop: Dp = 222.dp
     val arPoiTwoStart: Dp = 272.dp
     val arPoiTwoTop: Dp = 309.dp
-    val arChatAreaMaxHeight: Dp = 230.dp
+    val arChatAreaMaxHeight: Dp = 220.dp
     val arChatAreaBottomPad: Dp = 10.dp
     val arChatBubbleGap: Dp = 10.dp
     val arInputBarMinHeight: Dp = 60.dp
