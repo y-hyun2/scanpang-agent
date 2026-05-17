@@ -44,6 +44,8 @@ import com.scanpang.app.components.ar.ArNavDestinationPill
 import com.scanpang.app.components.ar.ArNavSideVolumeCamera
 import com.scanpang.app.components.ar.ArNavTopHud
 import com.scanpang.app.components.ar.ArPoiFloatingDetailOverlay
+import com.scanpang.app.components.ar.ArNavStopNavigationSheet
+import com.scanpang.app.components.ar.ArNavStopConfirmDialog
 import com.scanpang.app.components.ar.ArPoiTabBuilding
 import com.scanpang.app.components.ScanPangMainTab
 import com.scanpang.app.components.ScanPangTabBar
@@ -124,6 +126,8 @@ fun ArNavigationMapScreen(
     var activeTab by remember { mutableStateOf(NAV_TAB_MAP) }
     var aiQuery by remember { mutableStateOf("") }
     var isTtsOn by remember { mutableStateOf(true) }
+    var showStopNavSheet by remember { mutableStateOf(false) }
+    var showStopConfirmDialog by remember { mutableStateOf(false) }
 
     // 공간증강 (주변 건물 인식) 상태
     var spaceAugmentEnabled by remember { mutableStateOf(true) }
@@ -188,6 +192,7 @@ fun ArNavigationMapScreen(
                         ScanPangColors.Success
                     else
                         ScanPangColors.Primary,
+                    onClick = { showStopNavSheet = true },
                 )
             },
         )
@@ -328,6 +333,38 @@ fun ArNavigationMapScreen(
                 modifier = Modifier.fillMaxSize(),
                 arOverlay = placeResult?.ar_overlay,
                 docent = placeResult?.docent,
+            )
+        }
+
+        if (showStopNavSheet) {
+            ArNavStopNavigationSheet(
+                destinationName = displayDestinationName,
+                onDismiss = { showStopNavSheet = false },
+                onStopNavigation = {
+                    showStopNavSheet = false
+                    showStopConfirmDialog = true
+                },
+                modifier = Modifier.fillMaxSize(),
+            )
+        }
+
+        if (showStopConfirmDialog) {
+            ArNavStopConfirmDialog(
+                onNavigateToExplore = {
+                    showStopConfirmDialog = false
+                    navController.navigate(AppRoutes.ArExplore) {
+                        popUpTo(AppRoutes.Home) { inclusive = false }
+                        launchSingleTop = true
+                    }
+                },
+                onNavigateToHome = {
+                    showStopConfirmDialog = false
+                    navController.navigate(AppRoutes.Home) {
+                        popUpTo(AppRoutes.Home) { inclusive = false }
+                        launchSingleTop = true
+                    }
+                },
+                onDismiss = { showStopConfirmDialog = false },
             )
         }
     }

@@ -68,6 +68,9 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.TextButton
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import com.scanpang.app.ui.ScanPangFigmaAssets
@@ -931,5 +934,106 @@ fun BoxScope.ArNavDefaultPoiMarkers(
             top = ScanPangDimens.arNavPoiTwoTop,
         ),
         onClick = onExchangePoiClick,
+    )
+}
+
+@Composable
+fun ArNavStopNavigationSheet(
+    destinationName: String,
+    onDismiss: () -> Unit,
+    onStopNavigation: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Box(modifier = modifier.fillMaxSize()) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .clickable(
+                    indication = null,
+                    interactionSource = remember { MutableInteractionSource() },
+                    onClick = onDismiss,
+                ),
+        )
+        Surface(
+            modifier = Modifier
+                .align(Alignment.TopCenter)
+                .statusBarsPadding()
+                .padding(top = ScanPangDimens.arNavTopFab40 + ScanPangDimens.arTopBarBottomPadding)
+                .padding(horizontal = ScanPangDimens.arTopBarHorizontal)
+                .fillMaxWidth()
+                .clickable(enabled = false, onClick = {}),
+            shape = ScanPangShapes.radius16,
+            color = ScanPangColors.Surface,
+            shadowElevation = ScanPangDimens.arPoiCardShadowElevation,
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(ScanPangSpacing.md),
+                verticalArrangement = Arrangement.spacedBy(ScanPangSpacing.sm),
+            ) {
+                Surface(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(ScanPangDimens.arNavGuideInputHeight),
+                    shape = ScanPangShapes.filterChip,
+                    color = ScanPangColors.DangerStrong,
+                    onClick = onStopNavigation,
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Text(
+                            text = "길안내 종료",
+                            style = ScanPangType.title16SemiBold,
+                            color = Color.White,
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun ArNavStopConfirmDialog(
+    onNavigateToExplore: () -> Unit,
+    onNavigateToHome: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Text(
+                text = "길안내를 종료할까요?",
+                style = ScanPangType.arFilterTitle16,
+                color = ScanPangColors.OnSurfaceStrong,
+            )
+        },
+        text = {
+            Text(
+                text = "이동할 위치를 선택해주세요.",
+                style = ScanPangType.body14Regular,
+                color = ScanPangColors.OnSurfaceMuted,
+            )
+        },
+        confirmButton = {
+            TextButton(onClick = onNavigateToExplore) {
+                Text(
+                    text = "탐색으로 돌아가기",
+                    style = ScanPangType.title14,
+                    color = ScanPangColors.Primary,
+                )
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onNavigateToHome) {
+                Text(
+                    text = "홈으로 돌아가기",
+                    style = ScanPangType.title14,
+                    color = ScanPangColors.OnSurfaceMuted,
+                )
+            }
+        },
+        containerColor = ScanPangColors.Surface,
+        shape = ScanPangShapes.radius16,
     )
 }
