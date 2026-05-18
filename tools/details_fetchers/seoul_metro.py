@@ -153,7 +153,9 @@ async def _db_exits(station: str, line: Optional[str]) -> list[dict]:
             rows = await conn.fetch(
                 "SELECT exit_no, facility_name FROM subway_exits "
                 "WHERE station_name = ANY($1::text[]) "
-                "ORDER BY line, exit_no, facility_name",
+                "ORDER BY line, "
+                "(CASE WHEN exit_no ~ '^[0-9]+$' THEN exit_no::int ELSE 99 END), "
+                "facility_name",
                 variants,
             )
     by_exit: dict[str, list[str]] = {}

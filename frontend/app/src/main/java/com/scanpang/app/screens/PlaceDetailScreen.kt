@@ -304,38 +304,44 @@ private fun PlaceDetailContent(
         DetailScreenDivider()
     }
 
-    // 지하철역 전용 섹션
-    if (subwayDetail != null) {
-        if (subwayDetail.scheduleUp != null || subwayDetail.scheduleDown != null) {
-            DetailSection(title = "운행시간") {
-                SubwayScheduleSection(subwayDetail)
-            }
-            DetailScreenDivider()
-        }
-        if (subwayDetail.exits.isNotEmpty()) {
-            DetailSection(title = "출구 정보") {
-                SubwayExitsSection(subwayDetail.exits)
-            }
-            DetailScreenDivider()
-        }
-        if (subwayDetail.fastAlights.isNotEmpty()) {
-            DetailSection(title = "빠른 하차 정보") {
-                SubwayFastAlightsSection(subwayDetail.fastAlights)
-            }
-            DetailScreenDivider()
-        }
-    }
-
+    // 상세 정보(공통) — 지하철 섹션 위로. 피그마 시안 순서.
+    // 지하철은 영업시간을 별도 '열차 시간표' 섹션으로 표시하므로 여기선 숨김.
+    // Kakao place.map URL(homepage)은 공식 웹사이트가 아니라 카카오 자체 페이지라 지하철엔 숨김.
+    val isSubway = subwayDetail != null
     DetailSection(title = "상세 정보") {
         Column(verticalArrangement = Arrangement.spacedBy(INFO_ROW_SPACING)) {
-            if (place.openHours.isNotBlank()) DetailInfoLine(Icons.Rounded.AccessTime, "영업시간", place.openHours)
+            if (!isSubway && place.openHours.isNotBlank())
+                DetailInfoLine(Icons.Rounded.AccessTime, "영업시간", place.openHours)
             if (place.address.isNotBlank()) DetailInfoLine(Icons.Rounded.Place, "주소", place.address)
             if (place.phone.isNotBlank()) DetailInfoLine(Icons.Rounded.Phone, "전화", place.phone)
             if (place.floor.isNotBlank()) DetailInfoLine(Icons.Rounded.Store, "매장 층수", place.floor)
             if (place.parking.isNotBlank()) DetailInfoLine(Icons.Rounded.LocalParking, "주차 가능 여부", place.parking)
-            if (place.website.isNotBlank()) DetailInfoLine(Icons.Rounded.Language, "웹사이트", place.website)
+            if (!isSubway && place.website.isNotBlank())
+                DetailInfoLine(Icons.Rounded.Language, "웹사이트", place.website)
             if (place.convenienceServices.isNotBlank()) DetailInfoLine(Icons.Rounded.MiscellaneousServices, "편의시설", place.convenienceServices)
             if (place.departments.isNotBlank()) DetailInfoLine(Icons.Rounded.Healing, "진료과목", place.departments)
+        }
+    }
+
+    // 지하철역 전용 섹션 — 열차 시간표 → 빠른 하차 → 출구 정보 순서
+    if (subwayDetail != null) {
+        if (subwayDetail.scheduleUp != null || subwayDetail.scheduleDown != null) {
+            DetailScreenDivider()
+            DetailSection(title = "열차 시간표") {
+                SubwayScheduleSection(subwayDetail)
+            }
+        }
+        if (subwayDetail.fastAlights.isNotEmpty()) {
+            DetailScreenDivider()
+            DetailSection(title = "빠른 하차") {
+                SubwayFastAlightsSection(subwayDetail.fastAlights)
+            }
+        }
+        if (subwayDetail.exits.isNotEmpty()) {
+            DetailScreenDivider()
+            DetailSection(title = "출구 정보") {
+                SubwayExitsSection(subwayDetail.exits)
+            }
         }
     }
 
@@ -689,13 +695,22 @@ private fun SubwayExitsSection(exits: List<SubwayExit>) {
 
 @Composable
 private fun SubwayFastAlightsSection(fastAlights: List<SubwayFastAlight>) {
+    // direction(예: 회현/충무로)별로 첫 항목만 — 백엔드 응답엔 동일 방면이 차량문·
+    // 이동설비별로 중복돼 들어오므로 화면엔 방면당 1건만 (피그마 시안과 동일).
+    val perDirection = fastAlights
+        .filter { it.direction.isNotBlank() && it.door.isNotBlank() }
+        .groupBy { it.direction }
+        .map { (_, items) -> items.first() }
+        .take(2)
+    if (perDirection.isEmpty()) return
+
     Surface(
         modifier = Modifier.fillMaxWidth(),
         shape = ScanPangShapes.radius12,
         color = ScanPangColors.Background,
     ) {
         Row(modifier = Modifier.padding(16.dp)) {
-            fastAlights.take(2).forEachIndexed { index, item ->
+            perDirection.forEachIndexed { index, item ->
                 Column(
                     modifier = Modifier.weight(1f),
                     verticalArrangement = Arrangement.spacedBy(6.dp),
@@ -711,7 +726,7 @@ private fun SubwayFastAlightsSection(fastAlights: List<SubwayFastAlight>) {
                         color = ScanPangColors.OnSurfaceStrong,
                     )
                 }
-                if (index == 0 && fastAlights.size >= 2) {
+                if (index == 0 && perDirection.size >= 2) {
                     Box(
                         modifier = Modifier
                             .padding(horizontal = 8.dp)
