@@ -333,12 +333,24 @@
     <string name="ar_nav_guiding">%1$s 안내 중</string>
     <string name="ar_explore_ask_anything">%1$s 무엇이든 물어보세요</string>
     <string name="ar_nav_ai_placeholder">무엇이든 물어보세요</string>
+    <string name="ar_nav_straight_label">직진</string>
+    <string name="ar_nav_tap_to_view">탭해서 보기</string>
 
     <!-- ArExploreScreen -->
     <string name="ar_screen_freeze_desc">화면 고정</string>
     <string name="ar_search_desc">검색</string>
     <string name="ar_frozen_status">화면 고정 중</string>
     <string name="ar_exploring_status">AR 탐색 중</string>
+    <string name="ar_tracking_init">ARCore 초기화 중…</string>
+    <string name="ar_tracking_locating">위치 파악 중…</string>
+    <string name="ar_tracking_complete_format">위치 파악 완료 (오차: %1$.1fm)</string>
+    <string name="ar_tracking_vps_searching_format">VPS 정밀 탐색 중… (오차: %1$.1fm / 1.5m 미만 필요)</string>
+    <string name="ar_building_no_name">이름 없는 건물</string>
+    <string name="ar_poi_analyzing">분석 중…</string>
+    <string name="ar_vps_searching">VPS 탐색 중…</string>
+    <string name="ar_explore_scanning">AR 탐색 중</string>
+    <string name="ar_explore_suggestion_tags">추천 검색어</string>
+    <string name="ar_search_sort_label">정확도 · 거리순</string>
     <!-- %1$s = 첫 번째 필터명, %2$d = 나머지 개수 -->
     <string name="ar_filter_pill_more">%1$s 외 %2$d개</string>
     <string name="ar_halal_certified">할랄 인증</string>

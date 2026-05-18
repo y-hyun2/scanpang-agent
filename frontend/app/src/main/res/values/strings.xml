@@ -348,12 +348,25 @@
     <string name="ar_nav_guiding">Navigating to %1$s</string>
     <string name="ar_explore_ask_anything">%1$s Please ask anything</string>
     <string name="ar_nav_ai_placeholder">Ask me anything</string>
+    <string name="ar_nav_straight_label">Straight</string>
+    <string name="ar_nav_tap_to_view">Tap to view</string>
+
 
     <!-- ArExploreScreen -->
     <string name="ar_screen_freeze_desc">Freeze screen</string>
     <string name="ar_search_desc">Search</string>
     <string name="ar_frozen_status">Screen frozen</string>
     <string name="ar_exploring_status">Exploring AR</string>
+    <string name="ar_tracking_init">Initializing ARCore…</string>
+    <string name="ar_tracking_locating">Locating…</string>
+    <string name="ar_tracking_complete_format">Location found (error: %1$.1fm)</string>
+    <string name="ar_tracking_vps_searching_format">Searching VPS… (%1$.1fm / need &lt;1.5m)</string>
+    <string name="ar_building_no_name">Unnamed building</string>
+    <string name="ar_poi_analyzing">Analyzing…</string>
+    <string name="ar_vps_searching">Searching VPS…</string>
+    <string name="ar_explore_scanning">Scanning AR</string>
+    <string name="ar_explore_suggestion_tags">Suggested</string>
+    <string name="ar_search_sort_label">By accuracy · distance</string>
     <!-- %1$s = 첫 번째 필터명, %2$d = 나머지 개수 -->
     <string name="ar_filter_pill_more">%1$s +%2$d more</string>
     <string name="ar_halal_certified">Halal Certified</string>
