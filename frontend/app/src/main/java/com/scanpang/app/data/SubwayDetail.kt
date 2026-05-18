@@ -1,6 +1,7 @@
 package com.scanpang.app.data
 
 import com.scanpang.app.data.remote.PlaceDetailResponse
+import java.util.Calendar
 
 /**
  * 지하철역 카테고리(`category_key="subway"`) 매장의 상세 화면 전용 모델.
@@ -32,14 +33,42 @@ data class SubwayFastAlight(
     val facPos: String = "",
 )
 
+/**
+ * 요일 분류 — TAGO `dailyTypeCode`와 1:1 매핑.
+ * - WEEKDAY: 평일 (01)
+ * - SATURDAY: 토요일 (02)
+ * - HOLIDAY: 일·공휴일 (03)
+ */
+enum class ScheduleDay { WEEKDAY, SATURDAY, HOLIDAY }
+
 data class SubwayDetail(
     val line: String = "",
     val exitCount: Int = 0,
     val exits: List<SubwayExit> = emptyList(),
+    // 평일 (기존 호환용 — 매퍼가 weekday_* 키에서 채움)
     val scheduleUp: SubwayScheduleDir? = null,
     val scheduleDown: SubwayScheduleDir? = null,
+    // 토요일 / 일·공휴일
+    val saturdayUp: SubwayScheduleDir? = null,
+    val saturdayDown: SubwayScheduleDir? = null,
+    val holidayUp: SubwayScheduleDir? = null,
+    val holidayDown: SubwayScheduleDir? = null,
     val fastAlights: List<SubwayFastAlight> = emptyList(),
-)
+) {
+    /** 오늘 날짜 기준 요일 분류 — UI 표시용. (한국 공휴일 별도 데이터 없으니 일요일=HOLIDAY) */
+    fun todayKind(): ScheduleDay = when (Calendar.getInstance().get(Calendar.DAY_OF_WEEK)) {
+        Calendar.SATURDAY -> ScheduleDay.SATURDAY
+        Calendar.SUNDAY   -> ScheduleDay.HOLIDAY
+        else              -> ScheduleDay.WEEKDAY
+    }
+
+    /** 요일 분류 → (상행, 하행) 시간표. 해당 요일이 비면 평일로 fallback (예: 토요일 데이터 누락 시). */
+    fun scheduleFor(day: ScheduleDay): Pair<SubwayScheduleDir?, SubwayScheduleDir?> = when (day) {
+        ScheduleDay.WEEKDAY  -> scheduleUp to scheduleDown
+        ScheduleDay.SATURDAY -> (saturdayUp ?: scheduleUp) to (saturdayDown ?: scheduleDown)
+        ScheduleDay.HOLIDAY  -> (holidayUp  ?: scheduleUp) to (holidayDown  ?: scheduleDown)
+    }
+}
 
 
 // ── 매퍼 ────────────────────────────────────────────────────────────────
@@ -85,11 +114,15 @@ fun PlaceDetailResponse.toSubwayDetail(): SubwayDetail? {
     } ?: emptyList()
 
     return SubwayDetail(
-        line       = (d["line"] as? String).orEmpty(),
-        exitCount  = (d["exit_count"] as? Number)?.toInt() ?: exits.size,
-        exits      = exits,
-        scheduleUp = mapDir("weekday_up"),
+        line         = (d["line"] as? String).orEmpty(),
+        exitCount    = (d["exit_count"] as? Number)?.toInt() ?: exits.size,
+        exits        = exits,
+        scheduleUp   = mapDir("weekday_up"),
         scheduleDown = mapDir("weekday_down"),
-        fastAlights = fastAlights,
+        saturdayUp   = mapDir("saturday_up"),
+        saturdayDown = mapDir("saturday_down"),
+        holidayUp    = mapDir("holiday_up"),
+        holidayDown  = mapDir("holiday_down"),
+        fastAlights  = fastAlights,
     )
 }

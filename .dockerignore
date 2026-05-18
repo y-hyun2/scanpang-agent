@@ -1,0 +1,12 @@
+.env
+.git
+__pycache__
+**/__pycache__
+*.pyc
+*.pyo
+chroma_db
+frontend
+tests
+logs
+*.jsonl
+.env.example

@@ -100,21 +100,28 @@ def _hhmm(t: str) -> str:
 
 
 async def _tago_schedule(client: httpx.AsyncClient, key: str, sid: str) -> dict:
-    """평일 상하행 첫차/막차 시각."""
-    async def fetch(updown: str) -> list[dict]:
+    """요일·방향별 첫차/막차 시각 — 평일·토·일/공휴일 × 상하행 = 6종.
+    TAGO API totalCount 가 230 가량이라 numOfRows=1000 으로 1페이지에 다 받음."""
+    async def fetch(daily: str, updown: str) -> list[dict]:
         try:
             r = await client.get(
                 f"{_TAGO_BASE}/GetSubwaySttnAcctoSchdulList",
                 params={"serviceKey": key, "subwayStationId": sid,
-                        "dailyTypeCode": "01", "upDownTypeCode": updown, **_COMMON},
+                        "dailyTypeCode": daily, "upDownTypeCode": updown,
+                        "_type": "json", "numOfRows": 1000, "pageNo": 1},
             )
             r.raise_for_status()
             return _items(r.json())
         except Exception as e:
-            print(f"[seoul_metro] TAGO 시간표({updown}) 실패: {e}")
+            print(f"[seoul_metro] TAGO 시간표({daily}/{updown}) 실패: {e}")
             return []
 
-    up, down = await asyncio.gather(fetch("U"), fetch("D"))
+    # 6개 호출 병렬 — 평일=01, 토요일=02, 일/공휴일=03
+    (wu, wd, su, sd, hu, hd) = await asyncio.gather(
+        fetch("01", "U"), fetch("01", "D"),
+        fetch("02", "U"), fetch("02", "D"),
+        fetch("03", "U"), fetch("03", "D"),
+    )
 
     def minmax(rows: list[dict]) -> tuple[str, str]:
         times = [t for r in rows
@@ -123,13 +130,21 @@ async def _tago_schedule(client: httpx.AsyncClient, key: str, sid: str) -> dict:
             return "", ""
         return _hhmm(min(times)), _hhmm(max(times))
 
-    up_first,   up_last   = minmax(up)
-    down_first, down_last = minmax(down)
+    def dir_dict(rows: list[dict]) -> dict:
+        first, last = minmax(rows)
+        return {
+            "first":  first,
+            "last":   last,
+            "toward": (rows[0].get("endSubwayStationNm") if rows else ""),
+        }
+
     return {
-        "weekday_up":   {"first": up_first,   "last": up_last,
-                         "toward": (up[0].get("endSubwayStationNm") if up else "")},
-        "weekday_down": {"first": down_first, "last": down_last,
-                         "toward": (down[0].get("endSubwayStationNm") if down else "")},
+        "weekday_up":   dir_dict(wu),
+        "weekday_down": dir_dict(wd),
+        "saturday_up":  dir_dict(su),
+        "saturday_down":dir_dict(sd),
+        "holiday_up":   dir_dict(hu),
+        "holiday_down": dir_dict(hd),
     }
 
 
@@ -153,7 +168,9 @@ async def _db_exits(station: str, line: Optional[str]) -> list[dict]:
             rows = await conn.fetch(
                 "SELECT exit_no, facility_name FROM subway_exits "
                 "WHERE station_name = ANY($1::text[]) "
-                "ORDER BY line, exit_no, facility_name",
+                "ORDER BY line, "
+                "(CASE WHEN exit_no ~ '^[0-9]+$' THEN exit_no::int ELSE 99 END), "
+                "facility_name",
                 variants,
             )
     by_exit: dict[str, list[str]] = {}
