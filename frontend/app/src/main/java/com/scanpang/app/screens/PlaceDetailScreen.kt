@@ -57,6 +57,7 @@ import com.scanpang.app.data.ExchangeRate
 import com.scanpang.app.data.MenuItem
 import com.scanpang.app.data.Place
 import com.scanpang.app.data.RestaurantPlace
+import com.scanpang.app.data.ScheduleDay
 import com.scanpang.app.data.SubwayDetail
 import com.scanpang.app.data.SubwayExit
 import com.scanpang.app.data.SubwayFastAlight
@@ -584,9 +585,42 @@ private fun PlaceDetailResponse.extractMenuItems(): List<MenuItem> {
 
 @Composable
 private fun SubwayScheduleSection(detail: SubwayDetail) {
+    // 오늘 요일을 default 선택. 사용자가 다른 요일도 볼 수 있게 토글 칩 제공.
+    var selectedDay by remember { mutableStateOf(detail.todayKind()) }
+    val (up, down) = detail.scheduleFor(selectedDay)
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        detail.scheduleUp?.let { SubwayScheduleRow("상행", it) }
-        detail.scheduleDown?.let { SubwayScheduleRow("하행", it) }
+        SubwayScheduleDayTabs(selected = selectedDay, onSelect = { selectedDay = it })
+        up?.let   { SubwayScheduleRow("상행", it) }
+        down?.let { SubwayScheduleRow("하행", it) }
+    }
+}
+
+@Composable
+private fun SubwayScheduleDayTabs(
+    selected: ScheduleDay,
+    onSelect: (ScheduleDay) -> Unit,
+) {
+    val items = listOf(
+        ScheduleDay.WEEKDAY  to "평일",
+        ScheduleDay.SATURDAY to "토요일",
+        ScheduleDay.HOLIDAY  to "일·공휴일",
+    )
+    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+        items.forEach { (day, label) ->
+            val isSelected = day == selected
+            Surface(
+                modifier = Modifier.clickable { onSelect(day) },
+                shape = RoundedCornerShape(8.dp),
+                color = if (isSelected) ScanPangColors.Primary else ScanPangColors.Background,
+            ) {
+                Text(
+                    text = label,
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                    style = ScanPangType.quickLabel12,
+                    color = if (isSelected) Color.White else ScanPangColors.OnSurfaceMuted,
+                )
+            }
+        }
     }
 }
 
