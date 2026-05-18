@@ -40,8 +40,6 @@ import com.scanpang.app.ui.theme.ScanPangColors
 import com.scanpang.app.ui.theme.ScanPangSpacing
 import com.scanpang.app.ui.theme.ScanPangTheme
 import com.scanpang.app.ui.theme.ScanPangType
-import androidx.compose.ui.res.stringResource
-import com.scanpang.app.R
 
 private val LoginGradient = Brush.verticalGradient(
     colorStops = arrayOf(
@@ -88,7 +86,7 @@ fun LoginScreen(
             ScanPangWordmark()
             Spacer(modifier = Modifier.height(16.dp))
             Text(
-                text = stringResource(R.string.login_tagline),
+                text = "AR로 여는 무슬림 여행자의 한국 탐험",
                 style = ScanPangType.meta13,
                 color = ScanPangColors.OnSurfaceMuted,
                 textAlign = TextAlign.Center,
@@ -137,22 +135,36 @@ private fun ScanPangWordmark() {
 private const val TERMS_TAG = "terms"
 private const val PRIVACY_TAG = "privacy"
 
-private fun buildTermsNoticeAnnotatedString(
-    prefix: String,
-    termsLink: String,
-    separator: String,
-    privacyLink: String,
-    suffix: String,
-): AnnotatedString = buildAnnotatedString {
-    withStyle(SpanStyle(color = ScanPangColors.OnSurfaceMuted)) { append(prefix) }
+private fun buildTermsNoticeAnnotatedString(): AnnotatedString = buildAnnotatedString {
+    withStyle(SpanStyle(color = ScanPangColors.OnSurfaceMuted)) {
+        append("로그인하면 ")
+    }
     pushStringAnnotation(tag = TERMS_TAG, annotation = TERMS_TAG)
-    withStyle(SpanStyle(color = ScanPangColors.Primary, textDecoration = TextDecoration.Underline)) { append(termsLink) }
+    withStyle(
+        SpanStyle(
+            color = ScanPangColors.Primary,
+            textDecoration = TextDecoration.Underline,
+        ),
+    ) {
+        append("이용약관")
+    }
     pop()
-    withStyle(SpanStyle(color = ScanPangColors.OnSurfaceMuted)) { append(separator) }
+    withStyle(SpanStyle(color = ScanPangColors.OnSurfaceMuted)) {
+        append(" 및 ")
+    }
     pushStringAnnotation(tag = PRIVACY_TAG, annotation = PRIVACY_TAG)
-    withStyle(SpanStyle(color = ScanPangColors.Primary, textDecoration = TextDecoration.Underline)) { append(privacyLink) }
+    withStyle(
+        SpanStyle(
+            color = ScanPangColors.Primary,
+            textDecoration = TextDecoration.Underline,
+        ),
+    ) {
+        append("개인정보 처리방침")
+    }
     pop()
-    withStyle(SpanStyle(color = ScanPangColors.OnSurfaceMuted)) { append(suffix) }
+    withStyle(SpanStyle(color = ScanPangColors.OnSurfaceMuted)) {
+        append("에 동의합니다")
+    }
 }
 
 @Composable
@@ -160,14 +172,7 @@ private fun TermsNotice(
     onTermsClick: () -> Unit,
     onPrivacyClick: () -> Unit,
 ) {
-    val strPrefix     = stringResource(R.string.login_terms_prefix)
-    val strTermsLink  = stringResource(R.string.login_terms_link)
-    val strSeparator  = stringResource(R.string.login_terms_separator)
-    val strPrivacyLink = stringResource(R.string.login_privacy_link)
-    val strSuffix     = stringResource(R.string.login_terms_suffix)
-    val annotated: AnnotatedString = remember(strPrefix, strTermsLink, strSeparator, strPrivacyLink, strSuffix) {
-        buildTermsNoticeAnnotatedString(strPrefix, strTermsLink, strSeparator, strPrivacyLink, strSuffix)
-    }
+    val annotated: AnnotatedString = remember { buildTermsNoticeAnnotatedString() }
     val noticeStyle = remember {
         ScanPangType.caption12.copy(textAlign = TextAlign.Center)
     }

@@ -63,8 +63,6 @@ import com.scanpang.app.ui.theme.ScanPangDimens
 import com.scanpang.app.ui.theme.ScanPangShapes
 import com.scanpang.app.ui.theme.ScanPangSpacing
 import com.scanpang.app.ui.theme.ScanPangType
-import androidx.compose.ui.res.stringResource
-import com.scanpang.app.R
 
 @Composable
 fun ProfileScreen(
@@ -96,9 +94,9 @@ fun ProfileScreen(
     }
 
     val savedName = onboardingPrefs.getDisplayName().orEmpty().trim()
-    val profileName = if (savedName.isNotEmpty()) savedName else stringResource(R.string.profile_default_name)
+    val profileName = if (savedName.isNotEmpty()) savedName else "여행자"
     val langLabel = OnboardingPreferences.languageDisplayLabel(languageCode)
-    val valueAddedShort = OnboardingPreferences.valueAddedShortLabel([context, valueAdded])
+    val valueAddedShort = OnboardingPreferences.valueAddedShortLabel(valueAdded)
 
     Scaffold(
         modifier = modifier.fillMaxSize(),
@@ -116,7 +114,7 @@ fun ProfileScreen(
         ) {
             item {
                 Text(
-                    text = stringResource(R.string.tab_profile),
+                    text = "내 정보",
                     style = ScanPangType.homeGreeting,
                     color = ScanPangColors.OnSurfaceStrong,
                 )
@@ -180,7 +178,7 @@ fun ProfileScreen(
                         )
                         Icon(
                             imageVector = Icons.Rounded.ChevronRight,
-                            contentDescription = stringResource(R.string.profile_edit_desc),
+                            contentDescription = "프로필 편집",
                             tint = ScanPangColors.OnSurfacePlaceholder,
                             modifier = Modifier.size(ScanPangDimens.tabIcon),
                         )
@@ -197,19 +195,19 @@ fun ProfileScreen(
                 }
             }
             item {
-                ProfileSettingsSectionLabel(text = stringResource(R.string.profile_section_travel))
+                ProfileSettingsSectionLabel(text = "여행 설정")
             }
             item {
                 ProfileSettingsCard {
                     ProfileSettingsRow(
-                        label = stringResource(R.string.settings_language_title),
+                        label = "언어 설정",
                         icon = Icons.Rounded.Language,
                         iconTint = ScanPangColors.Primary,
                         onClick = { navController.navigate(AppRoutes.SettingsLanguage) },
                         showDividerBelow = true,
                     )
                     ProfileSettingsRow(
-                        label = stringResource(R.string.settings_value_added_title),
+                        label = "부가가치 설정",
                         icon = Icons.Rounded.Tune,
                         iconTint = ScanPangColors.Primary,
                         onClick = { navController.navigate(AppRoutes.SettingsValueAdded) },
@@ -217,7 +215,7 @@ fun ProfileScreen(
                     )
                     // TTS 는 별도 페이지가 아닌 토글로 바로 ON/OFF — 사용자 요구사항.
                     ProfileSettingsToggleRow(
-                        label = stringResource(R.string.settings_tts_label),
+                        label = "TTS 음성 안내",
                         icon = Icons.Rounded.RecordVoiceOver,
                         iconTint = ScanPangColors.Primary,
                         checked = ttsEnabled,
@@ -230,12 +228,12 @@ fun ProfileScreen(
                 }
             }
             item {
-                ProfileSettingsSectionLabel(text = stringResource(R.string.profile_section_app))
+                ProfileSettingsSectionLabel(text = "앱 설정")
             }
             item {
                 ProfileSettingsCard {
                     ProfileSettingsRow(
-                        label = stringResource(R.string.settings_notification_title),
+                        label = "알림 설정",
                         icon = Icons.Rounded.Notifications,
                         iconTint = ScanPangColors.Primary,
                         onClick = { navController.navigate(AppRoutes.SettingsNotification) },
@@ -244,33 +242,33 @@ fun ProfileScreen(
                 }
             }
             item {
-                ProfileSettingsSectionLabel(text = stringResource(R.string.profile_section_other))
+                ProfileSettingsSectionLabel(text = "기타")
             }
             item {
                 ProfileSettingsCard {
                     ProfileSettingsRow(
-                        label = stringResource(R.string.profile_setting_help),
+                        label = "도움말",
                         icon = Icons.AutoMirrored.Rounded.Help,
                         iconTint = ScanPangColors.Primary,
                         onClick = { },
                         showDividerBelow = true,
                     )
                     ProfileSettingsRow(
-                        label = stringResource(R.string.profile_setting_contact),
+                        label = "문의하기",
                         icon = Icons.Rounded.Mail,
                         iconTint = ScanPangColors.Primary,
                         onClick = { },
                         showDividerBelow = true,
                     )
                     ProfileSettingsRow(
-                        label = stringResource(R.string.profile_setting_withdrawal),
+                        label = "회원탈퇴",
                         icon = Icons.Rounded.PersonRemove,
                         iconTint = ScanPangColors.OnSurfaceMuted,
                         onClick = { navController.navigate(AppRoutes.Withdrawal) },
                         showDividerBelow = true,
                     )
                     ProfileSettingsRow(
-                        label = stringResource(R.string.profile_setting_logout),
+                        label = "로그아웃",
                         icon = Icons.AutoMirrored.Rounded.Logout,
                         iconTint = ScanPangColors.DangerStrong,
                         labelColor = ScanPangColors.DangerStrong,

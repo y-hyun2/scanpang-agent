@@ -1,6 +1,5 @@
 package com.scanpang.app.screens
 
-import androidx.annotation.StringRes
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -56,11 +55,9 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
-import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavController
-import com.scanpang.app.R
 import com.scanpang.app.components.RecentSearchRow
 import com.scanpang.app.components.ScanPangCategoryTile
 import com.scanpang.app.components.ScanPangInlineSearchField
@@ -81,7 +78,7 @@ import com.scanpang.app.ui.theme.ScanPangType
  * `targetRoute` 가 있으면 그 라우트로 직접 이동, 없으면 `searchQuery` 로 검색을 실행한다.
  */
 private data class SearchRecommendCategory(
-    @StringRes val labelRes: Int,
+    val label: String,
     val icon: ImageVector,
     val iconTint: Color,
     val targetRoute: String? = null,
@@ -91,13 +88,13 @@ private data class SearchRecommendCategory(
 private fun pinnedRecommendsFor(valueAdded: ValueAdded?): List<SearchRecommendCategory> = when (valueAdded) {
     ValueAdded.HALAL -> listOf(
         SearchRecommendCategory(
-            labelRes = R.string.poi_halal_restaurant,
+            label = "할랄 식당",
             icon = Icons.Rounded.Restaurant,
             iconTint = ScanPangColors.CategoryRestaurant,
             targetRoute = AppRoutes.NearbyHalal,
         ),
         SearchRecommendCategory(
-            labelRes = R.string.poi_prayer_room,
+            label = "기도실",
             icon = Icons.Rounded.Mosque,
             iconTint = ScanPangColors.Primary,
             targetRoute = AppRoutes.NearbyPrayer,
@@ -105,7 +102,7 @@ private fun pinnedRecommendsFor(valueAdded: ValueAdded?): List<SearchRecommendCa
     )
     ValueAdded.VEGAN -> listOf(
         SearchRecommendCategory(
-            labelRes = R.string.search_recommend_vegan,
+            label = "비건 식당",
             icon = Icons.Rounded.Restaurant,
             iconTint = ScanPangColors.CategoryRestaurant,
             searchQuery = "비건 식당",
@@ -115,18 +112,18 @@ private fun pinnedRecommendsFor(valueAdded: ValueAdded?): List<SearchRecommendCa
 }
 
 private fun commonRecommendPool(): List<SearchRecommendCategory> = listOf(
-    SearchRecommendCategory(R.string.poi_cafe, Icons.Rounded.Coffee, ScanPangColors.CategoryCafe, searchQuery = "카페"),
-    SearchRecommendCategory(R.string.poi_shopping, Icons.Rounded.LocalMall, ScanPangColors.CategoryMall, searchQuery = "쇼핑"),
-    SearchRecommendCategory(R.string.poi_hospital, Icons.Rounded.LocalHospital, ScanPangColors.CategoryMedical, searchQuery = "병원"),
-    SearchRecommendCategory(R.string.poi_pharmacy, Icons.Rounded.Medication, ScanPangColors.CategoryMedical, searchQuery = "약국"),
-    SearchRecommendCategory(R.string.poi_exchange_counter, Icons.Rounded.CurrencyExchange, ScanPangColors.CategoryExchange, searchQuery = "환전소"),
-    SearchRecommendCategory(R.string.poi_tourist, Icons.Rounded.Place, ScanPangColors.Primary, searchQuery = "관광지"),
-    SearchRecommendCategory(R.string.poi_convenience_store, Icons.Rounded.LocalConvenienceStore, ScanPangColors.CategoryRestaurant, searchQuery = "편의점"),
-    SearchRecommendCategory(R.string.poi_atm, Icons.Rounded.Atm, ScanPangColors.CategoryExchange, searchQuery = "ATM"),
-    SearchRecommendCategory(R.string.poi_bank, Icons.Rounded.AccountBalance, ScanPangColors.CategoryExchange, searchQuery = "은행"),
-    SearchRecommendCategory(R.string.poi_subway_station, Icons.Rounded.Train, ScanPangColors.Primary, searchQuery = "지하철역"),
-    SearchRecommendCategory(R.string.poi_restroom, Icons.Rounded.Wc, ScanPangColors.Primary, searchQuery = "화장실"),
-    SearchRecommendCategory(R.string.poi_locker, Icons.Rounded.Lock, ScanPangColors.Primary, searchQuery = "물품보관함"),
+    SearchRecommendCategory("카페", Icons.Rounded.Coffee, ScanPangColors.CategoryCafe, searchQuery = "카페"),
+    SearchRecommendCategory("쇼핑", Icons.Rounded.LocalMall, ScanPangColors.CategoryMall, searchQuery = "쇼핑"),
+    SearchRecommendCategory("병원", Icons.Rounded.LocalHospital, ScanPangColors.CategoryMedical, searchQuery = "병원"),
+    SearchRecommendCategory("약국", Icons.Rounded.Medication, ScanPangColors.CategoryMedical, searchQuery = "약국"),
+    SearchRecommendCategory("환전소", Icons.Rounded.CurrencyExchange, ScanPangColors.CategoryExchange, searchQuery = "환전소"),
+    SearchRecommendCategory("관광지", Icons.Rounded.Place, ScanPangColors.Primary, searchQuery = "관광지"),
+    SearchRecommendCategory("편의점", Icons.Rounded.LocalConvenienceStore, ScanPangColors.CategoryRestaurant, searchQuery = "편의점"),
+    SearchRecommendCategory("ATM", Icons.Rounded.Atm, ScanPangColors.CategoryExchange, searchQuery = "ATM"),
+    SearchRecommendCategory("은행", Icons.Rounded.AccountBalance, ScanPangColors.CategoryExchange, searchQuery = "은행"),
+    SearchRecommendCategory("지하철역", Icons.Rounded.Train, ScanPangColors.Primary, searchQuery = "지하철역"),
+    SearchRecommendCategory("화장실", Icons.Rounded.Wc, ScanPangColors.Primary, searchQuery = "화장실"),
+    SearchRecommendCategory("물품보관함", Icons.Rounded.Lock, ScanPangColors.Primary, searchQuery = "물품보관함"),
 )
 
 /** 추천 카테고리는 2행 × 4열 그리드 — 8개를 노출. (pinned + 셔플된 공통풀로 채움) */
@@ -235,7 +232,7 @@ fun SearchDefaultScreen(
                     // X 는 결과 모드 → 기본 모드로 돌아가는 유일한 트리거. 단순히 query 만 비운다.
                     query = ""
                 },
-                placeholder = stringResource(R.string.search_placeholder),
+                placeholder = "장소, 식당, 카테고리 검색",
             )
             Spacer(modifier = Modifier.height(ScanPangSpacing.xl))
 
@@ -303,13 +300,13 @@ private fun SearchDefaultBody(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text(
-                    text = stringResource(R.string.recent_search),
+                    text = "최근 검색",
                     style = ScanPangType.sectionTitle16,
                     color = ScanPangColors.OnSurfaceStrong,
                 )
                 if (recent.isNotEmpty()) {
                     Text(
-                        text = stringResource(R.string.all_delete),
+                        text = "전체 삭제",
                         style = ScanPangType.caption12Medium,
                         color = ScanPangColors.OnSurfacePlaceholder,
                         modifier = Modifier.clickable(onClick = onClearAll),
@@ -326,7 +323,7 @@ private fun SearchDefaultBody(
                     contentAlignment = Alignment.Center,
                 ) {
                     Text(
-                        text = stringResource(R.string.no_recent_search),
+                        text = "최근 검색 기록이 없어요",
                         style = ScanPangType.body14Regular,
                         color = ScanPangColors.OnSurfaceMuted,
                     )
@@ -351,7 +348,7 @@ private fun SearchDefaultBody(
         }
         Column(verticalArrangement = Arrangement.spacedBy(ScanPangSpacing.lg)) {
             Text(
-                text = stringResource(R.string.recommendation_category),
+                text = "추천 카테고리",
                 style = ScanPangType.sectionTitle16,
                 color = ScanPangColors.OnSurfaceStrong,
             )
@@ -363,7 +360,7 @@ private fun SearchDefaultBody(
                     ) {
                         rowItems.forEach { category ->
                             ScanPangCategoryTile(
-                                label = stringResource(category.labelRes),
+                                label = category.label,
                                 icon = category.icon,
                                 iconTint = category.iconTint,
                                 onClick = { onCategoryClick(category) },
@@ -394,7 +391,7 @@ private fun SearchResultsBody(
     ) {
         item {
             Text(
-                text = stringResource(R.string.search_result, query, rows.size),
+                text = "‘$query’ 검색 결과 ${rows.size}개",
                 style = ScanPangType.link13,
                 color = ScanPangColors.OnSurfaceMuted,
             )
@@ -402,7 +399,7 @@ private fun SearchResultsBody(
         if (rows.isEmpty()) {
             item {
                 Text(
-                    text = stringResource(R.string.no_fit_place),
+                    text = "조건에 맞는 장소가 없습니다. 다른 검색어를 시도해 보세요.",
                     style = ScanPangType.body15Medium,
                     color = ScanPangColors.OnSurfaceMuted,
                     modifier = Modifier.padding(top = ScanPangSpacing.md),
@@ -532,7 +529,7 @@ private fun SearchResultSimpleCard(
                             .background(ScanPangColors.StatusOpen),
                     )
                     Text(
-                        text = stringResource(R.string.open),
+                        text = "영업 중",
                         style = ScanPangType.meta11SemiBold,
                         color = ScanPangColors.StatusOpen,
                     )

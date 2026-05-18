@@ -50,20 +50,10 @@ import com.scanpang.app.ui.theme.ScanPangDimens
 import com.scanpang.app.ui.theme.ScanPangShapes
 import com.scanpang.app.ui.theme.ScanPangSpacing
 import com.scanpang.app.ui.theme.ScanPangType
-import androidx.annotation.StringRes
-import androidx.compose.ui.res.stringResource
-import com.scanpang.app.R
 
-private val filterKeys = listOf(
-    "", "식당", "카페", "편의점", "쇼핑", "관광지", "기도실", "환전소", "은행", "ATM",
+private val filterLabels = listOf(
+    "전체", "식당", "카페", "편의점", "쇼핑", "관광지", "기도실", "환전소", "은행", "ATM",
     "병원", "약국", "지하철역", "화장실", "물품보관함",
-)
-private val filterLabelRes = listOf(
-    R.string.filter_all, R.string.saved_filter_restaurant, R.string.poi_cafe,
-    R.string.poi_convenience_store, R.string.poi_shopping, R.string.poi_tourist,
-    R.string.poi_prayer_room, R.string.poi_exchange_counter, R.string.poi_bank,
-    R.string.poi_atm, R.string.poi_hospital, R.string.poi_pharmacy,
-    R.string.poi_subway_station, R.string.poi_restroom, R.string.poi_locker,
 )
 
 private enum class SavedSort {
@@ -139,9 +129,10 @@ fun SavedPlacesScreen(
         val mapped = entries.map { it.toUiRow() }
         if (filterIndex == 0) mapped
         else {
-            val key = filterKeys[filterIndex]
-            if (key.isEmpty()) mapped
-            else mapped.filter { row -> row.categoryLabel == key || row.categoryLabel.contains(key) }
+            val label = filterLabels[filterIndex]
+            mapped.filter { row ->
+                row.categoryLabel == label || row.categoryLabel.contains(label)
+            }
         }
     }
 
@@ -153,11 +144,9 @@ fun SavedPlacesScreen(
     }
 
     val sortLabel = when (sort) {
-        SavedSort.ByDistance -> stringResource(R.string.saved_sort_nearest)
-        SavedSort.ByRecent -> stringResource(R.string.saved_sort_recent)
+        SavedSort.ByDistance -> "가까운 순"
+        SavedSort.ByRecent -> "최근 저장 순"
     }
-
-    val resolvedFilterLabels = filterLabelRes.map { stringResource(it) }
 
     Scaffold(
         modifier = modifier.fillMaxSize(),
@@ -174,7 +163,7 @@ fun SavedPlacesScreen(
                     .padding(bottom = ScanPangDimens.mainTabContentBottomInset),
             ) {
                 Text(
-                    text = text = stringResource(R.string.saved_places_title),
+                    text = "저장한 장소",
                     style = ScanPangType.homeGreeting,
                     color = ScanPangColors.OnSurfaceStrong,
                     modifier = Modifier.padding(top = ScanPangSpacing.sm),
@@ -186,7 +175,7 @@ fun SavedPlacesScreen(
                     contentAlignment = Alignment.Center,
                 ) {
                     Text(
-                        text = text = stringResource(R.string.saved_empty),
+                        text = "저장한 장소가 없어요",
                         style = ScanPangType.body15Medium,
                         color = ScanPangColors.OnSurfaceMuted,
                         textAlign = TextAlign.Center,
@@ -205,7 +194,7 @@ fun SavedPlacesScreen(
             ) {
                 item {
                     Text(
-                        text = text = stringResource(R.string.saved_places_title),
+                        text = "저장한 장소",
                         style = ScanPangType.homeGreeting,
                         color = ScanPangColors.OnSurfaceStrong,
                         modifier = Modifier.padding(top = ScanPangSpacing.sm),
@@ -215,7 +204,7 @@ fun SavedPlacesScreen(
                     LazyRow(
                         horizontalArrangement = Arrangement.spacedBy(ScanPangSpacing.sm),
                     ) {
-                        itemsIndexed(resolvedFilterLabels) { index, label ->
+                        itemsIndexed(filterLabels) { index, label ->
                             ScanPangFilterChip(
                                 label = label,
                                 selected = filterIndex == index,
@@ -231,7 +220,7 @@ fun SavedPlacesScreen(
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
                         Text(
-                            text = text = stringResource(R.string.saved_place_count, sortedRows.size),
+                            text = "${sortedRows.size}개의 장소",
                             style = ScanPangType.link13,
                             color = ScanPangColors.OnSurfaceMuted,
                         )
@@ -277,7 +266,7 @@ fun SavedPlacesScreen(
                                 DropdownMenuItem(
                                     text = {
                                         Text(
-                                            stringResource(R.string.saved_sort_nearest),
+                                            "가까운 순",
                                             style = ScanPangType.body15Medium,
                                             color = ScanPangColors.OnSurfaceStrong,
                                         )
@@ -290,7 +279,7 @@ fun SavedPlacesScreen(
                                 DropdownMenuItem(
                                     text = {
                                         Text(
-                                            stringResource(R.string.saved_sort_recent),
+                                            "최근 저장 순",
                                             style = ScanPangType.body15Medium,
                                             color = ScanPangColors.OnSurfaceStrong,
                                         )

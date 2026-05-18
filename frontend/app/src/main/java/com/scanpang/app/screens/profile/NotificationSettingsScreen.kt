@@ -32,8 +32,6 @@ import com.scanpang.app.data.AppSettingsPreferences
 import com.scanpang.app.ui.theme.ScanPangColors
 import com.scanpang.app.ui.theme.ScanPangDimens
 import com.scanpang.app.ui.theme.ScanPangSpacing
-import androidx.compose.ui.res.stringResource
-import com.scanpang.app.R
 
 @Composable
 fun NotificationSettingsScreen(
@@ -59,7 +57,7 @@ fun NotificationSettingsScreen(
                 .statusBarsPadding(),
         ) {
             SettingsTitleBar(
-                title = stringResource(R.string.settings_notification_title),
+                title = "알림 설정",
                 onBack = { navController.popBackStack() },
             )
             Column(
@@ -73,11 +71,11 @@ fun NotificationSettingsScreen(
             ) {
                 // ── 알림 받기 ──────────────────────────────────────────
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    ProfileSettingsSectionLabel(text = stringResource(R.string.notification_section_receive))
+                    ProfileSettingsSectionLabel(text = "알림 받기")
                     ProfileSettingsCard(bordered = false) {
                         ProfileSettingsToggleRow(
-                            label = stringResource(R.string.notification_push_label),
-                            subtitle = stringResource(R.string.notification_push_subtitle),
+                            label = "푸시 알림",
+                            subtitle = "모든 알림을 한 번에 켜고 끕니다",
                             icon = Icons.Rounded.Notifications,
                             iconTint = ScanPangColors.Primary,
                             checked = pushEnabled,
@@ -92,10 +90,10 @@ fun NotificationSettingsScreen(
 
                 // ── 알림 종류 ──────────────────────────────────────────
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    ProfileSettingsSectionLabel(text = stringResource(R.string.notification_section_type))
+                    ProfileSettingsSectionLabel(text = "알림 종류")
                     ProfileSettingsCard(bordered = false) {
                         ProfileSettingsToggleRow(
-                            label = stringResource(R.string.notification_event_promo_label),
+                            label = "이벤트 및 프로모션",
                             icon = Icons.Rounded.Campaign,
                             iconTint = ScanPangColors.Primary,
                             checked = eventPromoEnabled,
@@ -110,11 +108,11 @@ fun NotificationSettingsScreen(
 
                 // ── 방해 금지 ──────────────────────────────────────────
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    ProfileSettingsSectionLabel(text = stringResource(R.string.notification_section_dnd))
+                    ProfileSettingsSectionLabel(text = "방해 금지")
                     ProfileSettingsCard(bordered = false) {
                         ProfileSettingsToggleRow(
-                            label = stringResource(R.string.notification_dnd_label),
-                            subtitle = stringResource(R.string.notification_dnd_subtitle),
+                            label = "방해 금지 모드",
+                            subtitle = "22:00 - 07:00 동안 알림을 받지 않습니다",
                             icon = Icons.Rounded.DoNotDisturbOn,
                             iconTint = ScanPangColors.Primary,
                             checked = dndEnabled,

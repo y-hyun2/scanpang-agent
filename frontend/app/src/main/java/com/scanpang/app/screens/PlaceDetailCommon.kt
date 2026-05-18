@@ -82,22 +82,17 @@ import com.scanpang.app.ui.theme.ScanPangDimens
 import com.scanpang.app.ui.theme.ScanPangShapes
 import com.scanpang.app.ui.theme.ScanPangSpacing
 import com.scanpang.app.ui.theme.ScanPangType
-import androidx.compose.ui.res.stringResource
-import com.scanpang.app.R
 
 /** Coil용 더미 갤러리 — API 연동 시 동일 시그니처로 교체 */
 fun defaultPlaceDetailGallery(): List<String> = ScanPangFigmaAssets.RestaurantDetailGallery
 
-fun Place.detailVisitCardsFromPlace(context: Context): List<DetailVisitCardUi> {
-    val statusTitle = if (isOpen) context.getString(R.string.detail_visit_open_title)
-                      else        context.getString(R.string.detail_visit_closed_title)
+fun Place.detailVisitCardsFromPlace(): List<DetailVisitCardUi> {
+    val statusTitle = if (isOpen) "지금 방문 가능" else "운영 종료"
     val statusTone = if (isOpen) DetailVisitCardTone.Open else DetailVisitCardTone.Closed
     val hint = if (description.length > 56) description.take(56) + "…" else description
     return listOf(
         DetailVisitCardUi(statusTitle, openHours, statusTone),
-            DetailVisitCardUi(
-                context.getString(R.string.detail_visit_notice_title),
-                hint.ifBlank { context.getString(R.string.detail_visit_no_info) }, DetailVisitCardTone.Neutral),
+        DetailVisitCardUi("안내", hint.ifBlank { "상세 정보는 매장에 문의해 주세요." }, DetailVisitCardTone.Neutral),
     )
 }
 
@@ -141,9 +136,6 @@ fun rememberDetailBookmark(
     val target = remember(categoryKey) { SavedPlaceNavTarget.fromCategoryKey(categoryKey) }
     var bookmarked by remember(placeId) { mutableStateOf(store.isSaved(placeId)) }
 
-    val strBookmarkAdd    = stringResource(R.string.bookmark_added)
-    val strBookmarkRemove = stringResource(R.string.bookmark_removed)
-
     LaunchedEffect(placeId) {
         recentlyViewedStore.record(
             RecentlyViewedEntry(
@@ -170,7 +162,7 @@ fun rememberDetailBookmark(
         if (bookmarked) {
             store.remove(placeId)
             bookmarked = false
-            Toast.makeText(context, strBookmarkRemove, Toast.LENGTH_SHORT).show()
+            Toast.makeText(context, "저장이 해제되었습니다", Toast.LENGTH_SHORT).show()
         } else {
             store.save(
                 SavedPlaceEntry(
@@ -183,7 +175,7 @@ fun rememberDetailBookmark(
                 ),
             )
             bookmarked = true
-            Toast.makeText(context, strBookmarkAdd, Toast.LENGTH_SHORT).show()
+            Toast.makeText(context, "저장되었습니다", Toast.LENGTH_SHORT).show()
         }
     }
 
@@ -229,7 +221,7 @@ fun DetailImageFullscreenDialog(
             ) {
                 Icon(
                     imageVector = Icons.Rounded.Close,
-                    contentDescription = stringResource(R.string.common_close),
+                    contentDescription = "닫기",
                     tint = Color.White,
                 )
             }
@@ -279,7 +271,7 @@ fun DetailHeroPhotoPager(
             ) {
                 Icon(
                     imageVector = Icons.AutoMirrored.Rounded.ArrowBack,
-                    contentDescription = stringResource(R.string.common_back),
+                    contentDescription = "뒤로",
                     modifier = Modifier.padding(ScanPangSpacing.sm),
                     tint = ScanPangColors.OnSurfaceStrong,
                 )
@@ -300,7 +292,7 @@ fun DetailHeroPhotoPager(
                 ) {
                     Icon(
                         imageVector = Icons.Rounded.Fullscreen,
-                        contentDescription = stringResource(R.string.detail_fullscreen_desc),
+                        contentDescription = "전체 화면",
                         modifier = Modifier.padding(ScanPangSpacing.sm),
                         tint = ScanPangColors.OnSurfaceStrong,
                     )
@@ -347,7 +339,7 @@ fun DetailScrollTopBackRow(
             ) {
                 Icon(
                     imageVector = Icons.AutoMirrored.Rounded.ArrowBack,
-                    contentDescription = stringResource(R.string.common_back),
+                    contentDescription = "뒤로",
                     modifier = Modifier.padding(ScanPangSpacing.sm),
                     tint = ScanPangColors.OnSurfaceStrong,
                 )
@@ -379,7 +371,7 @@ fun DetailTitleBookmarkRow(
         IconButton(onClick = onBookmarkClick) {
             Icon(
                 imageVector = if (bookmarked) Icons.Rounded.Bookmark else Icons.Rounded.BookmarkBorder,
-                contentDescription = if (bookmarked) stringResource(R.string.common_saved) else stringResource(R.string.common_save),
+                contentDescription = if (bookmarked) "저장됨" else "저장",
                 tint = if (bookmarked) {
                     ScanPangColors.Primary
                 } else {
@@ -446,7 +438,7 @@ fun DetailCategoryTagDistanceRow(
                     .background(if (isOpen) ScanPangColors.StatusOpen else ScanPangColors.Error),
             )
             Text(
-                text = if (isOpen) stringResource(R.string.open) else stringResource(R.string.detail_closed),
+                text = if (isOpen) "영업 중" else "영업 종료",
                 style = ScanPangType.meta11SemiBold,
                 color = if (isOpen) ScanPangColors.StatusOpen else ScanPangColors.Error,
                 maxLines = 1,
@@ -461,7 +453,7 @@ fun DetailCategoryTagDistanceRow(
 fun DetailNavigateWideButton(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
-    label: String? = null,
+    label: String = "길안내 시작",
 ) {
     Button(
         onClick = onClick,
@@ -474,7 +466,7 @@ fun DetailNavigateWideButton(
             contentColor = Color.White,
         ),
     ) {
-        Text(text = label ?: stringResource(R.string.detail_cta_navigate), style = ScanPangType.body15Medium)
+        Text(text = label, style = ScanPangType.body15Medium)
     }
 }
 
@@ -502,7 +494,7 @@ fun DetailNavigateAndSideIconRow(
                 contentColor = Color.White,
             ),
         ) {
-            Text(text = stringResource(R.string.detail_cta_navigate), style = ScanPangType.body15Medium)
+            Text(text = "길안내 시작", style = ScanPangType.body15Medium)
         }
         OutlinedButton(
             onClick = onSideClick,
@@ -774,7 +766,7 @@ fun DetailBackOnlyArea(
         ) {
             Icon(
                 imageVector = Icons.AutoMirrored.Rounded.ArrowBack,
-                contentDescription = stringResource(R.string.common_back),
+                contentDescription = "뒤로",
                 modifier = Modifier.size(20.dp),
                 tint = ScanPangColors.OnSurfaceStrong,
             )
@@ -814,7 +806,7 @@ fun DetailCtaRow(
                     tint = Color.White,
                 )
                 Text(
-                    text = stringResource(R.string.detail_cta_navigate),
+                    text = "길안내 시작",
                     style = ScanPangType.detailSectionTitle15,
                     color = Color.White,
                 )
@@ -830,7 +822,7 @@ fun DetailCtaRow(
         ) {
             Icon(
                 imageVector = Icons.Rounded.Phone,
-                contentDescription = stringResource(R.string.detail_phone_desc),
+                contentDescription = "전화",
                 modifier = Modifier.size(22.dp),
                 tint = ScanPangColors.OnSurfaceMuted,
             )
@@ -852,7 +844,7 @@ fun DetailTodayVisitStatus(
         modifier = modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(ScanPangSpacing.md),
     ) {
-        DetailSectionHeader(title = stringResource(R.string.detail_today_visit_title))
+        DetailSectionHeader(title = "오늘 방문 가능 여부")
         Surface(
             modifier = Modifier.fillMaxWidth(),
             shape = ScanPangShapes.radius12,
@@ -873,7 +865,7 @@ fun DetailTodayVisitStatus(
                             .background(statusColor),
                     )
                     Text(
-                        text = if (isOpen) stringResource(R.string.detail_open_now) else stringResource(R.string.detail_closed_now),
+                        text = if (isOpen) "지금 영업 중" else "지금 영업 종료",
                         style = ScanPangType.caption12Medium,
                         color = statusColor,
                     )
@@ -900,7 +892,7 @@ fun DetailTodayVisitStatus(
                             tint = ScanPangColors.OnSurfaceMuted,
                         )
                         Text(
-                            text = stringResource(R.string.detail_last_order, lastOrder),
+                            text = "라스트오더 $lastOrder",
                             style = ScanPangType.caption12Medium,
                             color = ScanPangColors.OnSurfaceMuted,
                         )

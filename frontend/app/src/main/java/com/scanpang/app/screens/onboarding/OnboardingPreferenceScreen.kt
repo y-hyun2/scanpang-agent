@@ -26,8 +26,6 @@ import com.scanpang.app.navigation.AppRoutes
 import com.scanpang.app.ui.theme.ScanPangColors
 import com.scanpang.app.ui.theme.ScanPangSpacing
 import com.scanpang.app.ui.theme.ScanPangType
-import androidx.compose.ui.res.stringResource
-import com.scanpang.app.R
 
 private data class PreferenceOption(
     val value: ValueAdded,
@@ -43,16 +41,26 @@ fun OnboardingPreferenceScreen(
 ) {
     val context = LocalContext.current
     val prefs = remember { OnboardingPreferences(context) }
-    val strHalal      = stringResource(R.string.value_added_halal_title)
-    val strHalalDesc  = stringResource(R.string.value_added_halal_desc)
-    val strVegan      = stringResource(R.string.value_added_vegan_title)
-    val strVeganDesc  = stringResource(R.string.value_added_vegan_desc)
-    val strGeneral    = stringResource(R.string.value_added_general_title)
-    + val options = remember(strHalal, strHalalDesc, strVegan, strVeganDesc, strGeneral) {
+    val options = remember {
         listOf(
-            PreferenceOption(ValueAdded.HALAL,   "🕌", strHalal,   strHalalDesc),
-            PreferenceOption(ValueAdded.VEGAN,   "🌱", strVegan,   strVeganDesc),
-            PreferenceOption(ValueAdded.GENERAL, "✨", strGeneral, null),
+            PreferenceOption(
+                value = ValueAdded.HALAL,
+                emoji = "🕌",
+                title = "할랄",
+                subtitle = "할랄 식당, 기도실, 키블라 방향 등",
+            ),
+            PreferenceOption(
+                value = ValueAdded.VEGAN,
+                emoji = "🌱",
+                title = "비건",
+                subtitle = "비건 식당, 채식 메뉴 등",
+            ),
+            PreferenceOption(
+                value = ValueAdded.GENERAL,
+                emoji = "✨",
+                title = "괜찮아요",
+                subtitle = null,
+            ),
         )
     }
     var selected by remember {
@@ -79,13 +87,13 @@ fun OnboardingPreferenceScreen(
                 OnboardingProgressHeader(step = 3)
                 Spacer(modifier = Modifier.height(ScanPangSpacing.lg))
                 Text(
-                    text = stringResource(R.string.onboarding_preference_title),
+                    text = "여행 중 무엇을 우선하시나요?",
                     style = ScanPangType.titleLarge,
                     color = ScanPangColors.OnSurfaceStrong,
                 )
                 Spacer(modifier = Modifier.height(ScanPangSpacing.xs))
                 Text(
-                    text = stringResource(R.string.onboarding_preference_subtitle),
+                    text = "안내와 알림이 이 선택에 맞춰집니다.",
                     style = ScanPangType.body14Regular,
                     color = ScanPangColors.OnSurfaceMuted,
                 )
@@ -107,7 +115,7 @@ fun OnboardingPreferenceScreen(
                 Spacer(modifier = Modifier.height(ScanPangSpacing.lg))
             }
             OnboardingPrimaryButton(
-                text = stringResource(R.string.onboarding_start_button),
+                text = "시작하기",
                 enabled = selected != null,
                 onClick = {
                     selected?.let { prefs.setValueAdded(it) }

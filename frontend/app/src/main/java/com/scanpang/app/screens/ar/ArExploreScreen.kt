@@ -116,8 +116,6 @@ import kotlin.math.sin
 import com.scanpang.app.data.remote.Building
 import com.scanpang.app.data.remote.GeoJsonMultiPolygon
 import kotlin.math.abs
-import androidx.compose.ui.res.stringResource
-import com.scanpang.app.R
 
 private data class ArSearchHit(
     val title: String,
@@ -161,17 +159,6 @@ fun ArExploreScreen(
     // 마커 탭 시 /place/store 응답 — ArFloorStoreGuideOverlay 메타 라인의 category·영업중 표시 원천
     val storeResult by viewModel.storeResult.collectAsState()
     val context = LocalContext.current
-    val strTtsOn              = stringResource(R.string.ar_tts_on)
-    val strTtsOff             = stringResource(R.string.ar_tts_off)
-    val strSttError           = stringResource(R.string.ar_stt_error)
-    val strMicPermission      = stringResource(R.string.ar_mic_permission_denied)
-    val strSttUnavailable     = stringResource(R.string.ar_stt_unavailable)
-    val strSttNotAvailable    = stringResource(R.string.ar_stt_not_available)
-    val strSaved              = stringResource(R.string.bookmark_added)
-    val strTrackingInit       = stringResource(R.string.ar_tracking_init)
-    val strTrackingCompleteFmt= stringResource(R.string.ar_tracking_complete_format)
-    val strTrackingVpsFmt     = stringResource(R.string.ar_tracking_vps_searching_format)
-    val strNoName             = stringResource(R.string.ar_building_no_name)
 
     val appContext = context.applicationContext
     val snackbarHostState = remember { SnackbarHostState() }
@@ -252,7 +239,7 @@ fun ArExploreScreen(
                     code != SpeechRecognizer.ERROR_SPEECH_TIMEOUT
                 ) {
                     latestScope.value.launch {
-                        latestSnackbar.value.showSnackbar(strSttError)
+                        latestSnackbar.value.showSnackbar("음성 인식 중 오류가 났어요")
                     }
                 }
             },
@@ -270,7 +257,7 @@ fun ArExploreScreen(
         if (granted && pendingMicAfterPermission) {
             speechHelperRef?.startListening()
         } else if (!granted) {
-            scope.launch { snackbarHostState.showSnackbar(strMicPermission) }
+            scope.launch { snackbarHostState.showSnackbar("마이크 권한이 필요해요") }
         }
         pendingMicAfterPermission = false
     }
@@ -301,7 +288,7 @@ fun ArExploreScreen(
     val api = remember { RetrofitClient.api }
     var hasAchievedHighAccuracy by remember { mutableStateOf(false) }
     var showInitOverlay by remember { mutableStateOf(true) }
-    var trackingMessage by remember { mutableStateOf(strTrackingInit) }
+    var trackingMessage by remember { mutableStateOf("ARCore 초기화 중...") }
     var currentHeading by remember { mutableStateOf(0.0) }
     var currentAltitude by remember { mutableStateOf(0.0) }
     var currentPitch by remember { mutableStateOf(0.0) }
@@ -387,7 +374,7 @@ fun ArExploreScreen(
                     agentService.updatePosition(currentLat, currentLng, currentHeading)
 
                     if (hasAchievedHighAccuracy) {
-                        trackingMessage = strTrackingCompleteFmt.format(pose.horizontalAccuracy)
+                        trackingMessage = "위치 파악 완료 (오차: ${"%.1f".format(pose.horizontalAccuracy)}m)"
 
                         // 거리 업데이트
                         val results = FloatArray(1)
@@ -509,7 +496,7 @@ fun ArExploreScreen(
                                             dynamicPois.add(
                                                 DynamicPoi(
                                                     id = id,
-                                                    name = cand.b.bld_nm ?: strNoName,
+                                                    name = cand.b.bld_nm ?: "이름 없는 건물",
                                                     category = "건물",
                                                     distance = cand.dist,
                                                     latitude = markerPos.first,
@@ -559,7 +546,8 @@ fun ArExploreScreen(
                             }
                         }
                     } else {
-                        trackingMessage = strTrackingVpsFmt.format(pose.horizontalAccuracy)
+                        trackingMessage =
+                            "VPS 정밀 탐색 중... (오차: ${"%.1f".format(pose.horizontalAccuracy)}m / 1.5m 미만 필요)"
                     }
 
                     // 앵커 → 화면 좌표 투영
@@ -603,7 +591,7 @@ fun ArExploreScreen(
                     contentAlignment = Alignment.Center,
                 ) {
                     Text(
-                        text = stringResource(R.string.ar_tracking_locating),
+                        text = "위치 파악 중...",
                         style = ScanPangType.arStatusPill15,
                         color = Color.White,
                     )
@@ -640,7 +628,7 @@ fun ArExploreScreen(
                 ) {
                     ArCircleIconButton(
                         icon = Icons.Rounded.Home,
-                        contentDescription = stringResource(R.string.ar_home_desc),
+                        contentDescription = "홈",
                         onClick = { navController.popBackStack() },
                         modifier = Modifier,
                     )
@@ -658,7 +646,7 @@ fun ArExploreScreen(
                     }
                     ArCircleIconButton(
                         icon = Icons.Rounded.Search,
-                        contentDescription = stringResource(R.string.ar_search_desc),
+                        contentDescription = "검색",
                         onClick = { isSearchOpen = true },
                         modifier = Modifier,
                     )
@@ -683,7 +671,7 @@ fun ArExploreScreen(
                 ArExploreSideColumn(
                     onTtsClick = {
                         isTtsOn = !isTtsOn
-                        val msg = if (isTtsOn) strTtsOn else strTtsOff
+                        val msg = if (isTtsOn) "음성 안내 켜짐" else "음성 안내 꺼짐"
                         scope.launch { snackbarHostState.showSnackbar(msg) }
                     },
                     isTtsOn = isTtsOn,
@@ -723,13 +711,13 @@ fun ArExploreScreen(
                         }
                         if (h == null) {
                             scope.launch {
-                                snackbarHostState.showSnackbar(strSttUnavailable)
+                                snackbarHostState.showSnackbar("음성 입력을 준비하지 못했어요")
                             }
                             return@mic
                         }
                         if (!h.isRecognitionAvailable()) {
                             scope.launch {
-                                snackbarHostState.showSnackbar(strSttNotAvailable)
+                                snackbarHostState.showSnackbar("이 기기에서 음성 인식을 쓸 수 없어요")
                             }
                             return@mic
                         }
@@ -842,7 +830,7 @@ fun ArExploreScreen(
                                         modifier = Modifier.size(ScanPangDimens.icon20),
                                     )
                                     Text(
-                                        text = stringResource(R.string.ar_explore_search_placeholder),
+                                        text = "장소·메뉴 검색",
                                         style = ScanPangType.searchPlaceholderRegular,
                                         color = ScanPangColors.OnSurfacePlaceholder,
                                     )
@@ -855,13 +843,13 @@ fun ArExploreScreen(
                                 ) {
                                     Icon(
                                         imageVector = Icons.Rounded.Close,
-                                        contentDescription = stringResource(R.string.common_close),
+                                        contentDescription = "닫기",
                                         tint = ScanPangColors.OnSurfaceStrong,
                                     )
                                 }
                             }
                             Text(
-                                text = stringResource(R.string.recent_search),
+                                text = "최근 검색",
                                 style = ScanPangType.sectionTitle16,
                                 color = ScanPangColors.OnSurfaceStrong,
                             )
@@ -890,7 +878,7 @@ fun ArExploreScreen(
                                 }
                             }
                             Text(
-                                text = stringResource(R.string.ar_explore_suggestion_tags),
+                                text = "추천 검색어",
                                 style = ScanPangType.sectionTitle16,
                                 color = ScanPangColors.OnSurfaceStrong,
                             )
@@ -919,7 +907,7 @@ fun ArExploreScreen(
                             if (showArSearchResults) {
                                 HorizontalDivider(color = ScanPangColors.OutlineSubtle)
                                 Text(
-                                    text = stringResource(R.string.ar_search_sort_label),
+                                    text = "정확도 · 거리순",
                                     style = ScanPangType.meta11SemiBold,
                                     color = ScanPangColors.OnSurfaceMuted,
                                 )
@@ -954,7 +942,7 @@ fun ArExploreScreen(
                                                 },
                                             ) {
                                                 Text(
-                                                    text = stringResource(R.string.ar_search_result_view_info),
+                                                    text = "정보 보기",
                                                     color = ScanPangColors.Primary,
                                                     style = ScanPangType.body15Medium,
                                                 )
@@ -969,7 +957,7 @@ fun ArExploreScreen(
                                                 },
                                             ) {
                                                 Text(
-                                                    text = stringResource(R.string.ar_search_result_navigate),
+                                                    text = "길안내",
                                                     color = ScanPangColors.Primary,
                                                     style = ScanPangType.body15Medium,
                                                 )
@@ -999,7 +987,7 @@ fun ArExploreScreen(
                     },
                     onFloorStoreClick = { selectedStore = it },
                     onSave = {
-                        scope.launch { snackbarHostState.showSnackbar(strSaved) }
+                        scope.launch { snackbarHostState.showSnackbar("저장되었습니다") }
                     },
                     modifier = Modifier.fillMaxSize(),
                     arOverlay = selectedPoiOverlay ?: placeResult?.ar_overlay,
@@ -1044,7 +1032,7 @@ private fun BoxScope.ArDynamicPoiMarkers(
 
         Box(modifier = Modifier.offset { IntOffset(xPx, yPx) }) {
             ArPoiCard(
-                title = if (poi.isPending) stringResource(R.string.ar_poi_analyzing) else poi.name,
+                title = if (poi.isPending) "분석 중..." else poi.name,
                 subtitle = buildString {
                     if (poi.category.isNotEmpty()) append("${poi.category} · ")
                     append("${"%.0f".format(poi.distance)}m")
@@ -1083,7 +1071,7 @@ private fun ArExploreStatusPill(
                         tint = ScanPangColors.OnSurfaceStrong,
                     )
                     Text(
-                        text = stringResource(R.string.ar_vps_searching),
+                        text = "VPS 탐색 중...",
                         style = ScanPangType.arStatusPill15,
                         color = ScanPangColors.OnSurfaceStrong,
                         maxLines = 1,
@@ -1113,7 +1101,7 @@ private fun ArExploreStatusPill(
                         tint = ScanPangColors.OnSurfaceStrong,
                     )
                     Text(
-                        text = stringResource(R.string.ar_explore_scanning),
+                        text = "AR 탐색 중",
                         style = ScanPangType.arStatusPill15,
                         color = ScanPangColors.OnSurfaceStrong,
                         maxLines = 1,
@@ -1129,9 +1117,7 @@ private fun ArExploreStatusPill(
             }
         }
         else -> {
-            val label = buildFilterPillLabel(selectedFilters) { first, count ->
-                stringResource(R.string.ar_filter_pill_more, first, count)
-            }
+            val label = buildFilterPillLabel(selectedFilters)
             Surface(
                 modifier = Modifier
                     .height(ScanPangDimens.arStatusPillHeight)
@@ -1170,14 +1156,11 @@ private fun ArExploreStatusPill(
     }
 }
 
-private fun buildFilterPillLabel(
-    selected: Set<String>,
-    moreFormat: (String, Int) -> String = { first, count -> "$first 외 ${count}개" },
-): String {
+private fun buildFilterPillLabel(selected: Set<String>): String {
     val list = selected.toList()
     if (list.isEmpty()) return ""
     if (list.size == 1) return list[0]
-    return moreFormat(list[0], list.size - 1)
+    return "${list[0]} 외 ${list.size - 1}개"
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

@@ -75,8 +75,6 @@ import com.scanpang.app.ui.theme.ScanPangDimens
 import com.scanpang.app.ui.theme.ScanPangShapes
 import com.scanpang.app.ui.theme.ScanPangSpacing
 import com.scanpang.app.ui.theme.ScanPangType
-import androidx.compose.ui.res.stringResource
-import com.scanpang.app.R
 
 private val INFO_ROW_SPACING = 14.dp
 private val SECTION_INNER_SPACING = 12.dp
@@ -144,7 +142,6 @@ fun PlaceDetailScreen(
 
     // 지하철 카테고리는 백엔드 details(exits/schedule/fast_alights)에서 추출
     val subwayDetail: SubwayDetail? = remember(backend) { backend?.toSubwayDetail() }
-    // 화장실 카테고리는 mergeOnto 가 details → Place 필드로 평탄화 (place.toilet*/facilityTags/safetyTags)
 
     val hasHeroPhoto = categoryKey !in setOf("atm", "subway", "subway_station", "restroom", "public_restroom", "lockers", "locker")
     val canFullscreen = categoryKey in setOf("restaurant", "halal_restaurant", "tourist", "tourist_spot", "attraction")
@@ -296,7 +293,7 @@ private fun PlaceDetailContent(
     subwayDetail: SubwayDetail? = null,
 ) {
     if (menuItems.isNotEmpty()) {
-        DetailSection(title = stringResource(R.string.detail_section_menu)) {
+        DetailSection(title = "대표 메뉴") {
             Column(verticalArrangement = Arrangement.spacedBy(ScanPangSpacing.sm)) {
                 menuItems.forEach { m -> DetailMenuPriceRow(name = m.name, price = m.price) }
             }
@@ -305,7 +302,7 @@ private fun PlaceDetailContent(
     }
 
     if (place.description.isNotBlank()) {
-        DetailSection(title = stringResource(R.string.detail_section_intro)) {
+        DetailSection(title = "소개") {
             DetailIntroBody(text = place.description)
         }
         DetailScreenDivider()
@@ -315,14 +312,14 @@ private fun PlaceDetailContent(
     // 지하철은 영업시간을 별도 '열차 시간표' 섹션으로 표시하므로 여기선 숨김.
     // Kakao place.map URL(homepage)은 공식 웹사이트가 아니라 카카오 자체 페이지라 지하철엔 숨김.
     val isSubway = subwayDetail != null
-    DetailSection(title = stringResource(R.string.detail_section_info)) {
+    DetailSection(title = "상세 정보") {
         Column(verticalArrangement = Arrangement.spacedBy(INFO_ROW_SPACING)) {
             if (!isSubway && place.openHours.isNotBlank())
-                DetailInfoLine(Icons.Rounded.AccessTime, stringResource(R.string.detail_info_hours), place.openHours)
-            if (place.address.isNotBlank()) DetailInfoLine(Icons.Rounded.Place, stringResource(R.string.detail_info_address), place.address)
-            if (place.phone.isNotBlank()) DetailInfoLine(Icons.Rounded.Phone, stringResource(R.string.detail_info_phone), place.phone)
-            if (place.floor.isNotBlank()) DetailInfoLine(Icons.Rounded.Store, stringResource(R.string.detail_info_floor), place.floor)
-            if (place.parking.isNotBlank()) DetailInfoLine(Icons.Rounded.LocalParking, stringResource(R.string.detail_info_parking), place.parking)
+                DetailInfoLine(Icons.Rounded.AccessTime, "영업시간", place.openHours)
+            if (place.address.isNotBlank()) DetailInfoLine(Icons.Rounded.Place, "주소", place.address)
+            if (place.phone.isNotBlank()) DetailInfoLine(Icons.Rounded.Phone, "전화", place.phone)
+            if (place.floor.isNotBlank()) DetailInfoLine(Icons.Rounded.Store, "매장 층수", place.floor)
+            if (place.parking.isNotBlank()) DetailInfoLine(Icons.Rounded.LocalParking, "주차 가능 여부", place.parking)
             if (!isSubway && place.website.isNotBlank())
                 DetailInfoLine(Icons.Rounded.Language, "웹사이트", place.website)
             // 화장실 카테고리 — 칸 수 / 편의시설 / 안전시설 (피그마 상세-매장(화장실))
@@ -341,32 +338,31 @@ private fun PlaceDetailContent(
         }
     }
 
-    // 지하철역 전용 섹션 — 열차 시간표 → 빠른 하차 → 출구 정보 (피그마 시안 순서)
+    // 지하철역 전용 섹션 — 열차 시간표 → 빠른 하차 → 출구 정보 순서
     if (subwayDetail != null) {
         if (subwayDetail.scheduleUp != null || subwayDetail.scheduleDown != null) {
             DetailScreenDivider()
-            DetailSection(title = stringResource(R.string.detail_section_subway_schedule)) {
+            DetailSection(title = "열차 시간표") {
                 SubwayScheduleSection(subwayDetail)
             }
         }
         if (subwayDetail.fastAlights.isNotEmpty()) {
             DetailScreenDivider()
-            DetailSection(title = stringResource(R.string.detail_section_subway_fast_alight)) {
+            DetailSection(title = "빠른 하차") {
                 SubwayFastAlightsSection(subwayDetail.fastAlights)
             }
         }
         if (subwayDetail.exits.isNotEmpty()) {
             DetailScreenDivider()
-            DetailSection(title = stringResource(R.string.detail_section_subway_exits)) {
+            DetailSection(title = "출구 정보") {
                 SubwayExitsSection(subwayDetail.exits)
             }
         }
     }
 
-
     if (exchangeRates.isNotEmpty()) {
         DetailScreenDivider()
-        DetailSection(title = stringResource(R.string.detail_section_exchange_rate)) {
+        DetailSection(title = "오늘의 환율") {
             Column(verticalArrangement = Arrangement.spacedBy(ScanPangSpacing.sm)) {
                 exchangeRates.forEach { row -> ExchangeRateRow(row) }
             }
@@ -426,7 +422,7 @@ private fun RestaurantMetaRow(place: Place) {
                 .background(if (place.isOpen) ScanPangColors.StatusOpen else ScanPangColors.Error),
         )
         Text(
-            text = if (place.isOpen) stringResource(R.string.open) else stringResource(R.string.detail_closed),
+            text = if (place.isOpen) "영업 중" else "영업 종료",
             style = ScanPangType.meta11SemiBold,
             color = if (place.isOpen) ScanPangColors.StatusOpen else ScanPangColors.Error,
         )
@@ -441,7 +437,7 @@ private fun AtmOperationBadge(place: Place) {
         color = if (is24h) ScanPangColors.DetailVisitOpenSurface else ScanPangColors.DetailFacilityTagBackground,
     ) {
         Text(
-            text = if (is24h) stringResource(R.string.atm_24h) else stringResource(R.string.atm_limited_hours),
+            text = if (is24h) "24시간" else "시간제",
             modifier = Modifier.padding(horizontal = ScanPangSpacing.sm, vertical = ScanPangDimens.chipPadVertical),
             style = ScanPangType.category11SemiBold,
             color = if (is24h) ScanPangColors.TrustPillText else ScanPangColors.OnSurfaceMuted,
@@ -568,7 +564,7 @@ private fun PlaceDetailResponse.mergeOnto(fallback: Place?, categoryKey: String)
     )
 
     // 화장실 카테고리 — backend details 의 boolean / 칸 수를 Place 필드로 평탄화.
-    val toiletMale  = (details["male_toilt_cnt"]   as? String).orEmpty()
+    val toiletMale   = (details["male_toilt_cnt"]   as? String).orEmpty()
     val toiletFemale = (details["female_toilt_cnt"] as? String).orEmpty()
     val facilityList = buildList {
         if (details["has_disabled"]     as? Boolean == true) add("장애인 화장실")
@@ -576,8 +572,8 @@ private fun PlaceDetailResponse.mergeOnto(fallback: Place?, categoryKey: String)
         if (details["has_diaper_table"] as? Boolean == true) add("기저귀 교환대")
     }
     val safetyList = buildList {
-        if (details["has_cctv"]            as? Boolean == true) add("CCTV")
-        if (details["has_emergency_bell"]  as? Boolean == true) add("비상벨")
+        if (details["has_cctv"]           as? Boolean == true) add("CCTV")
+        if (details["has_emergency_bell"] as? Boolean == true) add("비상벨")
     }
 
     return base.copy(
@@ -625,11 +621,9 @@ private fun SubwayScheduleSection(detail: SubwayDetail) {
     var selectedDay by remember { mutableStateOf(detail.todayKind()) }
     val (up, down) = detail.scheduleFor(selectedDay)
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        detail.scheduleUp?.let { SubwayScheduleRow(stringResource(R.string.subway_direction_up), it) }
-        detail.scheduleDown?.let { SubwayScheduleRow(stringResource(R.string.subway_direction_down), it) }
         SubwayScheduleDayTabs(selected = selectedDay, onSelect = { selectedDay = it })
-        up?.let   { SubwayScheduleRow(stringResource(R.string.subway_direction_up), it) }
-        down?.let { SubwayScheduleRow(stringResource(R.string.subway_direction_down), it) }
+        up?.let   { SubwayScheduleRow("상행", it) }
+        down?.let { SubwayScheduleRow("하행", it) }
     }
 }
 
@@ -639,9 +633,9 @@ private fun SubwayScheduleDayTabs(
     onSelect: (ScheduleDay) -> Unit,
 ) {
     val items = listOf(
-        ScheduleDay.WEEKDAY  to stringResource(R.string.subway_day_weekday),
-        ScheduleDay.SATURDAY to stringResource(R.string.subway_day_saturday),
-        ScheduleDay.HOLIDAY  to stringResource(R.string.subway_day_holiday),
+        ScheduleDay.WEEKDAY  to "평일",
+        ScheduleDay.SATURDAY to "토요일",
+        ScheduleDay.HOLIDAY  to "일·공휴일",
     )
     Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
         items.forEach { (day, label) ->
@@ -682,7 +676,7 @@ private fun SubwayScheduleRow(label: String, dir: SubwayScheduleDir) {
                 )
             }
             Text(
-                text = "  " + stringResource(R.string.subway_toward_format, dir.toward),
+                text = "  ${dir.toward} 방면",
                 modifier = Modifier.weight(1f),
                 style = ScanPangType.caption12,
                 color = ScanPangColors.OnSurfaceMuted,
@@ -692,14 +686,14 @@ private fun SubwayScheduleRow(label: String, dir: SubwayScheduleDir) {
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.spacedBy(2.dp),
                 ) {
-                    Text(stringResource(R.string.subway_first_train), style = ScanPangType.tag11Medium, color = ScanPangColors.OnSurfaceMuted)
+                    Text("첫차", style = ScanPangType.tag11Medium, color = ScanPangColors.OnSurfaceMuted)
                     Text(dir.first, style = ScanPangType.detailSectionTitle15, color = ScanPangColors.OnSurfaceStrong)
                 }
                 Column(
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.spacedBy(2.dp),
                 ) {
-                    Text(stringResource(R.string.subway_last_train), style = ScanPangType.tag11Medium, color = ScanPangColors.OnSurfaceMuted)
+                    Text("막차", style = ScanPangType.tag11Medium, color = ScanPangColors.OnSurfaceMuted)
                     Text(dir.last, style = ScanPangType.detailSectionTitle15, color = ScanPangColors.OnSurfaceStrong)
                 }
             }
@@ -722,7 +716,7 @@ private fun SubwayExitsSection(exits: List<SubwayExit>) {
                     color = if (selected) ScanPangColors.Primary else ScanPangColors.Background,
                 ) {
                     Text(
-                        text = stringResource(R.string.subway_exit_number, exit.exitNo),
+                        text = "${exit.exitNo}번",
                         modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
                         style = ScanPangType.quickLabel12,
                         color = if (selected) Color.White else ScanPangColors.OnSurfaceMuted,
@@ -741,7 +735,7 @@ private fun SubwayExitsSection(exits: List<SubwayExit>) {
                     verticalArrangement = Arrangement.spacedBy(6.dp),
                 ) {
                     Text(
-                        text = stringResource(R.string.subway_exit_area, exit.exitNo),
+                        text = "${exit.exitNo}번 출구 주변",
                         style = ScanPangType.quickLabel12,
                         color = ScanPangColors.OnSurfaceStrong,
                     )
@@ -788,7 +782,7 @@ private fun SubwayFastAlightsSection(fastAlights: List<SubwayFastAlight>) {
                     verticalArrangement = Arrangement.spacedBy(6.dp),
                 ) {
                     Text(
-                        text = stringResource(R.string.subway_toward_format, item.direction),
+                        text = "${item.direction} 방면",
                         style = ScanPangType.caption12,
                         color = ScanPangColors.OnSurfaceMuted,
                     )

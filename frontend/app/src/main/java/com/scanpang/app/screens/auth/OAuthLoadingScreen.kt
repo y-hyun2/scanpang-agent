@@ -32,8 +32,6 @@ import com.scanpang.app.ui.theme.ScanPangType
 import io.github.jan.supabase.auth.status.SessionStatus
 import kotlinx.coroutines.flow.filterIsInstance
 import kotlinx.coroutines.flow.first
-import androidx.compose.ui.res.stringResource
-import com.scanpang.app.R
 
 private val LoadingGradient = Brush.verticalGradient(
     colorStops = arrayOf(
@@ -90,11 +88,11 @@ fun OAuthLoadingScreen(
         }
     }
 
-    val title = stringResource(R.string.oauth_loading_title)
+    val title = "잠시만 기다려주세요"
     val subtitle = when (provider) {
-        AuthProvider.KAKAO -> stringResource(R.string.oauth_loading_kakao)
-        AuthProvider.GOOGLE -> stringResource(R.string.oauth_loading_google)
-        null               -> stringResource(R.string.oauth_loading_default)
+        AuthProvider.KAKAO -> "카카오 인증 중입니다..."
+        AuthProvider.GOOGLE -> "구글 인증 중입니다..."
+        null -> "인증 중입니다..."
     }
     Scaffold(
         modifier = modifier.fillMaxSize(),

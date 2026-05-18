@@ -36,8 +36,6 @@ import com.scanpang.app.ui.theme.ScanPangColors
 import com.scanpang.app.ui.theme.ScanPangDimens
 import com.scanpang.app.ui.theme.ScanPangSpacing
 import com.scanpang.app.ui.theme.ScanPangType
-import androidx.compose.ui.res.stringResource
-import com.scanpang.app.R
 
 private data class LanguageOption(
     val code: String,
@@ -77,7 +75,7 @@ fun LanguageSettingsScreen(
                 .statusBarsPadding(),
         ) {
             SettingsTitleBar(
-                title = stringResource(R.string.settings_language_title),
+                title = "언어 설정",
                 onBack = { navController.popBackStack() },
             )
             Column(
@@ -86,7 +84,7 @@ fun LanguageSettingsScreen(
                     .padding(top = 16.dp),
             ) {
             Text(
-                text = stringResource(R.string.settings_language_desc),
+                text = "앱에서 사용할 언어를 선택하세요. 선택한 언어로 음성 안내와 텍스트가 제공됩니다.",
                 style = ScanPangType.meta13.copy(lineHeight = 19.5.sp),
                 color = ScanPangColors.OnSurfaceMuted,
             )
@@ -136,7 +134,7 @@ internal fun SettingsTitleBar(
         IconButton(onClick = onBack) {
             Icon(
                 imageVector = Icons.AutoMirrored.Rounded.ArrowBack,
-                contentDescription = stringResource(R.string.common_back),
+                contentDescription = "뒤로",
                 tint = ScanPangColors.OnSurfaceStrong,
             )
         }

@@ -57,8 +57,6 @@ import com.scanpang.app.ui.theme.ScanPangDimens
 import com.scanpang.app.ui.theme.ScanPangShapes
 import com.scanpang.app.ui.theme.ScanPangSpacing
 import com.scanpang.app.ui.theme.ScanPangType
-import androidx.compose.ui.res.stringResource
-import com.scanpang.app.R
 
 private fun parseDistanceMetersForSort(line: String): Int {
     Regex("""(\d+(?:\.\d+)?)\s*km""").find(line)?.groupValues?.get(1)?.toDoubleOrNull()
@@ -90,11 +88,7 @@ fun NearbyPrayerRoomsScreen(
     LaunchedEffect(Unit) { viewModel.loadPrayerRooms() }
 
     var filterIndex by remember { mutableIntStateOf(0) }
-    val filterLabels = listOf(
-        stringResource(R.string.filter_all),
-        stringResource(R.string.filter_sort_distance),
-        stringResource(R.string.filter_gender_separated),
-    )
+    val filterLabels = listOf("전체", "거리순", "남녀 분리")
 
     val allRooms = remember(apiPrayerRooms) {
         val fromApi = apiPrayerRooms.map { it.toPlace() }
@@ -126,12 +120,12 @@ fun NearbyPrayerRoomsScreen(
                     IconButton(onClick = { navController.popBackStack() }) {
                         Icon(
                             imageVector = Icons.AutoMirrored.Rounded.ArrowBack,
-                            contentDescription = stringResource(R.string.common_back),
+                            contentDescription = "뒤로",
                             tint = ScanPangColors.OnSurfaceStrong,
                         )
                     }
                     Text(
-                        text = stringResource(R.string.nearby_prayer_rooms_title),
+                        text = "주변 기도실",
                         style = ScanPangType.detailScreenTitle22,
                         color = ScanPangColors.OnSurfaceStrong,
                         modifier = Modifier.weight(1f),
@@ -167,7 +161,7 @@ fun NearbyPrayerRoomsScreen(
                             modifier = Modifier.size(ScanPangDimens.icon18),
                         )
                         Text(
-                            text = "stringResource(R.string.nearby_prayer_qibla_link),
+                            text = "키블라 방향 확인",
                             style = ScanPangType.title14,
                             color = ScanPangColors.Primary,
                             modifier = Modifier.weight(1f),
@@ -201,7 +195,7 @@ fun NearbyPrayerRoomsScreen(
                             tint = ScanPangColors.OnSurfacePlaceholder,
                         )
                         Text(
-                            text = stringResource(R.string.nearby_prayer_search_placeholder),
+                            text = "기도실 이름 검색",
                             style = ScanPangType.caption12Medium,
                             color = ScanPangColors.OnSurfacePlaceholder,
                         )

@@ -31,8 +31,6 @@ import com.scanpang.app.ui.theme.ScanPangColors
 import com.scanpang.app.ui.theme.ScanPangShapes
 import com.scanpang.app.ui.theme.ScanPangSpacing
 import com.scanpang.app.ui.theme.ScanPangType
-import androidx.compose.ui.res.stringResource
-import com.scanpang.app.R
 
 @Composable
 fun OnboardingNameScreen(
@@ -67,19 +65,19 @@ fun OnboardingNameScreen(
                 OnboardingProgressHeader(step = 2)
                 Spacer(modifier = Modifier.height(ScanPangSpacing.lg))
                 Text(
-                    text = stringResource(R.string.onboarding_name_title),
+                    text = "어떻게 불러드릴까요?",
                     style = ScanPangType.titleLarge,
                     color = ScanPangColors.OnSurfaceStrong,
                 )
                 Spacer(modifier = Modifier.height(ScanPangSpacing.xs))
                 Text(
-                    text = stringResource(R.string.onboarding_name_subtitle),
+                    text = "AR 가이드와 인사할 때 사용됩니다",
                     style = ScanPangType.body14Regular,
                     color = ScanPangColors.OnSurfaceMuted,
                 )
                 Spacer(modifier = Modifier.height(ScanPangSpacing.lg))
                 Text(
-                    text = stringResource(R.string.profile_name_label),
+                    text = "이름",
                     style = ScanPangType.caption12Medium,
                     color = ScanPangColors.OnSurfaceMuted,
                 )
@@ -90,7 +88,7 @@ fun OnboardingNameScreen(
                     modifier = Modifier.fillMaxWidth(),
                     placeholder = {
                         Text(
-                            text = stringResource(R.string.profile_name_label),
+                            text = "이름",
                             style = ScanPangType.body15Medium,
                             color = ScanPangColors.OnSurfacePlaceholder,
                         )
@@ -113,7 +111,7 @@ fun OnboardingNameScreen(
                 Spacer(modifier = Modifier.height(ScanPangSpacing.lg))
             }
             OnboardingPrimaryButton(
-                text = stringResource(R.string.onboarding_next_button),
+                text = "다음",
                 enabled = canContinue,
                 onClick = {
                     prefs.setDisplayName(trimmed)

@@ -36,22 +36,19 @@ import com.scanpang.app.ui.theme.ScanPangColors
 import com.scanpang.app.ui.theme.ScanPangSpacing
 import com.scanpang.app.ui.theme.ScanPangTheme
 import com.scanpang.app.ui.theme.ScanPangType
-import androidx.annotation.StringRes
-import androidx.compose.ui.res.stringResource
-import com.scanpang.app.R
 
 private data class TermItem(
     val id: String,
-    @StringRes val labelRes: Int,
+    val label: String,
     val required: Boolean,
 )
 
 private val Terms = listOf(
-    TermItem("age14",     R.string.terms_age14,     required = true),
-    TermItem("service",   R.string.terms_service,   required = true),
-    TermItem("privacy",   R.string.terms_privacy,   required = true),
-    TermItem("location",  R.string.terms_location,  required = true),
-    TermItem("marketing", R.string.terms_marketing, required = false),
+    TermItem("age14", "만 14세 이상입니다", required = true),
+    TermItem("service", "서비스 이용약관", required = true),
+    TermItem("privacy", "개인정보 처리방침", required = true),
+    TermItem("location", "위치정보 이용약관", required = true),
+    TermItem("marketing", "마케팅 정보 수신", required = false),
 )
 
 /**
@@ -92,7 +89,7 @@ fun TermsAgreementScreen(
                     .padding(top = ScanPangSpacing.lg, bottom = ScanPangSpacing.xl),
             ) {
                 Text(
-                    text = stringResource(R.string.terms_consent_required),
+                    text = "서비스 이용을 위해 동의가 필요합니다",
                     style = ScanPangType.detailScreenTitle22,
                     color = ScanPangColors.OnSurfaceStrong,
                 )
@@ -109,11 +106,7 @@ fun TermsAgreementScreen(
 
                 Terms.forEachIndexed { index, term ->
                     TermsAgreeRow(
-                        label = run {
-                            val termLabel = stringResource(term.labelRes)
-                            if (term.required) stringResource(R.string.terms_required_suffix, termLabel)
-                            else               stringResource(R.string.terms_optional_suffix, termLabel)
-                        },
+                        label = if (term.required) "${term.label} (필수)" else "${term.label} (선택)",
                         checked = checks[term.id] == true,
                         onToggle = {
                             checks = checks.toMutableMap().apply {
@@ -153,13 +146,13 @@ private fun TermsHeader(onBack: () -> Unit) {
         ) {
             Icon(
                 imageVector = Icons.AutoMirrored.Rounded.ArrowBackIos,
-                contentDescription = stringResource(R.string.common_back),
+                contentDescription = "뒤로",
                 modifier = Modifier.size(20.dp),
                 tint = ScanPangColors.OnSurfaceStrong,
             )
         }
         Text(
-            text = stringResource(R.string.terms_screen_title),
+            text = "이용 약관",
             style = ScanPangType.profileName18,
             color = ScanPangColors.OnSurfaceStrong,
         )
@@ -184,7 +177,7 @@ private fun AllAgreeRow(
     ) {
         CheckBoxRound(checked = checked, large = true)
         Text(
-            text = stringResource(R.string.terms_agree_all),
+            text = "전체 동의합니다",
             style = ScanPangType.title16SemiBold,
             color = ScanPangColors.OnSurfaceStrong,
         )
@@ -216,7 +209,7 @@ private fun TermsAgreeRow(
         )
         if (showDetail) {
             Text(
-                text = stringResource(R.string.terms_view_full),
+                text = "전문보기",
                 style = ScanPangType.caption12Medium,
                 color = ScanPangColors.Primary,
                 modifier = Modifier.clickable(onClick = onDetailClick),
@@ -264,7 +257,7 @@ private fun ContinueCta(enabled: Boolean, onClick: () -> Unit) {
         contentAlignment = Alignment.Center,
     ) {
         Text(
-            text = stringResource(R.string.terms_agree_continue),
+            text = "동의하고 계속",
             style = ScanPangType.title16SemiBold,
             color = labelColor,
         )

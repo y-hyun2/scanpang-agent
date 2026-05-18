@@ -65,8 +65,6 @@ import com.scanpang.app.ui.theme.ScanPangShapes
 import com.scanpang.app.ui.theme.ScanPangSpacing
 import com.scanpang.app.ui.theme.ScanPangType
 import kotlinx.coroutines.launch
-import androidx.compose.ui.res.stringResource
-import com.scanpang.app.R
 
 private fun containsKorean(text: String) = text.any { it in '가'..'힣' }
 private fun maxNameLength(text: String) = if (containsKorean(text)) 6 else 12
@@ -126,12 +124,12 @@ fun ProfileEditScreen(
                 IconButton(onClick = { navController.popBackStack() }) {
                     Icon(
                         imageVector = Icons.AutoMirrored.Rounded.ArrowBack,
-                        contentDescription = stringResource(R.string.common_back),
+                        contentDescription = "뒤로",
                         tint = ScanPangColors.OnSurfaceStrong,
                     )
                 }
                 Text(
-                    text = stringResource(R.string.profile_edit_desc),
+                    text = "프로필 편집",
                     style = ScanPangType.profileName18,
                     color = ScanPangColors.OnSurfaceStrong,
                     modifier = Modifier.weight(1f),
@@ -164,7 +162,7 @@ fun ProfileEditScreen(
                                     .data(photoUri)
                                     .crossfade(true)
                                     .build(),
-                                contentDescription = stringResource(R.string.profile_photo_desc),
+                                contentDescription = "프로필 사진",
                                 contentScale = ContentScale.Crop,
                                 modifier = Modifier.fillMaxSize(),
                             )
@@ -187,7 +185,7 @@ fun ProfileEditScreen(
                     ) {
                         Icon(
                             imageVector = Icons.Rounded.CameraAlt,
-                            contentDescription = stringResource(R.string.profile_photo_change_desc),
+                            contentDescription = "사진 변경",
                             tint = Color.White,
                             modifier = Modifier.size(16.dp),
                         )
@@ -202,7 +200,7 @@ fun ProfileEditScreen(
                     verticalArrangement = Arrangement.spacedBy(6.dp),
                 ) {
                     Text(
-                        text = stringResource(R.string.profile_name_label),
+                        text = "이름",
                         style = ScanPangType.sectionLabelSemiBold13,
                         color = ScanPangColors.OnSurfaceMuted,
                     )
@@ -216,7 +214,7 @@ fun ProfileEditScreen(
                         singleLine = true,
                         placeholder = {
                             Text(
-                                text = stringResource(R.string.profile_name_placeholder),
+                                text = "이름을 입력하세요",
                                 style = ScanPangType.body15Medium,
                                 color = ScanPangColors.OnSurfacePlaceholder,
                             )
@@ -239,9 +237,9 @@ fun ProfileEditScreen(
                         val hasKorean = containsKorean(nameInput)
                         Text(
                             text = when {
-                                nameInput.isEmpty() -> stringResource(R.string.profile_name_hint_both)
-                                hasKorean -> stringResource(R.string.profile_name_hint_korean)
-                                else -> stringResource(R.string.profile_name_hint_english)
+                                nameInput.isEmpty() -> "한글 최대 6자 · 영문 최대 12자"
+                                hasKorean -> "한글 최대 6자"
+                                else -> "영문 최대 12자"
                             },
                             style = ScanPangType.caption12,
                             color = ScanPangColors.OnSurfacePlaceholder,
@@ -287,7 +285,7 @@ fun ProfileEditScreen(
                     )
                     Spacer(modifier = Modifier.size(6.dp))
                     Text(
-                        text = stringResource(R.string.common_save),
+                        text = "저장",
                         style = ScanPangType.body15Medium,
                     )
                 }
@@ -309,7 +307,7 @@ fun ProfileEditScreen(
                     .padding(bottom = 32.dp),
             ) {
                 Text(
-                    text = stringResource(R.string.profile_photo_sheet_title),
+                    text = "프로필 사진 변경",
                     style = ScanPangType.sectionLabelSemiBold13,
                     color = ScanPangColors.OnSurfaceMuted,
                     modifier = Modifier.padding(
@@ -347,12 +345,12 @@ fun ProfileEditScreen(
                     }
                     Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                         Text(
-                            text = stringResource(R.string.profile_photo_default_title),
+                            text = "기본 사진 사용",
                             style = ScanPangType.body15Medium,
                             color = ScanPangColors.OnSurfaceStrong,
                         )
                         Text(
-                            text = stringResource(R.string.profile_photo_default_subtitle),
+                            text = "기본 프로필 이미지로 변경합니다",
                             style = ScanPangType.caption12,
                             color = ScanPangColors.OnSurfacePlaceholder,
                         )
@@ -388,12 +386,12 @@ fun ProfileEditScreen(
                     }
                     Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                         Text(
-                            text = stringResource(R.string.profile_photo_gallery_title),
+                            text = "갤러리에서 선택",
                             style = ScanPangType.body15Medium,
                             color = ScanPangColors.OnSurfaceStrong,
                         )
                         Text(
-                            text = stringResource(R.string.profile_photo_gallery_subtitle),
+                            text = "휴대폰 갤러리에서 사진을 불러옵니다",
                             style = ScanPangType.caption12,
                             color = ScanPangColors.OnSurfacePlaceholder,
                         )
