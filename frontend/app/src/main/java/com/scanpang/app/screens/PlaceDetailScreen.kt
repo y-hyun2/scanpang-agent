@@ -22,6 +22,7 @@ import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.rounded.Accessible
 import androidx.compose.material.icons.rounded.AccessTime
 import androidx.compose.material.icons.rounded.Healing
 import androidx.compose.material.icons.rounded.Language
@@ -29,9 +30,11 @@ import androidx.compose.material.icons.rounded.LocalParking
 import androidx.compose.material.icons.rounded.MiscellaneousServices
 import androidx.compose.material.icons.rounded.Phone
 import androidx.compose.material.icons.rounded.Place
+import androidx.compose.material.icons.rounded.Security
 import androidx.compose.material.icons.rounded.Star
 import androidx.compose.material.icons.rounded.Store
 import androidx.compose.material.icons.rounded.Verified
+import androidx.compose.material.icons.rounded.Wc
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -319,6 +322,17 @@ private fun PlaceDetailContent(
             if (place.parking.isNotBlank()) DetailInfoLine(Icons.Rounded.LocalParking, "주차 가능 여부", place.parking)
             if (!isSubway && place.website.isNotBlank())
                 DetailInfoLine(Icons.Rounded.Language, "웹사이트", place.website)
+            // 화장실 카테고리 — 칸 수 / 편의시설 / 안전시설 (피그마 상세-매장(화장실))
+            val toiletStr = buildList {
+                if (place.toiletMale.isNotBlank())   add("남성 ${place.toiletMale}칸")
+                if (place.toiletFemale.isNotBlank()) add("여성 ${place.toiletFemale}칸")
+            }.joinToString(", ")
+            if (toiletStr.isNotBlank())
+                DetailInfoLine(Icons.Rounded.Wc, "칸 수", toiletStr)
+            if (place.facilityTags.isNotBlank())
+                DetailInfoLine(Icons.AutoMirrored.Rounded.Accessible, "편의시설", place.facilityTags)
+            if (place.safetyTags.isNotBlank())
+                DetailInfoLine(Icons.Rounded.Security, "안전시설", place.safetyTags)
             if (place.convenienceServices.isNotBlank()) DetailInfoLine(Icons.Rounded.MiscellaneousServices, "편의시설", place.convenienceServices)
             if (place.departments.isNotBlank()) DetailInfoLine(Icons.Rounded.Healing, "진료과목", place.departments)
         }
@@ -548,6 +562,20 @@ private fun PlaceDetailResponse.mergeOnto(fallback: Place?, categoryKey: String)
         distance = "",
         address = addr.orEmpty(),
     )
+
+    // 화장실 카테고리 — backend details 의 boolean / 칸 수를 Place 필드로 평탄화.
+    val toiletMale  = (details["male_toilt_cnt"]   as? String).orEmpty()
+    val toiletFemale = (details["female_toilt_cnt"] as? String).orEmpty()
+    val facilityList = buildList {
+        if (details["has_disabled"]     as? Boolean == true) add("장애인 화장실")
+        if (details["has_child"]        as? Boolean == true) add("유아 화장실")
+        if (details["has_diaper_table"] as? Boolean == true) add("기저귀 교환대")
+    }
+    val safetyList = buildList {
+        if (details["has_cctv"]            as? Boolean == true) add("CCTV")
+        if (details["has_emergency_bell"]  as? Boolean == true) add("비상벨")
+    }
+
     return base.copy(
         id = id.ifBlank { base.id },
         name = store_name.ifBlank { base.name },
@@ -562,6 +590,10 @@ private fun PlaceDetailResponse.mergeOnto(fallback: Place?, categoryKey: String)
         categoryKey = categoryKey,
         latitude = lat ?: base.latitude,
         longitude = lng ?: base.longitude,
+        toiletMale   = toiletMale.ifBlank   { base.toiletMale },
+        toiletFemale = toiletFemale.ifBlank { base.toiletFemale },
+        facilityTags = if (facilityList.isNotEmpty()) facilityList.joinToString(", ") else base.facilityTags,
+        safetyTags   = if (safetyList.isNotEmpty())   safetyList.joinToString(", ")   else base.safetyTags,
     )
 }
 
