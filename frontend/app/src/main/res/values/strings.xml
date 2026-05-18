@@ -163,6 +163,9 @@
     <!-- 영업 상태 -->
     <!-- open = "Open" 은 SearchDefaultScreen에서 이미 정의 -->
     <string name="detail_closed">Closed</string>
+    <string name="subway_day_weekday">Weekday</string>
+    <string name="subway_day_saturday">Saturday</string>
+    <string name="subway_day_holiday">Sun &amp; Holidays</string>
 
     <!-- ATM 운영 타입 -->
     <string name="detail_atm_24h">24 Hours</string>

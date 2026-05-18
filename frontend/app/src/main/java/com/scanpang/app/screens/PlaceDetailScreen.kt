@@ -329,12 +329,9 @@ private fun PlaceDetailContent(
         }
     }
 
-    DetailSection(title = stringResource(R.string.detail_section_info)) {
-    // 상세 정보(공통) — 지하철 섹션 위로. 피그마 시안 순서.
-    // 지하철은 영업시간을 별도 '열차 시간표' 섹션으로 표시하므로 여기선 숨김.
-    // Kakao place.map URL(homepage)은 공식 웹사이트가 아니라 카카오 자체 페이지라 지하철엔 숨김.
+
     val isSubway = subwayDetail != null
-    DetailSection(title = "상세 정보") {
+    DetailSection(title = stringResource(R.string.detail_section_info)) {
         Column(verticalArrangement = Arrangement.spacedBy(INFO_ROW_SPACING)) {
             if (place.openHours.isNotBlank()) DetailInfoLine(Icons.Rounded.AccessTime, stringResource(R.string.detail_info_open_hours), place.openHours)
             if (place.address.isNotBlank()) DetailInfoLine(Icons.Rounded.Place, stringResource(R.string.detail_info_address), place.address)
@@ -344,40 +341,9 @@ private fun PlaceDetailContent(
             if (place.website.isNotBlank()) DetailInfoLine(Icons.Rounded.Language, tringResource(R.string.detail_info_website), place.website)
             if (place.convenienceServices.isNotBlank()) DetailInfoLine(Icons.Rounded.MiscellaneousServices, stringResource(R.string.detail_info_convenience), place.convenienceServices)
             if (place.departments.isNotBlank()) DetailInfoLine(Icons.Rounded.Healing, stringResource(R.string.detail_info_departments), place.departments)
-            if (!isSubway && place.openHours.isNotBlank())
-                DetailInfoLine(Icons.Rounded.AccessTime, "영업시간", place.openHours)
-            if (place.address.isNotBlank()) DetailInfoLine(Icons.Rounded.Place, "주소", place.address)
-            if (place.phone.isNotBlank()) DetailInfoLine(Icons.Rounded.Phone, "전화", place.phone)
-            if (place.floor.isNotBlank()) DetailInfoLine(Icons.Rounded.Store, "매장 층수", place.floor)
-            if (place.parking.isNotBlank()) DetailInfoLine(Icons.Rounded.LocalParking, "주차 가능 여부", place.parking)
-            if (!isSubway && place.website.isNotBlank())
-                DetailInfoLine(Icons.Rounded.Language, "웹사이트", place.website)
-            if (place.convenienceServices.isNotBlank()) DetailInfoLine(Icons.Rounded.MiscellaneousServices, "편의시설", place.convenienceServices)
-            if (place.departments.isNotBlank()) DetailInfoLine(Icons.Rounded.Healing, "진료과목", place.departments)
         }
     }
 
-    // 지하철역 전용 섹션 — 열차 시간표 → 빠른 하차 → 출구 정보 순서
-    if (subwayDetail != null) {
-        if (subwayDetail.scheduleUp != null || subwayDetail.scheduleDown != null) {
-            DetailScreenDivider()
-            DetailSection(title = "열차 시간표") {
-                SubwayScheduleSection(subwayDetail)
-            }
-        }
-        if (subwayDetail.fastAlights.isNotEmpty()) {
-            DetailScreenDivider()
-            DetailSection(title = "빠른 하차") {
-                SubwayFastAlightsSection(subwayDetail.fastAlights)
-            }
-        }
-        if (subwayDetail.exits.isNotEmpty()) {
-            DetailScreenDivider()
-            DetailSection(title = "출구 정보") {
-                SubwayExitsSection(subwayDetail.exits)
-            }
-        }
-    }
 
     if (exchangeRates.isNotEmpty()) {
         DetailScreenDivider()
@@ -625,8 +591,8 @@ private fun SubwayScheduleSection(detail: SubwayDetail) {
         detail.scheduleUp?.let { SubwayScheduleRow(stringResource(R.string.subway_direction_up), it) }
         detail.scheduleDown?.let { SubwayScheduleRow(stringResource(R.string.subway_direction_down), it) }
         SubwayScheduleDayTabs(selected = selectedDay, onSelect = { selectedDay = it })
-        up?.let   { SubwayScheduleRow("상행", it) }
-        down?.let { SubwayScheduleRow("하행", it) }
+        up?.let   { SubwayScheduleRow(stringResource(R.string.subway_direction_up), it) }
+        down?.let { SubwayScheduleRow(stringResource(R.string.subway_direction_down), it) }
     }
 }
 
@@ -636,9 +602,9 @@ private fun SubwayScheduleDayTabs(
     onSelect: (ScheduleDay) -> Unit,
 ) {
     val items = listOf(
-        ScheduleDay.WEEKDAY  to "평일",
-        ScheduleDay.SATURDAY to "토요일",
-        ScheduleDay.HOLIDAY  to "일·공휴일",
+        ScheduleDay.WEEKDAY  to stringResource(R.string.subway_day_weekday),
+        ScheduleDay.SATURDAY to stringResource(R.string.subway_day_saturday),
+        ScheduleDay.HOLIDAY  to stringResource(R.string.subway_day_holiday),
     )
     Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
         items.forEach { (day, label) ->
