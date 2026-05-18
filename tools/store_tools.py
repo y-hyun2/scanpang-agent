@@ -119,7 +119,9 @@ async def get_store_detail(
     # ── ④-b open_hours 구조화 — LLM 1회로 weekly schedule 정규화 ────────────
     # details.schedule 에 저장해 두면 /place/search·/place/detail 응답에서
     # LLM 호출 없이 is_open_now 를 정확 판정할 수 있다.
-    if open_hours:
+    # 단, subway 카테고리는 seoul_metro fetcher 가 details.schedule 을 자체 포맷
+    # ({weekday_up, weekday_down}) 으로 채우므로 덮어쓰지 않는다.
+    if open_hours and category_key not in ("subway", "subway_station"):
         schedule = await normalize_open_hours(open_hours)
         if schedule:
             details["schedule"] = schedule
