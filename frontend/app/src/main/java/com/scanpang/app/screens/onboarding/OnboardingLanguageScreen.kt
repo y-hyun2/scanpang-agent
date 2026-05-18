@@ -25,6 +25,8 @@ import com.scanpang.app.navigation.AppRoutes
 import com.scanpang.app.ui.theme.ScanPangColors
 import com.scanpang.app.ui.theme.ScanPangSpacing
 import com.scanpang.app.ui.theme.ScanPangType
+import androidx.compose.ui.res.stringResource
+import com.scanpang.app.R
 
 private data class LanguageOption(
     val code: String,
@@ -71,13 +73,13 @@ fun OnboardingLanguageScreen(
                 OnboardingProgressHeader(step = 1)
                 Spacer(modifier = Modifier.height(ScanPangSpacing.lg))
                 Text(
-                    text = "사용 언어를 선택해주세요",
+                    text = stringResource(R.string.onboarding_language_title),
                     style = ScanPangType.titleLarge,
                     color = ScanPangColors.OnSurfaceStrong,
                 )
                 Spacer(modifier = Modifier.height(ScanPangSpacing.xs))
                 Text(
-                    text = "선택한 언어로 음성 안내와 텍스트가 제공됩니다",
+                    text = stringResource(R.string.onboarding_language_subtitle),
                     style = ScanPangType.body14Regular,
                     color = ScanPangColors.OnSurfaceMuted,
                 )
@@ -101,7 +103,7 @@ fun OnboardingLanguageScreen(
                 Spacer(modifier = Modifier.height(ScanPangSpacing.lg))
             }
             OnboardingPrimaryButton(
-                text = "다음",
+                text = stringResource(R.string.onboarding_next_button),
                 enabled = selectedCode != null,
                 onClick = {
                     selectedCode?.let { prefs.setLanguageCode(it) }
