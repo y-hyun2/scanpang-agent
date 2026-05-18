@@ -124,11 +124,27 @@ async def _tago_schedule(client: httpx.AsyncClient, key: str, sid: str) -> dict:
     )
 
     def minmax(rows: list[dict]) -> tuple[str, str]:
-        times = [t for r in rows
-                 if (t := (r.get("depTime") or "")).isdigit() and len(t) >= 4]
+        """첫차/막차 분리 — 자정 넘긴 막차(00:00~03:59)와 새벽 첫차(>=04:00)를
+        분리해서 max(<04:00) → 막차, min(>=04:00) → 첫차로 잡는다.
+        한국 지하철 운영 패턴 상 04:00 cutoff 이 안전."""
+        DAWN_MIN = 4 * 60  # 240분
+
+        def to_min(t: str) -> int:
+            if len(t) >= 4 and t[:4].isdigit():
+                return int(t[:2]) * 60 + int(t[2:4])
+            return -1
+
+        times = sorted(
+            t for r in rows
+            if (t := (r.get("depTime") or "")).isdigit() and len(t) >= 4
+        )
         if not times:
             return "", ""
-        return _hhmm(min(times)), _hhmm(max(times))
+        morning = [t for t in times if to_min(t) >= DAWN_MIN]
+        late_night = [t for t in times if to_min(t) < DAWN_MIN]
+        first = morning[0]    if morning    else times[0]
+        last  = late_night[-1] if late_night else times[-1]
+        return _hhmm(first), _hhmm(last)
 
     def dir_dict(rows: list[dict]) -> dict:
         first, last = minmax(rows)
@@ -274,12 +290,39 @@ async def fetch(
     }
 
 
+_FAC_POS_RE = re.compile(r"\s*(.+?)\s*방면\s*([\d\-]+)\s*$")
+
+
 def _summarize_fst(rows: list[dict]) -> list[dict]:
-    """빠른하차정보 → 역 단위 요약. 출구번호 매핑이 API에 없어서 역 통째로.
-    상하행+방면 같은 묶음을 하나로 dedup. 예:
-      {direction: '회현', updown: '하행', door: '10-4', fac: '에스컬레이터',
-       walk_pos: '명동 B4', fac_pos: '회현 방면10-4, 충무로 방면1-1'}
+    """빠른하차정보 → 방면별 1행 (회현 방면 10-4 · 충무로 방면 1-1).
+
+    API 응답의 facPstnNm (`'회현 방면10-4, 충무로 방면1-1'`) 한 줄에 양 방면 정보가
+    다 들어있다. 첫 행 drtnInfo·qckgffVhclDoorNo 만 보면 한쪽 방면만 잡혀서
+    두 방면 모두 같은 door 가 나오는 버그가 있었어서, **facPstnNm 가 가장 풍부한
+    한 row** 의 fac_pos 텍스트를 파싱해 방면별 door 를 직접 추출한다.
     """
+    rich = next((r for r in rows if r.get("facPstnNm")), None)
+    if rich:
+        fac_pos = rich.get("facPstnNm") or ""
+        walk_pos = rich.get("fwkPstnNm") or ""
+        fac = rich.get("plfmCmgFac") or ""
+        out: list[dict] = []
+        for part in fac_pos.split(","):
+            m = _FAC_POS_RE.match(part.strip())
+            if not m:
+                continue
+            out.append({
+                "direction": m.group(1).strip(),  # '회현' / '충무로'
+                "updown":    "",                   # API 한 행에서 한쪽만 알 수 있어 비움
+                "door":      m.group(2).strip(),   # '10-4' / '1-1'
+                "fac":       fac,
+                "walk_pos":  walk_pos,
+                "fac_pos":   fac_pos,
+            })
+        if out:
+            return out
+
+    # facPstnNm 비어 있으면 raw 행 dedup fallback
     seen: set[tuple] = set()
     out: list[dict] = []
     for r in rows:
@@ -289,12 +332,12 @@ def _summarize_fst(rows: list[dict]) -> list[dict]:
             continue
         seen.add(key)
         out.append({
-            "direction": r.get("drtnInfo")         or "",  # '회현', '충무로'
-            "updown":    r.get("upbdnbSe")         or "",  # '상행' / '하행'
-            "door":      r.get("qckgffVhclDoorNo") or "",  # '10-4'
-            "fac":       r.get("plfmCmgFac")       or "",  # '에스컬레이터'
-            "walk_pos":  r.get("fwkPstnNm")        or "",  # '명동 B4'
-            "fac_pos":   r.get("facPstnNm")        or "",  # '회현 방면10-4, 충무로 방면1-1'
+            "direction": r.get("drtnInfo")         or "",
+            "updown":    r.get("upbdnbSe")         or "",
+            "door":      r.get("qckgffVhclDoorNo") or "",
+            "fac":       r.get("plfmCmgFac")       or "",
+            "walk_pos":  r.get("fwkPstnNm")        or "",
+            "fac_pos":   r.get("facPstnNm")        or "",
         })
     return out
 
