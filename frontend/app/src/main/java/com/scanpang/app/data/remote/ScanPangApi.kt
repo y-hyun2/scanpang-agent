@@ -181,14 +181,35 @@ data class StoreRequest(
     val store_name: String,
 )
 
+/**
+ * `POST /place/store` 응답 — AR 마커 탭 시 뜨는 작은 카드 데이터.
+ * 백엔드 `tools/store_tools.py::get_store_detail()` 반환 dict와 1:1 매핑.
+ *
+ * `details` 안에 카테고리별 가변 필드(메뉴/지하철 출구/화장실 칸 수 등)가
+ * 그대로 들어옴 — 매핑 가이드: §4.1 (Notion store_details 페이지) 참고.
+ * 매핑 예: [com.scanpang.app.data.toSubwayDetail] (subway 카테고리).
+ */
 data class StoreResponse(
+    val id: String = "",                              // "{place_id}__{store_name}"
     val store_name: String = "",
     val place_id: String = "",
     val name_ko: String = "",
     val category: String = "",
+    val category_key: String? = null,                 // cafe/restaurant/subway/restroom/...
     val addr: String = "",
     val phone: String = "",
+    val lat: Double? = null,
+    val lng: Double? = null,
     val place_url: String = "",
+    val floor: String? = null,                        // "B1", "1F"
+    val homepage: String? = null,                     // 공식 홈페이지 (소셜 URL은 백엔드가 필터)
+    val open_hours: String? = null,                   // "매일 11:00~22:00" 형식
+    val closed_days: String? = null,
+    val is_open_now: Boolean? = null,                 // 백엔드 계산 (b55f1e5). null=판정 불가
+    val image_urls: List<String> = emptyList(),       // 1~5장 (Naver Place 출처)
+    val details: Map<String, Any> = emptyMap(),       // 카테고리별 자유형 — Map 캐스팅 후 사용
+    val source: String? = null,                       // "naver_place"/"kakao"/"tago_subway" 등
+    val last_updated: String? = null,
 )
 
 // ── Convenience DTOs ──
