@@ -324,20 +324,20 @@ private fun PlaceDetailContent(
             if (place.floor.isNotBlank()) DetailInfoLine(Icons.Rounded.Store, stringResource(R.string.detail_info_floor), place.floor)
             if (place.parking.isNotBlank()) DetailInfoLine(Icons.Rounded.LocalParking, stringResource(R.string.detail_info_parking), place.parking)
             if (!isSubway && place.website.isNotBlank())
-                DetailInfoLine(Icons.Rounded.Language, stringResource(R.string.detail_info_website), place.website)
-            // 화장실 카테고리 — 칸 수 / 편의시설 / 안전시설 (피그마 상세-매장(화장실) 일치)
+                DetailInfoLine(Icons.Rounded.Language, "웹사이트", place.website)
+            // 화장실 카테고리 — 칸 수 / 편의시설 / 안전시설 (피그마 상세-매장(화장실))
             val toiletStr = buildList {
                 if (place.toiletMale.isNotBlank())   add("남성 ${place.toiletMale}칸")
                 if (place.toiletFemale.isNotBlank()) add("여성 ${place.toiletFemale}칸")
             }.joinToString(", ")
             if (toiletStr.isNotBlank())
-                DetailInfoLine(Icons.Rounded.Wc, stringResource(R.string.detail_info_restroom_count), toiletStr)
+                DetailInfoLine(Icons.Rounded.Wc, "칸 수", toiletStr)
             if (place.facilityTags.isNotBlank())
-                DetailInfoLine(Icons.AutoMirrored.Rounded.Accessible, stringResource(R.string.detail_info_facilities), place.facilityTags)
+                DetailInfoLine(Icons.AutoMirrored.Rounded.Accessible, "편의시설", place.facilityTags)
             if (place.safetyTags.isNotBlank())
-                DetailInfoLine(Icons.Rounded.Security, stringResource(R.string.detail_info_safety), place.safetyTags)
-            if (place.convenienceServices.isNotBlank()) DetailInfoLine(Icons.Rounded.MiscellaneousServices, stringResource(R.string.detail_info_facilities), place.convenienceServices)
-            if (place.departments.isNotBlank()) DetailInfoLine(Icons.Rounded.Healing, stringResource(R.string.detail_info_departments), place.departments)
+                DetailInfoLine(Icons.Rounded.Security, "안전시설", place.safetyTags)
+            if (place.convenienceServices.isNotBlank()) DetailInfoLine(Icons.Rounded.MiscellaneousServices, "편의시설", place.convenienceServices)
+            if (place.departments.isNotBlank()) DetailInfoLine(Icons.Rounded.Healing, "진료과목", place.departments)
         }
     }
 
@@ -566,8 +566,8 @@ private fun PlaceDetailResponse.mergeOnto(fallback: Place?, categoryKey: String)
         distance = "",
         address = addr.orEmpty(),
     )
+
     // 화장실 카테고리 — backend details 의 boolean / 칸 수를 Place 필드로 평탄화.
-    // (toiletMale/Female: 숫자 문자열, facilityTags/safetyTags: 콤마 join 한 한국어 라벨)
     val toiletMale  = (details["male_toilt_cnt"]   as? String).orEmpty()
     val toiletFemale = (details["female_toilt_cnt"] as? String).orEmpty()
     val facilityList = buildList {
