@@ -156,6 +156,8 @@ fun ArExploreScreen(
     viewModel: ScanPangViewModel = viewModel(),
 ) {
     val placeResult by viewModel.placeResult.collectAsState()
+    // 마커 탭 시 /place/store 응답 — ArFloorStoreGuideOverlay 메타 라인의 category·영업중 표시 원천
+    val storeResult by viewModel.storeResult.collectAsState()
     val context = LocalContext.current
 
     val appContext = context.applicationContext
@@ -994,6 +996,10 @@ fun ArExploreScreen(
             }
 
             selectedStore?.let { store ->
+                // 매장 선택 시 백엔드 풀필드(category·is_open_now·...) 받아오기.
+                // place_id 미상이라 빈 문자열 — 백엔드 outdoor 시나리오로 처리됨.
+                LaunchedEffect(store) { viewModel.queryStore(placeId = "", storeName = store) }
+                val s = storeResult?.takeIf { it.store_name == store }
                 ArFloorStoreGuideOverlay(
                     storeName = store,
                     onDismiss = { selectedStore = null },
@@ -1002,6 +1008,8 @@ fun ArExploreScreen(
                         selectedStore = null
                     },
                     modifier = Modifier.fillMaxSize(),
+                    category = s?.category.orEmpty(),
+                    isOpenNow = s?.is_open_now,
                 )
             }
         }

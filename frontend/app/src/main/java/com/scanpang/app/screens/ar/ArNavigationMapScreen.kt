@@ -20,12 +20,18 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.scanpang.app.ar.ArExploreTtsController
+import com.scanpang.app.ar.ScanPangAgentService
+import com.scanpang.app.components.ar.ArAgentChatMessage
 import com.scanpang.app.data.remote.ScanPangViewModel
 import androidx.compose.ui.Modifier
 import androidx.navigation.NavController
+import kotlinx.coroutines.launch
 import com.scanpang.app.components.ar.ArNavCompass
 import com.scanpang.app.components.ar.ArNavMiniMap
 import com.scanpang.app.components.ar.ArNavUiState
@@ -38,6 +44,8 @@ import com.scanpang.app.components.ar.ArNavDestinationPill
 import com.scanpang.app.components.ar.ArNavSideVolumeCamera
 import com.scanpang.app.components.ar.ArNavTopHud
 import com.scanpang.app.components.ar.ArPoiFloatingDetailOverlay
+import com.scanpang.app.components.ar.ArNavStopNavigationSheet
+import com.scanpang.app.components.ar.ArNavStopConfirmDialog
 import com.scanpang.app.components.ar.ArPoiTabBuilding
 import com.scanpang.app.components.ScanPangMainTab
 import com.scanpang.app.components.ScanPangTabBar
@@ -58,6 +66,14 @@ fun ArNavigationMapScreen(
     viewModel: ScanPangViewModel = viewModel(),
     destinationName: String = "",
 ) {
+    val appContext = LocalContext.current
+    val scope = rememberCoroutineScope()
+    val agentService = remember { ScanPangAgentService() }
+    val ttsController = remember(appContext) { ArExploreTtsController(appContext) {} }
+    var chatMessages by remember {
+        mutableStateOf(listOf(ArAgentChatMessage(text = "길찾기 중 궁금한 점을 물어보세요!", isUser = false)))
+    }
+
     // ArRealSceneView가 매 프레임 보고하는 길안내 상태 (좌/우/직진, 거리, 도착 등)
     var navUiState by remember { mutableStateOf(ArNavUiState()) }
 
@@ -110,6 +126,8 @@ fun ArNavigationMapScreen(
     var activeTab by remember { mutableStateOf(NAV_TAB_MAP) }
     var aiQuery by remember { mutableStateOf("") }
     var isTtsOn by remember { mutableStateOf(true) }
+    var showStopNavSheet by remember { mutableStateOf(false) }
+    var showStopConfirmDialog by remember { mutableStateOf(false) }
 
     // 공간증강 (주변 건물 인식) 상태
     var spaceAugmentEnabled by remember { mutableStateOf(true) }
@@ -126,6 +144,7 @@ fun ArNavigationMapScreen(
                 userLat = lat
                 userLng = lng
                 userHeading = heading
+                agentService.updatePosition(lat, lng, heading)
             },
             onNavigationUpdate = { navUiState = it },
             onRouteAvailable = { points, dLat, dLng ->
@@ -173,6 +192,7 @@ fun ArNavigationMapScreen(
                         ScanPangColors.Success
                     else
                         ScanPangColors.Primary,
+                    onClick = { showStopNavSheet = true },
                 )
             },
         )
@@ -212,8 +232,18 @@ fun ArNavigationMapScreen(
                     ArNavAiGuideTabWithTextField(
                         query = aiQuery,
                         onQueryChange = { aiQuery = it },
-                        userMessage = "눈스퀘어가 뭐야?",
-                        agentMessage = "거의 다 왔어요! 입구는 정면 오른쪽이에요.",
+                        onSend = { text ->
+                            val q = text.trim()
+                            if (q.isEmpty()) return@ArNavAiGuideTabWithTextField
+                            chatMessages = chatMessages + ArAgentChatMessage(text = q, isUser = true)
+                            aiQuery = ""
+                            scope.launch {
+                                val reply = agentService.sendMessage(q)
+                                chatMessages = chatMessages + ArAgentChatMessage(text = reply, isUser = false)
+                                ttsController.speakIfEnabled(reply, isTtsOn)
+                            }
+                        },
+                        messages = chatMessages,
                         placeholder = "무엇이든 물어보세요",
                     )
                 },
@@ -250,7 +280,8 @@ fun ArNavigationMapScreen(
                 modifier = Modifier
                     .align(Alignment.TopCenter)
                     .fillMaxWidth()
-                    .fillMaxHeight(0.75f),
+                    .fillMaxHeight()
+                    .padding(bottom = ScanPangDimens.arChatAreaMaxHeight + ScanPangDimens.bottomBarContainerHeight),
             )
         }
 
@@ -302,6 +333,38 @@ fun ArNavigationMapScreen(
                 modifier = Modifier.fillMaxSize(),
                 arOverlay = placeResult?.ar_overlay,
                 docent = placeResult?.docent,
+            )
+        }
+
+        if (showStopNavSheet) {
+            ArNavStopNavigationSheet(
+                destinationName = displayDestinationName,
+                onDismiss = { showStopNavSheet = false },
+                onStopNavigation = {
+                    showStopNavSheet = false
+                    showStopConfirmDialog = true
+                },
+                modifier = Modifier.fillMaxSize(),
+            )
+        }
+
+        if (showStopConfirmDialog) {
+            ArNavStopConfirmDialog(
+                onNavigateToExplore = {
+                    showStopConfirmDialog = false
+                    navController.navigate(AppRoutes.ArExplore) {
+                        popUpTo(AppRoutes.Home) { inclusive = false }
+                        launchSingleTop = true
+                    }
+                },
+                onNavigateToHome = {
+                    showStopConfirmDialog = false
+                    navController.navigate(AppRoutes.Home) {
+                        popUpTo(AppRoutes.Home) { inclusive = false }
+                        launchSingleTop = true
+                    }
+                },
+                onDismiss = { showStopConfirmDialog = false },
             )
         }
     }

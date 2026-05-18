@@ -28,6 +28,7 @@ import com.scanpang.app.screens.onboarding.OnboardingPreferenceScreen
 import com.scanpang.app.screens.NearbyHalalRestaurantsScreen
 import com.scanpang.app.screens.NearbyPrayerRoomsScreen
 import com.scanpang.app.screens.PlaceDetailScreen
+import com.scanpang.app.screens.profile.ProfileEditScreen
 import com.scanpang.app.screens.profile.ProfileScreen
 import com.scanpang.app.screens.QiblaDirectionScreen
 import com.scanpang.app.screens.SavedPlacesScreen
@@ -55,6 +56,7 @@ object AppRoutes {
 
     const val Saved = "saved"
     const val Profile = "profile"
+    const val ProfileEdit = "profile_edit"
     const val RecentlyViewed = "recently_viewed"
 
     // 내 정보 → 상세 설정 페이지들
@@ -120,6 +122,7 @@ fun AppNavHost(
         composable(AppRoutes.Search) { SearchDefaultScreen(navController = navController) }
         composable(AppRoutes.Saved) { SavedPlacesScreen(navController = navController) }
         composable(AppRoutes.Profile) { ProfileScreen(navController = navController) }
+        composable(AppRoutes.ProfileEdit) { ProfileEditScreen(navController = navController) }
         composable(AppRoutes.RecentlyViewed) { RecentlyViewedListScreen(navController = navController) }
         composable(AppRoutes.SettingsLanguage) { LanguageSettingsScreen(navController = navController) }
         composable(AppRoutes.SettingsValueAdded) { ValueAddedSettingsScreen(navController = navController) }

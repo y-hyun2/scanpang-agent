@@ -19,12 +19,16 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.Help
 import androidx.compose.material.icons.automirrored.rounded.Logout
+import androidx.compose.foundation.clickable
+import androidx.compose.material.icons.rounded.AccountCircle
+import androidx.compose.material.icons.rounded.ChevronRight
 import androidx.compose.material.icons.rounded.Language
 import androidx.compose.material.icons.rounded.Mail
 import androidx.compose.material.icons.rounded.Notifications
 import androidx.compose.material.icons.rounded.PersonRemove
 import androidx.compose.material.icons.rounded.RecordVoiceOver
 import androidx.compose.material.icons.rounded.Tune
+import androidx.compose.material3.Icon
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -130,6 +134,9 @@ fun ProfileScreen(
                     verticalArrangement = Arrangement.spacedBy(ScanPangSpacing.md),
                 ) {
                     Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { navController.navigate(AppRoutes.ProfileEdit) },
                         horizontalArrangement = Arrangement.spacedBy(ScanPangSpacing.lg),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
@@ -139,21 +146,41 @@ fun ProfileScreen(
                                 .clip(CircleShape)
                                 .background(ScanPangColors.Background),
                         ) {
-                            AsyncImage(
-                                model = ImageRequest.Builder(context)
-                                    .data(ScanPangFigmaAssets.ProfileAvatar)
-                                    .crossfade(true)
-                                    .build(),
-                                contentDescription = null,
-                                contentScale = ContentScale.Crop,
-                                modifier = Modifier.fillMaxSize(),
-                            )
+                            // hufs-cdp 합류 — 사용자가 업로드한 사진이 있으면 표시, 없으면 Figma 기본 아바타
+                            val photoUri = onboardingPrefs.getProfilePhotoUri()
+                            if (photoUri != null) {
+                                AsyncImage(
+                                    model = ImageRequest.Builder(context)
+                                        .data(photoUri)
+                                        .crossfade(true)
+                                        .build(),
+                                    contentDescription = null,
+                                    contentScale = ContentScale.Crop,
+                                    modifier = Modifier.fillMaxSize(),
+                                )
+                            } else {
+                                AsyncImage(
+                                    model = ImageRequest.Builder(context)
+                                        .data(ScanPangFigmaAssets.ProfileAvatar)
+                                        .crossfade(true)
+                                        .build(),
+                                    contentDescription = null,
+                                    contentScale = ContentScale.Crop,
+                                    modifier = Modifier.fillMaxSize(),
+                                )
+                            }
                         }
-                        // Figma: 아바타 우측엔 이름만. 서브타이틀(할랄 · 한국어) 은 제거됨 — 아래 pill 행과 정보가 중복돼서.
                         Text(
                             text = profileName,
+                            modifier = Modifier.weight(1f),
                             style = ScanPangType.profileName18,
                             color = ScanPangColors.OnSurfaceStrong,
+                        )
+                        Icon(
+                            imageVector = Icons.Rounded.ChevronRight,
+                            contentDescription = "프로필 편집",
+                            tint = ScanPangColors.OnSurfacePlaceholder,
+                            modifier = Modifier.size(ScanPangDimens.tabIcon),
                         )
                     }
                     // 부가가치 pill(할랄/비건/일반) + 언어 pill(한국어/English) 두 개만 노출.

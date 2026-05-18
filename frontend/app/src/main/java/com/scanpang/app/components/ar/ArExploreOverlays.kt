@@ -368,7 +368,7 @@ private val ArSttMicIdleBlue = Color(0xFF1A73E8)
 private val ArSttMicRecordingRed = Color(0xFFE53935)
 
 @Composable
-private fun ArMicSttButton(
+internal fun ArMicSttButton(
     isListening: Boolean,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,

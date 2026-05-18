@@ -4,6 +4,7 @@ import com.scanpang.app.data.remote.AgentChatRequest
 import com.scanpang.app.data.remote.RetrofitClient
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import java.util.UUID
 
 interface AgentService {
     suspend fun sendMessage(text: String): String
@@ -18,6 +19,7 @@ class ScanPangAgentService(
 ) : AgentService {
 
     private val api = RetrofitClient.api
+    private var sessionId: String = UUID.randomUUID().toString()
 
     /** ARCore onSessionUpdated에서 실시간으로 호출해 위치를 갱신 */
     fun updatePosition(lat: Double, lng: Double, heading: Double) {
@@ -39,8 +41,10 @@ class ScanPangAgentService(
                     lng = lng,
                     heading = heading,
                     language = language,
+                    session_id = sessionId,
                 )
             )
+            if (response.session_id.isNotEmpty()) sessionId = response.session_id
             response.speech.ifEmpty { "응답을 받지 못했습니다." }
         } catch (e: Exception) {
             "네트워크 오류: ${e.message}"
