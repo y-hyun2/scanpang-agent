@@ -124,6 +124,8 @@ dependencies {
     implementation("com.google.maps.android:maps-compose:6.4.0")
     implementation("androidx.appcompat:appcompat:1.7.0")
     implementation("androidx.constraintlayout:constraintlayout:2.1.4")
+    // Android 12+ SplashScreen API — themes.xml의 Theme.ScanPang.Splash 부모(Theme.SplashScreen) 제공
+    implementation("androidx.core:core-splashscreen:1.0.1")
 
     // Network (Backend API)
     implementation("com.squareup.retrofit2:retrofit:2.11.0")

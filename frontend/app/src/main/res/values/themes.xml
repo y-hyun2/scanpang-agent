@@ -2,4 +2,11 @@
 <resources>
     <style name="Theme.ScanPang" parent="android:Theme.Material.Light.NoActionBar" />
     <style name="Theme.ScanPang.AppCompat" parent="Theme.AppCompat.Light.NoActionBar" />
+
+    <!-- Android 12+ SplashScreen API. logo_youscan 정적 표시 후 Theme.ScanPang 으로 전환. -->
+    <style name="Theme.ScanPang.Splash" parent="Theme.SplashScreen">
+        <item name="windowSplashScreenBackground">@android:color/white</item>
+        <item name="windowSplashScreenAnimatedIcon">@drawable/logo_youscan</item>
+        <item name="postSplashScreenTheme">@style/Theme.ScanPang</item>
+    </style>
 </resources>
