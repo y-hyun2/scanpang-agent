@@ -27,7 +27,6 @@ import androidx.compose.material.icons.rounded.FilterList
 import androidx.compose.material.icons.rounded.Home
 import androidx.compose.material.icons.rounded.History
 import androidx.compose.material.icons.rounded.KeyboardArrowDown
-import androidx.compose.material.icons.rounded.Pause
 import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -211,7 +210,6 @@ fun GeospatialARExploreScreen(
     var categorySelection by remember { mutableStateOf(setOf<String>()) }
     var isSearchOpen by remember { mutableStateOf(false) }
     var showArSearchResults by remember { mutableStateOf(false) }
-    var isFrozen by remember { mutableStateOf(false) }
     var isTtsOn by remember { mutableStateOf(true) }
     var isSttListening by remember { mutableStateOf(false) }
     val ttsPlayingState = remember { mutableStateOf(false) }
@@ -394,7 +392,7 @@ fun GeospatialARExploreScreen(
 
                         // 5초마다 자동 건물 쿼리
                         val now = System.currentTimeMillis()
-                        if (now - lastQueryTime > 5000 && !isFrozen) {
+                        if (now - lastQueryTime > 5000) {
                             lastQueryTime = now
                             val capturedLat = userLat
                             val capturedLng = userLng
@@ -560,11 +558,6 @@ fun GeospatialARExploreScreen(
                 },
             )
 
-            // 화면 고정 시 반투명 오버레이
-            if (isFrozen) {
-                Box(modifier = Modifier.fillMaxSize().background(ScanPangColors.ArFreezeTint))
-            }
-
             // ── 디버그 오버레이 (VPS 상태 + POI 개수) ──
             Text(
                 text = buildString {
@@ -618,12 +611,9 @@ fun GeospatialARExploreScreen(
                         contentAlignment = Alignment.Center,
                     ) {
                         ArExploreStatusPill(
-                            isFrozen = isFrozen,
                             selectedFilters = categorySelection,
                             hasHighAccuracy = hasAchievedHighAccuracy,
-                            onClick = {
-                                if (isFrozen) isFrozen = false else isFilterOpen = true
-                            },
+                            onClick = { isFilterOpen = true },
                         )
                     }
                     ArCircleIconButton(
@@ -663,9 +653,7 @@ fun GeospatialARExploreScreen(
                         val msg = if (isTtsOn) "음성 안내 켜짐" else "음성 안내 꺼짐"
                         scope.launch { snackbarHostState.showSnackbar(msg) }
                     },
-                    onCameraClick = { isFrozen = !isFrozen },
                     isTtsOn = isTtsOn,
-                    isFrozen = isFrozen,
                     isTtsPlaying = isTtsPlaying,
                 )
             }
@@ -895,13 +883,11 @@ fun GeospatialARExploreScreen(
 
 @Composable
 private fun ArExploreStatusPill(
-    isFrozen: Boolean,
     selectedFilters: Set<String>,
     hasHighAccuracy: Boolean,
     onClick: () -> Unit,
 ) {
     val (bgColor, textColor, icon, text) = when {
-        isFrozen -> listOf(ScanPangColors.Primary, Color.White, Icons.Rounded.Pause, "화면 고정 중")
         !hasHighAccuracy -> listOf(ScanPangColors.ArOverlayWhite80, ScanPangColors.OnSurfaceStrong, Icons.Rounded.CropFree, "VPS 탐색 중...")
         selectedFilters.isEmpty() -> listOf(ScanPangColors.ArOverlayWhite80, ScanPangColors.OnSurfaceStrong, Icons.Rounded.CropFree, "AR 탐색 중")
         else -> {
@@ -922,7 +908,7 @@ private fun ArExploreStatusPill(
         ) {
             Icon(icon as androidx.compose.ui.graphics.vector.ImageVector, null, modifier = Modifier.size(ScanPangDimens.icon18), tint = textColor as Color)
             Text(text as String, style = ScanPangType.arStatusPill15, color = textColor, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            if (isFrozen || selectedFilters.isNotEmpty()) {
+            if (selectedFilters.isNotEmpty()) {
                 Icon(Icons.Rounded.KeyboardArrowDown, null, modifier = Modifier.size(ScanPangDimens.arNavDestinationChevron), tint = textColor)
             }
         }

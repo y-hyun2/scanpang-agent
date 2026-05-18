@@ -90,7 +90,6 @@ fun ScanPangCameraPreview(
 
 @Composable
 fun ArCameraBackdrop(
-    showFreezeTint: Boolean,
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
@@ -122,13 +121,6 @@ fun ArCameraBackdrop(
                 modifier = Modifier
                     .fillMaxSize()
                     .background(ScanPangColors.Background),
-            )
-        }
-        if (showFreezeTint) {
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .background(ScanPangColors.ArFreezeTint),
             )
         }
     }
