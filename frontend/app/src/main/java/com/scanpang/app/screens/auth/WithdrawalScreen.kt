@@ -40,12 +40,15 @@ import com.scanpang.app.ui.theme.ScanPangColors
 import com.scanpang.app.ui.theme.ScanPangSpacing
 import com.scanpang.app.ui.theme.ScanPangTheme
 import com.scanpang.app.ui.theme.ScanPangType
+import androidx.annotation.StringRes
+import androidx.compose.ui.res.stringResource
+import com.scanpang.app.R
 
-private val DeleteItems = listOf(
-    "프로필 및 계정 정보",
-    "저장된 장소 및 즐겨찾기",
-    "여행 기록 및 리뷰",
-    "할랄 인증 스캔 이력",
+private val DeleteItemResIds: List<@StringRes Int> = listOf(
+    R.string.withdrawal_delete_profile,
+    R.string.withdrawal_delete_saved,
+    R.string.withdrawal_delete_history,
+    R.string.withdrawal_delete_halal,
 )
 
 @Composable
@@ -83,13 +86,13 @@ fun WithdrawalScreen(
                     verticalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
                     Text(
-                        text = "정말 탈퇴하시겠어요?",
+                        text = stringResource(R.string.withdrawal_title),
                         style = ScanPangType.detailScreenTitle22,
                         color = ScanPangColors.OnSurfaceStrong,
                         textAlign = TextAlign.Center,
                     )
                     Text(
-                        text = "탈퇴 시 모든 데이터가 삭제되며\n복구할 수 없습니다.",
+                        text = stringResource(R.string.withdrawal_desc),
                         style = ScanPangType.body14Regular,
                         color = ScanPangColors.OnSurfaceMuted,
                         textAlign = TextAlign.Center,
@@ -119,14 +122,14 @@ private fun WithdrawalHeader(onBack: () -> Unit) {
     ) {
         Icon(
             imageVector = Icons.AutoMirrored.Rounded.ArrowBackIos,
-            contentDescription = "뒤로",
+            contentDescription = stringResource(R.string.common_back),
             modifier = Modifier
                 .size(24.dp)
                 .clickable(onClick = onBack),
             tint = ScanPangColors.OnSurfaceStrong,
         )
         Text(
-            text = "회원탈퇴",
+            text = stringResource(R.string.profile_setting_withdrawal),
             style = ScanPangType.profileName18,
             color = ScanPangColors.OnSurfaceStrong,
         )
@@ -162,11 +165,11 @@ private fun InfoCard() {
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         Text(
-            text = "삭제되는 정보",
+            text = stringResource(R.string.withdrawal_info_title),
             style = ScanPangType.title14,
             color = ScanPangColors.OnSurfaceStrong,
         )
-        DeleteItems.forEach { item ->
+        DeleteItemResIds.forEach { resId ->
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -178,7 +181,7 @@ private fun InfoCard() {
                     modifier = Modifier.size(16.dp),
                 )
                 Text(
-                    text = item,
+                    text = stringResource(resId),
                     style = ScanPangType.body14Regular,
                     color = ScanPangColors.OnSurfaceMuted,
                 )
@@ -219,7 +222,7 @@ private fun ConfirmRow(
             }
         }
         Text(
-            text = "위 내용을 모두 확인했습니다",
+            text = stringResource(R.string.withdrawal_confirm_label),
             style = ScanPangType.meta13,
             color = ScanPangColors.OnSurfaceMuted,
         )
@@ -239,7 +242,7 @@ private fun WithdrawCta(enabled: Boolean, onClick: () -> Unit) {
         contentAlignment = Alignment.Center,
     ) {
         Text(
-            text = "탈퇴하기",
+            text = stringResource(R.string.withdrawal_cta),
             style = ScanPangType.title16SemiBold,
             color = Color.White,
         )

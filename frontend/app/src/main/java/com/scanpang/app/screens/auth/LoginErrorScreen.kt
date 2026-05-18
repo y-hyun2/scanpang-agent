@@ -32,6 +32,8 @@ import androidx.compose.ui.unit.dp
 import com.scanpang.app.ui.theme.ScanPangColors
 import com.scanpang.app.ui.theme.ScanPangTheme
 import com.scanpang.app.ui.theme.ScanPangType
+import androidx.compose.ui.res.stringResource
+import com.scanpang.app.R
 
 private val ErrorGradient = Brush.verticalGradient(
     colorStops = arrayOf(
@@ -77,14 +79,14 @@ fun LoginErrorScreen(
             }
             Spacer(modifier = Modifier.height(24.dp))
             Text(
-                text = "로그인에 실패했어요",
+                text = stringResource(R.string.login_error_title),
                 style = ScanPangType.detailScreenTitle22,
                 color = ScanPangColors.OnSurfaceStrong,
                 textAlign = TextAlign.Center,
             )
             Spacer(modifier = Modifier.height(8.dp))
             Text(
-                text = "네트워크 연결을 확인하고\n다시 시도해주세요",
+                text = stringResource(R.string.login_error_desc),
                 style = ScanPangType.body14Regular,
                 color = ScanPangColors.OnSurfaceMuted,
                 textAlign = TextAlign.Center,
@@ -101,7 +103,7 @@ fun LoginErrorScreen(
                 contentAlignment = Alignment.Center,
             ) {
                 Text(
-                    text = "다시 시도",
+                    text = stringResource(R.string.login_error_retry),
                     style = ScanPangType.title16SemiBold,
                     color = Color.White,
                 )
@@ -115,7 +117,7 @@ fun LoginErrorScreen(
                 contentAlignment = Alignment.Center,
             ) {
                 Text(
-                    text = "다른 방법으로 로그인",
+                    text = stringResource(R.string.login_error_other_method),
                     style = ScanPangType.body14Regular.copy(
                         textDecoration = TextDecoration.Underline,
                     ),
