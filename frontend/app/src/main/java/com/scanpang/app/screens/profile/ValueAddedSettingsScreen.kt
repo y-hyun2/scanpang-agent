@@ -31,6 +31,8 @@ import com.scanpang.app.ui.theme.ScanPangColors
 import com.scanpang.app.ui.theme.ScanPangDimens
 import com.scanpang.app.ui.theme.ScanPangSpacing
 import com.scanpang.app.ui.theme.ScanPangType
+import androidx.compose.ui.res.stringResource
+import com.scanpang.app.R
 
 private val SettingsValueAddedEmojiStyle = TextStyle(
     fontSize = 32.sp,
@@ -59,26 +61,16 @@ fun ValueAddedSettingsScreen(
 ) {
     val context = LocalContext.current
     val prefs = remember { OnboardingPreferences(context) }
-    val options = remember {
+    val strHalal      = stringResource(R.string.value_added_halal_title)
+    val strHalalDesc  = stringResource(R.string.value_added_halal_desc)
+    val strVegan      = stringResource(R.string.value_added_vegan_title)
+    val strVeganDesc  = stringResource(R.string.value_added_vegan_desc)
+    val strGeneral    = stringResource(R.string.value_added_general_title)
+    val options = remember(strHalal, strHalalDesc, strVegan, strVeganDesc, strGeneral) {
         listOf(
-            ValueAddedOption(
-                value = ValueAdded.HALAL,
-                emoji = "🕌",
-                title = "할랄",
-                subtitle = "할랄 식당, 기도실, 키블라 방향 등",
-            ),
-            ValueAddedOption(
-                value = ValueAdded.VEGAN,
-                emoji = "🌱",
-                title = "비건",
-                subtitle = "비건 식당, 채식 메뉴 등",
-            ),
-            ValueAddedOption(
-                value = ValueAdded.GENERAL,
-                emoji = "✨",
-                title = "괜찮아요",
-                subtitle = null,
-            ),
+            ValueAddedOption(ValueAdded.HALAL,   "🕌", strHalal,   strHalalDesc),
+            ValueAddedOption(ValueAdded.VEGAN,   "🌱", strVegan,   strVeganDesc),
+            ValueAddedOption(ValueAdded.GENERAL, "✨", strGeneral, null),
         )
     }
     var selected by remember { mutableStateOf(prefs.getValueAdded()) }
@@ -95,7 +87,7 @@ fun ValueAddedSettingsScreen(
                 .statusBarsPadding(),
         ) {
             SettingsTitleBar(
-                title = "부가가치 설정",
+                title = stringResource(R.string.settings_value_added_title),
                 onBack = { navController.popBackStack() },
             )
             Column(
@@ -104,7 +96,7 @@ fun ValueAddedSettingsScreen(
                     .padding(top = 16.dp),
             ) {
             Text(
-                text = "여행 중 우선할 항목을 선택하세요. 안내와 알림이 이 선택에 맞춰집니다.",
+                text = stringResource(R.string.settings_value_added_desc),
                 style = ScanPangType.meta13.copy(lineHeight = 19.5.sp),
                 color = ScanPangColors.OnSurfaceMuted,
             )

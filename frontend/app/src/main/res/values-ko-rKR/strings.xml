@@ -436,6 +436,7 @@
     <string name="profile_photo_default_subtitle">기본 프로필 이미지로 변경합니다</string>
     <string name="profile_photo_gallery_title">갤러리에서 선택</string>
     <string name="profile_photo_gallery_subtitle">휴대폰 갤러리에서 사진을 불러옵니다</string>
+    <string name="profile_name_label">이름</string>
 
     <!-- PrayerAlarmScheduler - 알림 채널 -->
     <string name="notification_channel_prayer_name">기도 시간 알림</string>

@@ -456,6 +456,7 @@
     <string name="profile_photo_default_subtitle">Revert to the default profile image</string>
     <string name="profile_photo_gallery_title">Choose from gallery</string>
     <string name="profile_photo_gallery_subtitle">Import a photo from your phone gallery</string>
+    <string name="profile_name_label">Name</string>
 
     <!-- PrayerAlarmScheduler - 알림 채널 -->
     <string name="notification_channel_prayer_name">Prayer Time Alerts</string>
