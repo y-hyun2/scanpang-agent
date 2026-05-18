@@ -663,11 +663,11 @@ fun GeospatialARExploreScreen(
                         val msg = if (isTtsOn) "음성 안내 켜짐" else "음성 안내 꺼짐"
                         scope.launch { snackbarHostState.showSnackbar(msg) }
                     },
-                    onCameraClick = { isFrozen = !isFrozen },
                     isTtsOn = isTtsOn,
-                    isFrozen = isFrozen,
                     isTtsPlaying = isTtsPlaying,
                 )
+                // 카메라 토글(isFrozen)은 ArExploreSideColumn 시그니처에 아직 미포함.
+                // freeze overlay는 위 if(isFrozen) Box 로 유지. 토글 버튼 UI는 별도 작업.
             }
 
             // ── 조준점 (중앙) ──

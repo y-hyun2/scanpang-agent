@@ -69,6 +69,8 @@ object ScanPangColors {
     val ArOverlayWhite80 = Color(0xCCFFFFFF)
     val ArOverlayWhite85 = Color(0xD9FFFFFF)
     val ArOverlayWhite93 = Color(0xEDFFFFFF)
+    /** 화면 고정(camera freeze) 시 반투명 오버레이 — hufs-cdp `c724b07` 합류 */
+    val ArFreezeTint     = Color(0x17E8F0FE)
     /** AR 상단 그라데이션 (from 50% white → 투명) */
     val ArTopGradientStart = Color(0x80FFFFFF)
     val ArTopGradientEnd = Color(0x00FFFFFF)

@@ -4,6 +4,7 @@ package com.scanpang.app.screens
 
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -13,7 +14,10 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -53,9 +57,14 @@ import com.scanpang.app.data.ExchangeRate
 import com.scanpang.app.data.MenuItem
 import com.scanpang.app.data.Place
 import com.scanpang.app.data.RestaurantPlace
+import com.scanpang.app.data.SubwayDetail
+import com.scanpang.app.data.SubwayExit
+import com.scanpang.app.data.SubwayFastAlight
+import com.scanpang.app.data.SubwayScheduleDir
 import com.scanpang.app.data.galleryModels
 import com.scanpang.app.data.remote.PlaceDetailResponse
 import com.scanpang.app.data.remote.ScanPangViewModel
+import com.scanpang.app.data.toSubwayDetail
 import com.scanpang.app.navigation.AppRoutes
 import com.scanpang.app.ui.theme.ScanPangColors
 import com.scanpang.app.ui.theme.ScanPangDimens
@@ -126,6 +135,9 @@ fun PlaceDetailScreen(
     val exchangeRates = remember(categoryKey) {
         if (categoryKey in setOf("exchange", "atm", "bank")) DummyData.exchangeRates else emptyList()
     }
+
+    // 지하철 카테고리는 백엔드 details(exits/schedule/fast_alights)에서 추출
+    val subwayDetail: SubwayDetail? = remember(backend) { backend?.toSubwayDetail() }
 
     val hasHeroPhoto = categoryKey !in setOf("atm", "subway", "subway_station", "restroom", "public_restroom", "lockers", "locker")
     val canFullscreen = categoryKey in setOf("restaurant", "halal_restaurant", "tourist", "tourist_spot", "attraction")
@@ -261,6 +273,7 @@ fun PlaceDetailScreen(
                 place = place,
                 menuItems = menuItems,
                 exchangeRates = exchangeRates,
+                subwayDetail = subwayDetail,
             )
         }
     }
@@ -273,6 +286,7 @@ private fun PlaceDetailContent(
     place: Place,
     menuItems: List<MenuItem>,
     exchangeRates: List<ExchangeRate>,
+    subwayDetail: SubwayDetail? = null,
 ) {
     if (menuItems.isNotEmpty()) {
         DetailSection(title = "대표 메뉴") {
@@ -288,6 +302,28 @@ private fun PlaceDetailContent(
             DetailIntroBody(text = place.description)
         }
         DetailScreenDivider()
+    }
+
+    // 지하철역 전용 섹션
+    if (subwayDetail != null) {
+        if (subwayDetail.scheduleUp != null || subwayDetail.scheduleDown != null) {
+            DetailSection(title = "운행시간") {
+                SubwayScheduleSection(subwayDetail)
+            }
+            DetailScreenDivider()
+        }
+        if (subwayDetail.exits.isNotEmpty()) {
+            DetailSection(title = "출구 정보") {
+                SubwayExitsSection(subwayDetail.exits)
+            }
+            DetailScreenDivider()
+        }
+        if (subwayDetail.fastAlights.isNotEmpty()) {
+            DetailSection(title = "빠른 하차 정보") {
+                SubwayFastAlightsSection(subwayDetail.fastAlights)
+            }
+            DetailScreenDivider()
+        }
     }
 
     DetailSection(title = "상세 정보") {
@@ -534,5 +570,156 @@ private fun PlaceDetailResponse.extractMenuItems(): List<MenuItem> {
         val name = (m["name"] as? String)?.trim().orEmpty()
         val price = (m["price"] as? String)?.trim().orEmpty()
         if (name.isBlank()) null else MenuItem(name = name, price = price)
+    }
+}
+
+
+// ── 지하철역 전용 섹션 (백엔드 seoul_metro fetcher 응답 기반) ──────────────
+
+@Composable
+private fun SubwayScheduleSection(detail: SubwayDetail) {
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        detail.scheduleUp?.let { SubwayScheduleRow("상행", it) }
+        detail.scheduleDown?.let { SubwayScheduleRow("하행", it) }
+    }
+}
+
+@Composable
+private fun SubwayScheduleRow(label: String, dir: SubwayScheduleDir) {
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = ScanPangShapes.radius12,
+        color = ScanPangColors.Background,
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Surface(shape = RoundedCornerShape(4.dp), color = ScanPangColors.PrimarySoft) {
+                Text(
+                    text = label,
+                    modifier = Modifier.padding(horizontal = 7.dp, vertical = 2.dp),
+                    style = ScanPangType.badge9SemiBold,
+                    color = ScanPangColors.Primary,
+                )
+            }
+            Text(
+                text = "  ${dir.toward} 방면",
+                modifier = Modifier.weight(1f),
+                style = ScanPangType.caption12,
+                color = ScanPangColors.OnSurfaceMuted,
+            )
+            Row(horizontalArrangement = Arrangement.spacedBy(20.dp)) {
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(2.dp),
+                ) {
+                    Text("첫차", style = ScanPangType.tag11Medium, color = ScanPangColors.OnSurfaceMuted)
+                    Text(dir.first, style = ScanPangType.detailSectionTitle15, color = ScanPangColors.OnSurfaceStrong)
+                }
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(2.dp),
+                ) {
+                    Text("막차", style = ScanPangType.tag11Medium, color = ScanPangColors.OnSurfaceMuted)
+                    Text(dir.last, style = ScanPangType.detailSectionTitle15, color = ScanPangColors.OnSurfaceStrong)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun SubwayExitsSection(exits: List<SubwayExit>) {
+    var selectedExitNo by remember { mutableStateOf(exits.firstOrNull()?.exitNo ?: "") }
+    val selectedExit = exits.firstOrNull { it.exitNo == selectedExitNo }
+
+    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            items(exits) { exit ->
+                val selected = exit.exitNo == selectedExitNo
+                Surface(
+                    modifier = Modifier.clickable { selectedExitNo = exit.exitNo },
+                    shape = RoundedCornerShape(8.dp),
+                    color = if (selected) ScanPangColors.Primary else ScanPangColors.Background,
+                ) {
+                    Text(
+                        text = "${exit.exitNo}번",
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                        style = ScanPangType.quickLabel12,
+                        color = if (selected) Color.White else ScanPangColors.OnSurfaceMuted,
+                    )
+                }
+            }
+        }
+        selectedExit?.let { exit ->
+            Surface(
+                modifier = Modifier.fillMaxWidth(),
+                shape = ScanPangShapes.radius12,
+                color = ScanPangColors.Background,
+            ) {
+                Column(
+                    modifier = Modifier.padding(14.dp),
+                    verticalArrangement = Arrangement.spacedBy(6.dp),
+                ) {
+                    Text(
+                        text = "${exit.exitNo}번 출구 주변",
+                        style = ScanPangType.quickLabel12,
+                        color = ScanPangColors.OnSurfaceStrong,
+                    )
+                    exit.facilities.forEach { fac ->
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(4.dp)
+                                    .clip(CircleShape)
+                                    .background(ScanPangColors.OnSurfaceMuted),
+                            )
+                            Text(fac, style = ScanPangType.caption12, color = ScanPangColors.OnSurfaceMuted)
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun SubwayFastAlightsSection(fastAlights: List<SubwayFastAlight>) {
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = ScanPangShapes.radius12,
+        color = ScanPangColors.Background,
+    ) {
+        Row(modifier = Modifier.padding(16.dp)) {
+            fastAlights.take(2).forEachIndexed { index, item ->
+                Column(
+                    modifier = Modifier.weight(1f),
+                    verticalArrangement = Arrangement.spacedBy(6.dp),
+                ) {
+                    Text(
+                        text = "${item.direction} 방면",
+                        style = ScanPangType.caption12,
+                        color = ScanPangColors.OnSurfaceMuted,
+                    )
+                    Text(
+                        text = item.door,
+                        style = ScanPangType.detailSectionTitle15,
+                        color = ScanPangColors.OnSurfaceStrong,
+                    )
+                }
+                if (index == 0 && fastAlights.size >= 2) {
+                    Box(
+                        modifier = Modifier
+                            .padding(horizontal = 8.dp)
+                            .size(width = 1.dp, height = 40.dp)
+                            .background(ScanPangColors.OutlineSubtle),
+                    )
+                }
+            }
+        }
     }
 }
