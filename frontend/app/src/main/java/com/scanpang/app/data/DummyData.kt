@@ -30,6 +30,11 @@ data class Place(
     val website: String = "",
     val convenienceServices: String = "",
     val departments: String = "",
+    // ── 화장실 카테고리 — backend details(male_toilt_cnt 등) → Place 로 평탄화 ──
+    val toiletMale: String = "",      // "5"
+    val toiletFemale: String = "",    // "11"
+    val facilityTags: String = "",    // "장애인 화장실, 유아 화장실, 기저귀 교환대"
+    val safetyTags: String = "",      // "CCTV, 비상벨"
 )
 
 data class MenuItem(

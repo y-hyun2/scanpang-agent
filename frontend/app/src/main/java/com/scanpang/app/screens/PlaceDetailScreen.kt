@@ -22,6 +22,7 @@ import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.rounded.Accessible
 import androidx.compose.material.icons.rounded.AccessTime
 import androidx.compose.material.icons.rounded.Healing
 import androidx.compose.material.icons.rounded.Language
@@ -29,9 +30,11 @@ import androidx.compose.material.icons.rounded.LocalParking
 import androidx.compose.material.icons.rounded.MiscellaneousServices
 import androidx.compose.material.icons.rounded.Phone
 import androidx.compose.material.icons.rounded.Place
+import androidx.compose.material.icons.rounded.Security
 import androidx.compose.material.icons.rounded.Star
 import androidx.compose.material.icons.rounded.Store
 import androidx.compose.material.icons.rounded.Verified
+import androidx.compose.material.icons.rounded.Wc
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -141,6 +144,7 @@ fun PlaceDetailScreen(
 
     // 지하철 카테고리는 백엔드 details(exits/schedule/fast_alights)에서 추출
     val subwayDetail: SubwayDetail? = remember(backend) { backend?.toSubwayDetail() }
+    // 화장실 카테고리는 mergeOnto 가 details → Place 필드로 평탄화 (place.toilet*/facilityTags/safetyTags)
 
     val hasHeroPhoto = categoryKey !in setOf("atm", "subway", "subway_station", "restroom", "public_restroom", "lockers", "locker")
     val canFullscreen = categoryKey in setOf("restaurant", "halal_restaurant", "tourist", "tourist_spot", "attraction")
@@ -307,40 +311,55 @@ private fun PlaceDetailContent(
         DetailScreenDivider()
     }
 
-    // 지하철역 전용 섹션
-    if (subwayDetail != null) {
-        if (subwayDetail.scheduleUp != null || subwayDetail.scheduleDown != null) {
-            DetailSection(title = stringResource(R.string.detail_section_subway_schedule)) {
-                SubwayScheduleSection(subwayDetail)
-            }
-            DetailScreenDivider()
-        }
-        if (subwayDetail.exits.isNotEmpty()) {
-            DetailSection(title = stringResource(R.string.detail_section_subway_exits)) {
-                SubwayExitsSection(subwayDetail.exits)
-            }
-            DetailScreenDivider()
-        }
-        if (subwayDetail.fastAlights.isNotEmpty()) {
-            DetailSection(title = stringResource(R.string.detail_section_subway_fast_alight)) {
-                SubwayFastAlightsSection(subwayDetail.fastAlights)
-            }
-            DetailScreenDivider()
-        }
-    }
-
-
+    // 상세 정보(공통) — 지하철 섹션 위로. 피그마 시안 순서.
+    // 지하철은 영업시간을 별도 '열차 시간표' 섹션으로 표시하므로 여기선 숨김.
+    // Kakao place.map URL(homepage)은 공식 웹사이트가 아니라 카카오 자체 페이지라 지하철엔 숨김.
     val isSubway = subwayDetail != null
     DetailSection(title = stringResource(R.string.detail_section_info)) {
         Column(verticalArrangement = Arrangement.spacedBy(INFO_ROW_SPACING)) {
-            if (place.openHours.isNotBlank()) DetailInfoLine(Icons.Rounded.AccessTime, stringResource(R.string.detail_info_open_hours), place.openHours)
+            if (!isSubway && place.openHours.isNotBlank())
+                DetailInfoLine(Icons.Rounded.AccessTime, stringResource(R.string.detail_info_hours), place.openHours)
             if (place.address.isNotBlank()) DetailInfoLine(Icons.Rounded.Place, stringResource(R.string.detail_info_address), place.address)
             if (place.phone.isNotBlank()) DetailInfoLine(Icons.Rounded.Phone, stringResource(R.string.detail_info_phone), place.phone)
             if (place.floor.isNotBlank()) DetailInfoLine(Icons.Rounded.Store, stringResource(R.string.detail_info_floor), place.floor)
             if (place.parking.isNotBlank()) DetailInfoLine(Icons.Rounded.LocalParking, stringResource(R.string.detail_info_parking), place.parking)
-            if (place.website.isNotBlank()) DetailInfoLine(Icons.Rounded.Language, tringResource(R.string.detail_info_website), place.website)
-            if (place.convenienceServices.isNotBlank()) DetailInfoLine(Icons.Rounded.MiscellaneousServices, stringResource(R.string.detail_info_convenience), place.convenienceServices)
+            if (!isSubway && place.website.isNotBlank())
+                DetailInfoLine(Icons.Rounded.Language, stringResource(R.string.detail_info_website), place.website)
+            // 화장실 카테고리 — 칸 수 / 편의시설 / 안전시설 (피그마 상세-매장(화장실) 일치)
+            val toiletStr = buildList {
+                if (place.toiletMale.isNotBlank())   add("남성 ${place.toiletMale}칸")
+                if (place.toiletFemale.isNotBlank()) add("여성 ${place.toiletFemale}칸")
+            }.joinToString(", ")
+            if (toiletStr.isNotBlank())
+                DetailInfoLine(Icons.Rounded.Wc, stringResource(R.string.detail_info_restroom_count), toiletStr)
+            if (place.facilityTags.isNotBlank())
+                DetailInfoLine(Icons.AutoMirrored.Rounded.Accessible, stringResource(R.string.detail_info_facilities), place.facilityTags)
+            if (place.safetyTags.isNotBlank())
+                DetailInfoLine(Icons.Rounded.Security, stringResource(R.string.detail_info_safety), place.safetyTags)
+            if (place.convenienceServices.isNotBlank()) DetailInfoLine(Icons.Rounded.MiscellaneousServices, stringResource(R.string.detail_info_facilities), place.convenienceServices)
             if (place.departments.isNotBlank()) DetailInfoLine(Icons.Rounded.Healing, stringResource(R.string.detail_info_departments), place.departments)
+        }
+    }
+
+    // 지하철역 전용 섹션 — 열차 시간표 → 빠른 하차 → 출구 정보 (피그마 시안 순서)
+    if (subwayDetail != null) {
+        if (subwayDetail.scheduleUp != null || subwayDetail.scheduleDown != null) {
+            DetailScreenDivider()
+            DetailSection(title = stringResource(R.string.detail_section_subway_schedule)) {
+                SubwayScheduleSection(subwayDetail)
+            }
+        }
+        if (subwayDetail.fastAlights.isNotEmpty()) {
+            DetailScreenDivider()
+            DetailSection(title = stringResource(R.string.detail_section_subway_fast_alight)) {
+                SubwayFastAlightsSection(subwayDetail.fastAlights)
+            }
+        }
+        if (subwayDetail.exits.isNotEmpty()) {
+            DetailScreenDivider()
+            DetailSection(title = stringResource(R.string.detail_section_subway_exits)) {
+                SubwayExitsSection(subwayDetail.exits)
+            }
         }
     }
 
@@ -547,6 +566,20 @@ private fun PlaceDetailResponse.mergeOnto(fallback: Place?, categoryKey: String)
         distance = "",
         address = addr.orEmpty(),
     )
+    // 화장실 카테고리 — backend details 의 boolean / 칸 수를 Place 필드로 평탄화.
+    // (toiletMale/Female: 숫자 문자열, facilityTags/safetyTags: 콤마 join 한 한국어 라벨)
+    val toiletMale  = (details["male_toilt_cnt"]   as? String).orEmpty()
+    val toiletFemale = (details["female_toilt_cnt"] as? String).orEmpty()
+    val facilityList = buildList {
+        if (details["has_disabled"]     as? Boolean == true) add("장애인 화장실")
+        if (details["has_child"]        as? Boolean == true) add("유아 화장실")
+        if (details["has_diaper_table"] as? Boolean == true) add("기저귀 교환대")
+    }
+    val safetyList = buildList {
+        if (details["has_cctv"]            as? Boolean == true) add("CCTV")
+        if (details["has_emergency_bell"]  as? Boolean == true) add("비상벨")
+    }
+
     return base.copy(
         id = id.ifBlank { base.id },
         name = store_name.ifBlank { base.name },
@@ -561,6 +594,10 @@ private fun PlaceDetailResponse.mergeOnto(fallback: Place?, categoryKey: String)
         categoryKey = categoryKey,
         latitude = lat ?: base.latitude,
         longitude = lng ?: base.longitude,
+        toiletMale   = toiletMale.ifBlank   { base.toiletMale },
+        toiletFemale = toiletFemale.ifBlank { base.toiletFemale },
+        facilityTags = if (facilityList.isNotEmpty()) facilityList.joinToString(", ") else base.facilityTags,
+        safetyTags   = if (safetyList.isNotEmpty())   safetyList.joinToString(", ")   else base.safetyTags,
     )
 }
 
