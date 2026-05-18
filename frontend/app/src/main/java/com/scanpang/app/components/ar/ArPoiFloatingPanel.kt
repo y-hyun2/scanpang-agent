@@ -821,12 +821,22 @@ private fun ArPoiAiPointCard(
     }
 }
 
+/**
+ * 사진의 "탐색-매장(X)" 작은 카드 — AR 마커 탭 시 floating.
+ *
+ * 백엔드 `/place/store` 응답(StoreResponse) 풀필드를 받아서 표시:
+ * - category: Kakao raw category_name ("음식점 > 한식 > 국밥")
+ * - isOpenNow: 영업중 판정 (b55f1e5 백엔드 계산). null=판정 불가
+ * 응답 도착 전에는 storeName만 표시되고, 메타 라인은 비어 있음.
+ */
 @Composable
 fun ArFloorStoreGuideOverlay(
     storeName: String,
     onDismiss: () -> Unit,
     onStartNavigation: () -> Unit,
     modifier: Modifier = Modifier,
+    category: String = "",
+    isOpenNow: Boolean? = null,
 ) {
     Box(
         modifier = modifier
@@ -850,11 +860,27 @@ fun ArFloorStoreGuideOverlay(
                     color = ScanPangColors.OnSurfaceStrong,
                 )
                 Spacer(modifier = Modifier.height(ScanPangSpacing.sm))
-                Text(
-                    text = "HALAL MEAT · 한식 · 영업 중",
-                    style = ScanPangType.caption12Medium,
-                    color = ScanPangColors.OnSurfaceMuted,
+                // category·영업중 뱃지를 동적으로 구성. 둘 다 비면 메타 행 자체를 숨김.
+                val openLabel = when (isOpenNow) {
+                    true  -> "영업 중"
+                    false -> "영업 종료"
+                    null  -> ""
+                }
+                val parts = listOfNotNull(
+                    category.takeIf { it.isNotBlank() },
+                    openLabel.takeIf { it.isNotBlank() },
                 )
+                if (parts.isNotEmpty()) {
+                    Text(
+                        text = parts.joinToString(" · "),
+                        style = ScanPangType.caption12Medium,
+                        color = when (isOpenNow) {
+                            true  -> ScanPangColors.Success
+                            false -> ScanPangColors.OnSurfaceMuted
+                            null  -> ScanPangColors.OnSurfaceMuted
+                        },
+                    )
+                }
                 Spacer(modifier = Modifier.height(ScanPangSpacing.md))
                 Button(
                     onClick = onStartNavigation,
