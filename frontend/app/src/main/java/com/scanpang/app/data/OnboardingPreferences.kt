@@ -37,6 +37,13 @@ class OnboardingPreferences(context: Context) {
         prefs.edit().putString(KEY_DISPLAY_NAME, name.trim()).apply()
     }
 
+    // ── 프로필 사진 (ProfileEditScreen — hufs-cdp `c724b07` 합류) ──
+    fun getProfilePhotoUri(): String? = prefs.getString(KEY_PROFILE_PHOTO_URI, null)?.takeIf { it.isNotBlank() }
+
+    fun setProfilePhotoUri(uri: String?) {
+        prefs.edit().putString(KEY_PROFILE_PHOTO_URI, uri).apply()
+    }
+
     // ── 부가가치 — enum 기반 신 API (외부 UI에서 사용) ──
     /**
      * 온보딩에서 고른 부가가치(ValueAdded) 를 enum 으로 반환. 미설정 시 null.
@@ -70,6 +77,7 @@ class OnboardingPreferences(context: Context) {
         const val KEY_LANGUAGE = "preferred_language"
         const val KEY_DISPLAY_NAME = "display_name"
         const val KEY_VALUE_ADDED = "value_added"
+        const val KEY_PROFILE_PHOTO_URI = "profile_photo_uri"
 
         // 구 API 호환 — String 상수
         const val TRAVEL_PREF_HALAL = "halal"
