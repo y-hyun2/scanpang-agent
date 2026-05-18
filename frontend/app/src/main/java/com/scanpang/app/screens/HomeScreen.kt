@@ -65,32 +65,35 @@ import com.scanpang.app.ui.theme.ScanPangShapes
 import com.scanpang.app.ui.theme.ScanPangSpacing
 import com.scanpang.app.ui.theme.ScanPangType
 import java.util.Locale
+import androidx.annotation.StringRes
+import androidx.compose.ui.res.stringResource
+import com.scanpang.app.R
 
 /**
  * 홈 빠른액션 카드 한 장의 스펙. 라벨/아이콘과, NavController 가 들어오면 어디로 보낼지 결정한다.
  * ValueAdded 분기별로 [quickActionsFor] 가 3장을 만들어 [HomeScreen] 으로 흘려준다.
  */
 private data class HomeQuickAction(
-    val title: String,
+    @StringRes val labelRes: Int,
     val icon: ImageVector,
     val navigate: (NavController) -> Unit,
 )
 
 private fun quickActionsFor(value: ValueAdded): List<HomeQuickAction> = when (value) {
     ValueAdded.HALAL -> listOf(
-        HomeQuickAction("할랄 식당", Icons.Rounded.Restaurant) { it.navigate(AppRoutes.NearbyHalal) },
-        HomeQuickAction("기도실", Icons.Rounded.Mosque) { it.navigate(AppRoutes.NearbyPrayer) },
-        HomeQuickAction("관광명소", Icons.Rounded.Whatshot) { it.navigateToSearchWithQuery("관광지") },
+        HomeQuickAction(R.string.home_action_halal_restaurant, Icons.Rounded.Restaurant) { it.navigate(AppRoutes.NearbyHalal) },
+        HomeQuickAction(R.string.home_action_prayer_room, Icons.Rounded.Mosque) { it.navigate(AppRoutes.NearbyPrayer) },
+        HomeQuickAction(R.string.home_action_tourist, Icons.Rounded.Whatshot) { it.navigateToSearchWithQuery("관광지") },
     )
     ValueAdded.VEGAN -> listOf(
-        HomeQuickAction("비건 식당", Icons.Rounded.Restaurant) { it.navigateToSearchWithQuery("비건 식당") },
-        HomeQuickAction("비건 카페", Icons.Rounded.Coffee) { it.navigateToSearchWithQuery("비건 카페") },
-        HomeQuickAction("관광명소", Icons.Rounded.Whatshot) { it.navigateToSearchWithQuery("관광지") },
+        HomeQuickAction(R.string.home_action_vegan_restaurant, Icons.Rounded.Restaurant) { it.navigateToSearchWithQuery("비건 식당") },
+        HomeQuickAction(R.string.home_action_vegan_cafe, Icons.Rounded.Coffee) { it.navigateToSearchWithQuery("비건 카페") },
+        HomeQuickAction(R.string.home_action_tourist, Icons.Rounded.Whatshot) { it.navigateToSearchWithQuery("관광지") },
     )
     ValueAdded.GENERAL -> listOf(
-        HomeQuickAction("식당", Icons.Rounded.Restaurant) { it.navigateToSearchWithQuery("식당") },
-        HomeQuickAction("카페", Icons.Rounded.Coffee) { it.navigateToSearchWithQuery("카페") },
-        HomeQuickAction("관광명소", Icons.Rounded.Whatshot) { it.navigateToSearchWithQuery("관광지") },
+        HomeQuickAction(R.string.home_action_restaurant, Icons.Rounded.Restaurant) { it.navigateToSearchWithQuery("식당") },
+        HomeQuickAction(R.string.home_action_cafe, Icons.Rounded.Coffee) { it.navigateToSearchWithQuery("카페") },
+        HomeQuickAction(R.string.home_action_tourist, Icons.Rounded.Whatshot) { it.navigateToSearchWithQuery("관광지") },
     )
 }
 
@@ -111,6 +114,13 @@ fun HomeScreen(
     val quickActions = remember(valueAdded) { quickActionsFor(valueAdded) }
     val showQiblaCard = valueAdded == ValueAdded.HALAL
 
+    val strLocLoading     = stringResource(R.string.home_location_loading)
+    val strLocPermission  = stringResource(R.string.home_location_permission)
+    val strLocNearFmt     = stringResource(R.string.home_location_near_format)
+    val strLocCoordFmt    = stringResource(R.string.home_location_coord_format)
+    val strLocUnavailable = stringResource(R.string.home_location_unavailable)
+    val strLocFailed      = stringResource(R.string.home_location_failed)
+
     // ── 우리 백엔드 통합 ─────────────────────────────────────────────────────
     // 기도시간·키블라는 API에서 실시간 fetch (DummyData 사용 안 함).
     LaunchedEffect(Unit) {
@@ -118,17 +128,19 @@ fun HomeScreen(
     }
     val prayerTimes by viewModel.prayerTimes.collectAsState()
     val qibla by viewModel.qibla.collectAsState()
-    val qiblaText = qibla?.let { "키블라 방향: ${it.direction.toInt()}°" } ?: "키블라 방향: 292°"
-    val nextPrayerText = prayerTimes?.let { "다음 기도: ${it.next_prayer} ${it.next_prayer_time}" } ?: "다음 기도: Dhuhr 12:15"
+    val qiblaText     = qibla?.let { context.getString(R.string.home_qibla_direction, it.direction.toInt()) }
+                        ?: context.getString(R.string.home_qibla_direction, 292)
+    val nextPrayerText = prayerTimes?.let { context.getString(R.string.home_next_prayer, it.next_prayer, it.next_prayer_time) }
+                        ?: context.getString(R.string.home_next_prayer, "Dhuhr", "12:15")
 
     // 현재 위치 — GPS + 역지오코딩 (권한 없거나 실패 시 fallback 문구).
-    var locationText by remember { mutableStateOf("현재 위치를 가져오는 중...") }
+    var locationText by remember { mutableStateOf(strLocLoading) }
     LaunchedEffect(Unit) {
         val hasPermission =
             ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED ||
             ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED
         if (!hasPermission) {
-            locationText = "위치 권한이 필요합니다"
+            locationText = strLocPermission
             return@LaunchedEffect
         }
         val fusedClient = LocationServices.getFusedLocationProviderClient(context)
@@ -142,18 +154,18 @@ fun HomeScreen(
                         val addr = addresses[0]
                         val dong = addr.subLocality ?: addr.thoroughfare ?: ""
                         val detail = addr.featureName ?: ""
-                        locationText = "현재 위치: ${dong} ${detail} 근처".trim()
+                        locationText = strLocNearFmt.format(dong, detail).trim()
                     } else {
-                        locationText = "현재 위치: %.4f, %.4f".format(loc.latitude, loc.longitude)
+                        locationText = strLocCoordFmt.format(loc.latitude, loc.longitude)
                     }
                 } catch (_: Exception) {
-                    locationText = "현재 위치: %.4f, %.4f".format(loc.latitude, loc.longitude)
+                    locationText = strLocCoordFmt.format(loc.latitude, loc.longitude)
                 }
             } else {
-                locationText = "현재 위치를 확인할 수 없습니다"
+                locationText = strLocUnavailable
             }
         }.addOnFailureListener {
-            locationText = "위치 가져오기 실패"
+            locationText = strLocFailed
         }
     }
 
@@ -215,10 +227,10 @@ private fun HomeTopSection(
     recentlyViewed: List<RecentlyViewedEntry>,
     showMoreRecent: Boolean,
 ) {
-    val greetingLine = if (!displayName.isNullOrBlank()) {
-        "안녕하세요, ${displayName}님!"
-    } else {
-        "안녕하세요!"
+    val greetingLine = if (!displayName.isNullOrBlank())
+        stringResource(R.string.home_greeting_with_name, displayName)
+    else
+        stringResource(R.string.home_greeting)
     }
     Column(
         modifier = Modifier
@@ -238,7 +250,7 @@ private fun HomeTopSection(
             verticalArrangement = Arrangement.spacedBy(ScanPangSpacing.sm),
         ) {
             Text(
-                text = "$greetingLine\n오늘 명동을 탐험해볼까요?",
+                text = "$greetingLine\n${stringResource(R.string.home_explore_area, DummyData.homeAreaName)}",
                 style = ScanPangType.homeGreeting,
                 color = ScanPangColors.OnSurfaceStrong,
             )
@@ -285,7 +297,7 @@ private fun HomeTopSection(
                     tint = ScanPangColors.OnSurfacePlaceholder,
                 )
                 Text(
-                    text = "목적지 검색",
+                    text = stringResource(R.string.home_search_placeholder),
                     style = ScanPangType.searchPlaceholder,
                     color = ScanPangColors.OnSurfacePlaceholder,
                 )
@@ -314,7 +326,7 @@ private fun HomeTopSection(
         ) {
             quickActions.forEach { action ->
                 QuickActionChip(
-                    title = action.title,
+                    title = stringResource(action.labelRes),
                     icon = action.icon,
                     modifier = Modifier.weight(1f),
                     onClick = { action.navigate(navController) },
@@ -435,14 +447,14 @@ private fun RecentlyViewedSection(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Text(
-                text = "최근 본 장소",
+                text = stringResource(R.string.home_section_recently_viewed),
                 style = ScanPangType.sectionTitle16,
                 color = ScanPangColors.OnSurfaceStrong,
             )
             // "더보기" 는 누적 기록이 미리보기(2건)보다 많을 때만 의미가 있어 그때만 노출.
             if (showMore) {
                 Text(
-                    text = "더보기",
+                    text = stringResource(R.string.home_see_more),
                     style = ScanPangType.caption12Medium,
                     color = ScanPangColors.Primary,
                     modifier = Modifier.clickable(onClick = onMoreClick),
@@ -472,7 +484,7 @@ private fun RecentlyViewedEmpty() {
         contentAlignment = Alignment.Center,
     ) {
         Text(
-            text = "아직 본 장소가 없어요",
+            text = stringResource(R.string.recently_viewed_empty),
             style = ScanPangType.body14Regular,
             color = ScanPangColors.OnSurfaceMuted,
         )

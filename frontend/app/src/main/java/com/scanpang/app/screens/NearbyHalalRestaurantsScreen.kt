@@ -54,6 +54,8 @@ import com.scanpang.app.ui.theme.ScanPangDimens
 import com.scanpang.app.ui.theme.ScanPangShapes
 import com.scanpang.app.ui.theme.ScanPangSpacing
 import com.scanpang.app.ui.theme.ScanPangType
+import androidx.compose.ui.res.stringResource
+import com.scanpang.app.R
 
 private val filterLabels = listOf(
     "전체",
@@ -62,6 +64,8 @@ private val filterLabels = listOf(
     "VEGGIE",
     "SALAM SEOUL",
 )
+
+private val halalFilterKeys = listOf("", "HALAL MEAT", "SEAFOOD", "VEGGIE", "SALAM SEOUL")
 
 private data class NearbyHalalPlace(
     val title: String,
@@ -74,7 +78,7 @@ private data class NearbyHalalPlace(
     val trustTags: List<SearchResultTrustTag>,
 )
 
-private fun RestaurantPlace.toNearbyHalalPlace(): NearbyHalalPlace {
+private fun RestaurantPlace.toNearbyHalalPlace(koreanFoodFallback: String): NearbyHalalPlace {
     val place = this.place
     val badgeKind = when (halalCategory) {
         "HALAL MEAT" -> SearchResultBadgeKind.HalalMeat
@@ -91,7 +95,7 @@ private fun RestaurantPlace.toNearbyHalalPlace(): NearbyHalalPlace {
         }
         SearchResultTrustTag(tag, icon)
     }
-    val cuisineLabel = place.subCategory.ifBlank { "한식" }
+    val cuisineLabel = place.subCategory.ifBlank { koreanFoodFallback }
     return NearbyHalalPlace(
         title = place.name,
         categoryFilter = halalCategory,
@@ -119,16 +123,21 @@ fun NearbyHalalRestaurantsScreen(
     LaunchedEffect(Unit) { viewModel.loadRestaurants() }
 
     var filterIndex by remember { mutableIntStateOf(0) }
+    val strCuisineFallback = stringResource(R.string.detail_cuisine_korean)
+    val filterDisplayLabels = listOf(
+        stringResource(R.string.filter_all),
+        "HALAL MEAT", "SEAFOOD", "VEGGIE", "SALAM SEOUL",
+    )
 
     val allPlaces = remember(apiRestaurants) {
-        val fromApi = apiRestaurants.map { it.toRestaurantPlace().toNearbyHalalPlace() }
-        fromApi.ifEmpty { DummyData.halalRestaurants.map { it.toNearbyHalalPlace() } }
+        val fromApi = apiRestaurants.map { it.toRestaurantPlace().toNearbyHalalPlace(strCuisineFallback) }
+        fromApi.ifEmpty { DummyData.halalRestaurants.map { it.toNearbyHalalPlace(strCuisineFallback) } }
     }
 
     val visiblePlaces = remember(filterIndex, allPlaces) {
         if (filterIndex == 0) allPlaces
         else {
-            val key = filterLabels[filterIndex]
+            val key = halalFilterKeys[filterIndex]
             allPlaces.filter { it.categoryFilter == key }
         }
     }
@@ -158,12 +167,12 @@ fun NearbyHalalRestaurantsScreen(
                     IconButton(onClick = { navController.popBackStack() }) {
                         Icon(
                             imageVector = Icons.AutoMirrored.Rounded.ArrowBack,
-                            contentDescription = "뒤로",
+                            contentDescription = stringResource(R.string.common_back),
                             tint = ScanPangColors.OnSurfaceStrong,
                         )
                     }
                     Text(
-                        text = "주변 할랄 식당",
+                        text = stringResource(R.string.nearby_halal_title),
                         style = ScanPangType.detailScreenTitle22,
                         color = ScanPangColors.OnSurfaceStrong,
                         modifier = Modifier.weight(1f),
@@ -190,7 +199,7 @@ fun NearbyHalalRestaurantsScreen(
                             tint = ScanPangColors.OnSurfacePlaceholder,
                         )
                         Text(
-                            text = "식당 이름 또는 메뉴 검색",
+                            text = stringResource(R.string.nearby_halal_search_placeholder),
                             style = ScanPangType.caption12Medium,
                             color = ScanPangColors.OnSurfacePlaceholder,
                         )
@@ -202,7 +211,7 @@ fun NearbyHalalRestaurantsScreen(
                     modifier = Modifier.horizontalScroll(rememberScrollState()),
                     horizontalArrangement = Arrangement.spacedBy(ScanPangSpacing.sm),
                 ) {
-                    filterLabels.forEachIndexed { index, label ->
+                    filterDisplayLabels.forEachIndexed { index, label ->
                         val selected = index == filterIndex
                         Surface(
                             modifier = Modifier

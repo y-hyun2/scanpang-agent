@@ -38,6 +38,8 @@ import com.scanpang.app.ui.theme.ScanPangColors
 import com.scanpang.app.ui.theme.ScanPangDimens
 import com.scanpang.app.ui.theme.ScanPangSpacing
 import com.scanpang.app.ui.theme.ScanPangType
+import androidx.compose.ui.res.stringResource
+import com.scanpang.app.R
 
 /**
  * "최근 본 장소 더보기" 화면 — [RecentlyViewedStore] 에 누적된 전체 항목을 시간 역순으로 노출.
@@ -90,12 +92,12 @@ fun RecentlyViewedListScreen(
                     IconButton(onClick = { navController.popBackStack() }) {
                         Icon(
                             imageVector = Icons.AutoMirrored.Rounded.ArrowBack,
-                            contentDescription = "뒤로",
+                            contentDescription = stringResource(R.string.common_back),
                             tint = ScanPangColors.OnSurfaceStrong,
                         )
                     }
                     Text(
-                        text = "최근 본 장소",
+                        text = stringResource(R.string.home_section_recently_viewed),
                         style = ScanPangType.detailScreenTitle22,
                         color = ScanPangColors.OnSurfaceStrong,
                         modifier = Modifier.weight(1f),
@@ -134,7 +136,7 @@ private fun RecentlyViewedListEmpty() {
         contentAlignment = Alignment.Center,
     ) {
         Text(
-            text = "아직 본 장소가 없어요",
+            text = stringResource(R.string.recently_viewed_empty),
             style = ScanPangType.body14Regular,
             color = ScanPangColors.OnSurfaceMuted,
         )
