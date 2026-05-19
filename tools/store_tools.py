@@ -124,7 +124,10 @@ async def get_store_detail(
             row = await conn.fetchrow(
                 "SELECT * FROM store_details WHERE id = $1", cache_id
             )
-        if row:
+        # floor_info_seed 는 검색 카드용 lightweight row — open_hours/details/
+        # image_urls 비어있음. 사용자가 카드 탭한 지금이 풀필드 fetch 타이밍이라
+        # cache miss 로 취급해 아래 fetcher 디스패치 단계로 흘려보낸다.
+        if row and row["source"] != "floor_info_seed":
             return _row_to_dict(row)
 
     # ── ② 좌표 결정 ─────────────────────────────────────────────────────────

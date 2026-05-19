@@ -16,8 +16,10 @@ from typing import Optional
 import httpx
 from openai import AsyncOpenAI
 from dotenv import load_dotenv
-import chromadb
-from sentence_transformers import SentenceTransformer
+
+# chromadb / sentence_transformers 는 save_to_chroma() 안에서만 사용 — module-level
+# import 하면 fetch_tour_info 만 호출하려는 fetcher 가 무거운 ML 모듈을 같이 로드해
+# NumPy/torch 호환성 크래시까지 일으킴. 임베딩 빌드 시점에만 lazy 로 들여온다.
 
 load_dotenv()
 
@@ -392,6 +394,7 @@ async def build_all_places() -> list[dict]:
 
 def save_to_chroma(all_places: list[dict]):
     print("\nChroma DB 임베딩 저장 중...")
+    import chromadb  # lazy: 임베딩 빌드 시점에만 ML 의존성 로드
     from chromadb.utils.embedding_functions import DefaultEmbeddingFunction
     ef = DefaultEmbeddingFunction()
     client = chromadb.PersistentClient(path="./chroma_db")

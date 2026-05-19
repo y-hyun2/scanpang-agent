@@ -549,6 +549,31 @@ async def place_detail(req: PlaceDetailRequest):
     if row is None:
         raise HTTPException(status_code=404, detail=f"매장 '{req.id}' 정보를 찾을 수 없습니다.")
 
+    # floor_info_seed 인 lightweight row → 카드 탭한 지금이 풀필드 fetch 타이밍.
+    # get_store_detail 이 fetcher 디스패치(kakao_scraper + naver_place 등) + UPSERT
+    # 수행. cache_id 는 '{place_id}__{store_name}' 패턴이라 req.id 그대로 재사용.
+    if row["source"] == "floor_info_seed":
+        sep = "__"
+        idx = req.id.find(sep)
+        place_id_part = req.id[:idx] if idx >= 0 else (row["place_id"] or "")
+        store_name_part = req.id[idx + len(sep):] if idx >= 0 else row["store_name"]
+        try:
+            await get_store_detail(place_id_part, store_name_part)
+            async with pool.acquire() as conn:
+                row = await conn.fetchrow(
+                    """
+                    SELECT id, store_name, place_id, lat, lng,
+                           category, category_key, addr, phone, floor,
+                           homepage, place_url,
+                           open_hours, closed_days,
+                           image_urls, details, source, last_updated
+                    FROM store_details WHERE id = $1
+                    """,
+                    req.id,
+                )
+        except Exception as e:
+            print(f"[place_detail] floor_info_seed lazy fetch 실패: {e}")
+
     # image_urls / details 는 JSONB — asyncpg 가 list/dict 로 디코드하지만
     # 안전을 위해 문자열 케이스도 방어적으로 처리.
     raw_imgs = row["image_urls"]

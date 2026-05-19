@@ -171,10 +171,13 @@ CATEGORY_SOURCES: dict[str, list[str]] = {
     #  - 메뉴/편의시설(택배·반값택배)/intro 같은 풍부도는 naver 만 노출.
     # dispatcher 가 merge 모드라 kakao base 위에 빈 필드(특히 details.menu/
     # details.conveniences/details.intro)만 naver 가 보강한다.
+    # tour_api 는 관광지/문화시설의 admission_fee/description_en/parking_info 등
+    # 정부 TourAPI 만 주는 정보 보강용. rag.build_place_db 의 ML 의존성을 lazy 로
+    # 분리해 import 부담 제거.
     "tourist":           ["kakao_scraper", "naver_place", "tour_api"],
     "cultural":          ["kakao_scraper", "naver_place", "tour_api"],
-    "shopping":          ["kakao_scraper", "naver_place", "tour_api"],
-    "restaurant":        ["kakao_scraper", "naver_place", "tour_api"],
+    "shopping":          ["kakao_scraper", "naver_place"],
+    "restaurant":        ["kakao_scraper", "naver_place"],
     "accommodation":     ["kakao_scraper", "naver_place", "tour_api"],
     "cafe":              ["kakao_scraper", "naver_place"],
     "convenience_store": ["kakao_scraper", "naver_place"],
