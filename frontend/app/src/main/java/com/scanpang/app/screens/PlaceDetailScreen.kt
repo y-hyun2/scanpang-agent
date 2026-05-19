@@ -312,15 +312,18 @@ private fun PlaceDetailContent(
     // 지하철은 영업시간을 별도 '열차 시간표' 섹션으로 표시하므로 여기선 숨김.
     // Kakao place.map URL(homepage)은 공식 웹사이트가 아니라 카카오 자체 페이지라 지하철엔 숨김.
     val isSubway = subwayDetail != null
+    // 화장실 — Kakao place.map URL이 의미 없음 + 매장 층수도 보통 무의미해서 숨김
+    val isRestroom = place.categoryKey in setOf("restroom", "public_restroom")
     DetailSection(title = "상세 정보") {
         Column(verticalArrangement = Arrangement.spacedBy(INFO_ROW_SPACING)) {
             if (!isSubway && place.openHours.isNotBlank())
                 DetailInfoLine(Icons.Rounded.AccessTime, "영업시간", place.openHours)
             if (place.address.isNotBlank()) DetailInfoLine(Icons.Rounded.Place, "주소", place.address)
             if (place.phone.isNotBlank()) DetailInfoLine(Icons.Rounded.Phone, "전화", place.phone)
-            if (place.floor.isNotBlank()) DetailInfoLine(Icons.Rounded.Store, "매장 층수", place.floor)
+            if (!isRestroom && place.floor.isNotBlank())
+                DetailInfoLine(Icons.Rounded.Store, "매장 층수", place.floor)
             if (place.parking.isNotBlank()) DetailInfoLine(Icons.Rounded.LocalParking, "주차 가능 여부", place.parking)
-            if (!isSubway && place.website.isNotBlank())
+            if (!isSubway && !isRestroom && place.website.isNotBlank())
                 DetailInfoLine(Icons.Rounded.Language, "웹사이트", place.website)
             // 화장실 카테고리 — 칸 수 / 편의시설 / 안전시설 (피그마 상세-매장(화장실))
             val toiletStr = buildList {
