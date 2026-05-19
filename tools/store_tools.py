@@ -41,6 +41,49 @@ def _is_social_url(url: str) -> bool:
     return any(p in lower for p in _SOCIAL_URL_PATTERNS)
 
 
+# 단어 끝이 이런 패턴이면 그 자체로 지점·위치 식별이 가능하다고 본다.
+# 점/지점/본점/출장소 같은 명시적 지점 표시 + '~부/소/원/국' 같이 한국어에서
+# 자체적으로 분점·조직단위를 가리키는 단어 + '~동/구/역/길/로' 같이 행정/도로
+# 정보가 매장명에 들어간 경우 모두 포함.
+_LOCATION_ENDINGS = (
+    "점", "관", "스토어", "샵", "타운",
+    "부", "소", "원", "국",
+    "동", "구", "역", "길", "로",
+)
+
+
+def _has_location_marker(store_name: str) -> bool:
+    """매장명 토큰 중 하나라도 위치/지점 식별 단어로 끝나는지."""
+    for w in store_name.split():
+        if len(w) >= 2 and any(w.endswith(suf) for suf in _LOCATION_ENDINGS):
+            return True
+    return False
+
+
+def _enrich_store_name(store_name: str, addr: str) -> str:
+    """
+    'KB국민은행 ATM' 처럼 지점명 없는 generic 매장명에 addr 의 도로명/동/구를
+    suffix 로 붙여 표시용 이름을 만든다. 시드 시점 1회 변환 — cache_id 는 원본
+    store_name 으로 유지하고 DB store_name 컬럼만 갱신해 lookup 일관성은 보존.
+
+    Rules:
+    - 매장명 토큰 중 하나라도 _LOCATION_ENDINGS (점/지점/본점/출장소/부/소/원/
+      국/동/구/역/길/로/관/스토어/샵 등) 로 끝나면 위치 식별 가능 → 그대로
+    - 그 외엔 addr 에서 '~길'/'~로' → '~동' → '~구' 순으로 가장 정밀한 suffix 채택
+    """
+    if not store_name:
+        return store_name
+    if _has_location_marker(store_name):
+        return store_name
+    if not addr:
+        return store_name
+    for ending in (("길", "로"), ("동",), ("구",)):
+        for token in addr.split():
+            if any(token.endswith(suf) for suf in ending) and len(token) >= 2:
+                return f"{store_name} {token}"
+    return store_name
+
+
 async def get_store_detail(
     place_id: str,
     store_name: str,
@@ -151,12 +194,17 @@ async def get_store_detail(
         if schedule:
             details["schedule"] = schedule
 
+    # 표시용 store_name — 'KB국민은행 ATM' 처럼 지점명 부재한 generic 매장명에
+    # addr 의 도로명/동/구 suffix 를 자동 부착해 사용자가 어디 지점인지 식별 가능.
+    # cache_id 는 원본(파라미터) store_name 으로 유지해 캐시 lookup 일관성 보존.
+    display_name = _enrich_store_name(store_name, addr)
+
     # outdoor: store_details INSERT 우회. raw 테이블에서 가져온 풀필드 그대로 응답.
     if is_outdoor:
         return {
             "id":            cache_id,
             "place_id":      place_id,
-            "store_name":    store_name,
+            "store_name":    display_name,
             "category":      category_name,
             "category_key":  category_key,
             "addr":          addr,
@@ -199,7 +247,7 @@ async def get_store_detail(
                 source        = EXCLUDED.source,
                 last_updated  = EXCLUDED.last_updated
             """,
-            cache_id, place_id, store_name,
+            cache_id, place_id, display_name,
             category_name, category_key,
             addr, phone, lat, lng, kakao.get("place_url", ""),
             json.dumps(details, ensure_ascii=False),
@@ -211,7 +259,7 @@ async def get_store_detail(
     return {
         "id":            cache_id,
         "place_id":      place_id,
-        "store_name":    store_name,
+        "store_name":    display_name,
         "category":      category_name,
         "category_key":  category_key,
         "addr":          addr,
