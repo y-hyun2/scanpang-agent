@@ -35,8 +35,12 @@ import androidx.compose.material.icons.rounded.Star
 import androidx.compose.material.icons.rounded.Store
 import androidx.compose.material.icons.rounded.Verified
 import androidx.compose.material.icons.rounded.Wc
+import androidx.compose.material.icons.rounded.KeyboardArrowDown
+import androidx.compose.material.icons.rounded.KeyboardArrowUp
+import androidx.compose.material3.Icon
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -307,9 +311,27 @@ private fun PlaceDetailContent(
     val isRestroom = place.categoryKey in setOf("restroom", "public_restroom")
 
     if (menuItems.isNotEmpty()) {
+        var isMenuExpanded by remember { mutableStateOf(false) }
+        val visibleMenus = if (isMenuExpanded) menuItems else menuItems.take(5)
         DetailSection(title = "대표 메뉴") {
             Column(verticalArrangement = Arrangement.spacedBy(ScanPangSpacing.sm)) {
-                menuItems.forEach { m -> DetailMenuPriceRow(name = m.name, price = m.price) }
+                visibleMenus.forEach { m -> DetailMenuPriceRow(name = m.name, price = m.price) }
+                if (menuItems.size > 5) {
+                    TextButton(
+                        onClick = { isMenuExpanded = !isMenuExpanded },
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Icon(
+                            imageVector = if (isMenuExpanded) Icons.Rounded.KeyboardArrowUp else Icons.Rounded.KeyboardArrowDown,
+                            contentDescription = null,
+                            modifier = Modifier.size(ScanPangDimens.icon16),
+                        )
+                        Text(
+                            text = if (isMenuExpanded) "접기" else "더보기 (${menuItems.size - 5}개)",
+                            style = ScanPangType.caption12Medium,
+                        )
+                    }
+                }
             }
         }
         DetailScreenDivider()

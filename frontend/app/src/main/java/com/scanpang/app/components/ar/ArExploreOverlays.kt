@@ -68,6 +68,7 @@ import androidx.compose.material.icons.rounded.Store
 import androidx.compose.material.icons.rounded.Wc
 import androidx.compose.material.icons.rounded.Mic
 import androidx.compose.material.icons.rounded.Headset
+import androidx.compose.material.icons.rounded.HeadsetOff
 import androidx.compose.material.icons.rounded.Pause
 import androidx.compose.material.icons.rounded.Place
 import androidx.compose.material.icons.rounded.Search
@@ -1052,16 +1053,16 @@ fun ArExploreFilterPanelFigma(
         }
         FlowRow(
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(ScanPangSpacing.sm),
-            verticalArrangement = Arrangement.spacedBy(ScanPangSpacing.sm),
+            horizontalArrangement = Arrangement.spacedBy(5.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
             categorySpecs.forEach { spec ->
                 val selected = spec.label in categorySelection
                 Surface(
                     modifier = Modifier
-                        .clip(ScanPangShapes.pill36)
+                        .clip(ScanPangShapes.radius12)
                         .clickable { onCategoryToggle(spec.label) },
-                    shape = ScanPangShapes.pill36,
+                    shape = ScanPangShapes.radius12,
                     color = if (selected) ScanPangColors.Primary else ScanPangColors.Surface,
                     shadowElevation = if (selected) 0.dp else 2.dp,
                 ) {
@@ -1134,7 +1135,7 @@ fun BoxScope.ArExploreSideColumn(
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         ArExploreRoundSideButton(
-            icon = Icons.Rounded.Headset,
+            icon = if (isTtsOn) Icons.Rounded.Headset else Icons.Rounded.HeadsetOff,
             contentDescription = "음성 안내",
             onClick = onTtsClick,
             surfaceColor = ScanPangColors.ArOverlayWhite85,
@@ -1351,7 +1352,7 @@ private fun ArExploreSearchResultCard(
     Surface(
         modifier = modifier.fillMaxWidth(),
         shape = ScanPangShapes.radius14,
-        color = ScanPangColors.Surface,
+        color = ScanPangColors.ArOverlayWhite93,
         border = BorderStroke(ScanPangDimens.borderHairline, ScanPangColors.OutlineSubtle),
         shadowElevation = ScanPangDimens.arPoiCardShadowElevation,
     ) {

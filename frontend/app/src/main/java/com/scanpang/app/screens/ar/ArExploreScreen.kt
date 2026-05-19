@@ -684,6 +684,19 @@ fun ArExploreScreen(
                 )
             }
 
+            // 하단 그라데이션 — transparent → white 50%
+            Box(
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .fillMaxWidth()
+                    .height(300.dp)
+                    .background(
+                        Brush.verticalGradient(
+                            colors = listOf(Color.Transparent, Color.White.copy(alpha = 0.5f)),
+                        ),
+                    ),
+            )
+
             // ── 하단 채팅 섹션 ──
             Column(
                 modifier = Modifier
@@ -793,13 +806,13 @@ fun ArExploreScreen(
             // ── 검색 패널 ──
             AnimatedVisibility(
                 visible = isSearchOpen,
-                enter = slideInVertically { it },
-                exit = slideOutVertically { it },
+                enter = slideInVertically { -it },
+                exit = slideOutVertically { -it },
             ) {
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
-                        .background(ScanPangColors.ArOverlayScrimDark)
+                        .background(Color.Transparent)
                         .clickable { isSearchOpen = false; showArSearchResults = false },
                 ) {
                     Surface(
@@ -810,7 +823,7 @@ fun ArExploreScreen(
                             .padding(top = ScanPangSpacing.lg)
                             .clickable(enabled = false) { },
                         shape = ScanPangShapes.arSearchPanel,
-                        color = ScanPangColors.Surface,
+                        color = ScanPangColors.ArOverlayWhite93,
                         shadowElevation = ScanPangDimens.arPoiCardShadowElevation,
                     ) {
                         Column(
