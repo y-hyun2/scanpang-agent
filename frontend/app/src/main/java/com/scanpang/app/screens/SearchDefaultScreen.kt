@@ -166,9 +166,34 @@ fun SearchDefaultScreen(
     var query by rememberSaveable { mutableStateOf("") }
     var recent by remember { mutableStateOf(historyPrefs.getRecent()) }
     val backendResults by viewModel.searchResults.collectAsState()
-    // HomeScreen 이 GPS 받아서 ViewModel 에 저장한 위치. outdoor 카테고리 검색 시 거리 정렬용.
-    val userLat by viewModel.userLat.collectAsState()
-    val userLng by viewModel.userLng.collectAsState()
+    // NavHost destination 마다 viewModel() 이 다른 인스턴스를 주므로 HomeScreen 의
+    // setUserLocation 이 SearchDefaultScreen 에 안 닿음. SearchDefaultScreen 도 자체적으로
+    // GPS 받아서 outdoor 카테고리 검색 시 거리 정렬용으로 사용.
+    var userLat by remember { mutableStateOf<Double?>(null) }
+    var userLng by remember { mutableStateOf<Double?>(null) }
+    LaunchedEffect(Unit) {
+        val hasPermission =
+            android.content.pm.PackageManager.PERMISSION_GRANTED ==
+                androidx.core.content.ContextCompat.checkSelfPermission(
+                    context, android.Manifest.permission.ACCESS_FINE_LOCATION
+                ) ||
+            android.content.pm.PackageManager.PERMISSION_GRANTED ==
+                androidx.core.content.ContextCompat.checkSelfPermission(
+                    context, android.Manifest.permission.ACCESS_COARSE_LOCATION
+                )
+        if (!hasPermission) return@LaunchedEffect
+        com.google.android.gms.location.LocationServices
+            .getFusedLocationProviderClient(context)
+            .lastLocation
+            .addOnSuccessListener { loc ->
+                if (loc != null) {
+                    userLat = loc.latitude
+                    userLng = loc.longitude
+                    // ViewModel 에도 같이 저장 — 향후 다른 화면이 같은 인스턴스를 만나면 재사용.
+                    viewModel.setUserLocation(loc.latitude, loc.longitude)
+                }
+            }
+    }
 
     // Home quick action 등 외부에서 사전입력 query 를 흘려보내면 진입 시 한 번 반영.
     LaunchedEffect(Unit) {
