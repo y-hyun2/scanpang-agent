@@ -62,6 +62,7 @@ import com.scanpang.app.data.Place
 import com.scanpang.app.data.RestaurantPlace
 import com.scanpang.app.data.ScheduleDay
 import com.scanpang.app.data.SubwayDetail
+import com.scanpang.app.util.OpenHoursUtils
 import com.scanpang.app.data.SubwayExit
 import com.scanpang.app.data.SubwayFastAlight
 import com.scanpang.app.data.SubwayScheduleDir
@@ -318,8 +319,12 @@ private fun PlaceDetailContent(
     // Kakao place.map URL(homepage)은 공식 웹사이트가 아니라 카카오 자체 페이지라 지하철엔 숨김.
     DetailSection(title = "상세 정보") {
         Column(verticalArrangement = Arrangement.spacedBy(INFO_ROW_SPACING)) {
-            if (!isSubway && place.openHours.isNotBlank())
-                DetailInfoLine(Icons.Rounded.AccessTime, "영업시간", place.openHours)
+            if (!isSubway && place.openHours.isNotBlank()) {
+                val groupedHours = remember(place.openHours) {
+                    OpenHoursUtils.groupedHoursText(place.openHours)
+                }
+                DetailInfoLine(Icons.Rounded.AccessTime, "영업시간", groupedHours)
+            }
             if (place.address.isNotBlank()) DetailInfoLine(Icons.Rounded.Place, "주소", place.address)
             if (place.phone.isNotBlank()) DetailInfoLine(Icons.Rounded.Phone, "전화", place.phone)
             if (!isRestroom && place.floor.isNotBlank())
