@@ -62,16 +62,15 @@ object RetrofitClient {
             .create(TmapApiService::class.java)
     }
 
-    // ── ScanPang 백엔드 (localhost:8000, adb reverse로 터널링) ─────────────
     private val scanpangOkHttpClient = OkHttpClient.Builder()
         .addInterceptor(loggingInterceptor)
         .connectTimeout(15, TimeUnit.SECONDS)
-        .readTimeout(30, TimeUnit.SECONDS)  // LLM 응답 대기
+        .readTimeout(30, TimeUnit.SECONDS)
         .build()
 
     val scanpangApiService: ScanPangApiService by lazy {
         Retrofit.Builder()
-            .baseUrl("http://localhost:8000/")
+            .baseUrl(BuildConfig.SERVER_URL)
             .client(scanpangOkHttpClient)
             .addConverterFactory(GsonConverterFactory.create())
             .build()

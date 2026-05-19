@@ -115,6 +115,12 @@ import kotlin.math.cos
 import kotlin.math.sin
 import com.scanpang.app.data.remote.Building
 import com.scanpang.app.data.remote.GeoJsonMultiPolygon
+import com.scanpang.app.components.ar.buildFovPolygon
+import com.scanpang.app.components.ar.clipPolygon
+import com.scanpang.app.components.ar.computeCentroid
+import com.scanpang.app.components.ar.computeAngularFootprint
+import com.scanpang.app.components.ar.computeFrontEdgeMidpoint
+import com.scanpang.app.components.ar.isRayBlockedByPolygon
 import kotlin.math.abs
 
 private data class ArSearchHit(
@@ -949,7 +955,7 @@ fun ArExploreScreen(
                                             }
                                             TextButton(
                                                 onClick = {
-                                                    navController.navigate(AppRoutes.ArNavMap) {
+                                                    navController.navigate(AppRoutes.arNavMapRoute(hit.title)) {
                                                         launchSingleTop = true
                                                     }
                                                     isSearchOpen = false
@@ -1004,7 +1010,7 @@ fun ArExploreScreen(
                     storeName = store,
                     onDismiss = { selectedStore = null },
                     onStartNavigation = {
-                        navController.navigate(AppRoutes.ArNavMap) { launchSingleTop = true }
+                        navController.navigate(AppRoutes.arNavMapRoute(store)) { launchSingleTop = true }
                         selectedStore = null
                     },
                     modifier = Modifier.fillMaxSize(),
@@ -1164,256 +1170,10 @@ private fun buildFilterPillLabel(selected: Set<String>): String {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Polygon utility 함수들
+// Polygon utility 함수들은 ArBuildingPinUtils.kt (com.scanpang.app.components.ar)로 이동됨.
+// computeCentroid / computeAngularFootprint / buildFovPolygon / clipPolygon /
+// computeFrontEdgeMidpoint / isRayBlockedByPolygon 은 그 파일의 internal fun 을 사용.
 // ─────────────────────────────────────────────────────────────────────────────
 
-/**
- * GeoJSON MultiPolygon의 첫 번째 polygon 외곽 ring의 vertex 평균 = 단순 중심점.
- */
-private fun computeCentroid(geom: GeoJsonMultiPolygon): Pair<Double, Double>? {
-    val polygon = geom.coordinates.firstOrNull() ?: return null
-    val ring = polygon.firstOrNull() ?: return null
-    if (ring.isEmpty()) return null
 
-    var sumLat = 0.0
-    var sumLng = 0.0
-    for (point in ring) {
-        sumLng += point[0]  // GeoJSON: [lng, lat] 순서
-        sumLat += point[1]
-    }
-    val n = ring.size
-    return Pair(sumLat / n, sumLng / n)
-}
-
-/**
- * 사용자 위치 기준, 건물 polygon이 차지하는 시야각(angular footprint).
- * 반환: (centerBearing 0~360°, halfWidth°)
- * Occlusion 판정에 사용.
- */
-private fun computeAngularFootprint(
-    geom: GeoJsonMultiPolygon,
-    userLat: Double,
-    userLng: Double,
-): Pair<Double, Double>? {
-    val polygon = geom.coordinates.firstOrNull() ?: return null
-    val ring = polygon.firstOrNull() ?: return null
-    if (ring.size < 3) return null
-
-    val bearings = ring.map { point ->
-        val r = FloatArray(3)
-        Location.distanceBetween(userLat, userLng, point[1], point[0], r)
-        ((r[1] + 360f) % 360f).toDouble()
-    }
-
-    val minB = bearings.min()
-    val maxB = bearings.max()
-    val range = maxB - minB
-
-    return if (range > 180.0) {
-        val wrapped = bearings.map { if (it < 180) it + 360 else it }
-        val wMin = wrapped.min()
-        val wMax = wrapped.max()
-        val center = ((wMin + wMax) / 2.0) % 360.0
-        Pair(center, (wMax - wMin) / 2.0)
-    } else {
-        Pair((minB + maxB) / 2.0, range / 2.0)
-    }
-}
-
-/**
- * 사용자 시야(FOV)를 위경도 polygon으로 근사.
- * 부채꼴을 7개 vertex로 표현: 사용자 점 + FOV 호 위 6점.
- */
-private fun buildFovPolygon(
-    userLat: Double,
-    userLng: Double,
-    heading: Double,
-    fovDeg: Double = 60.0,
-    maxDistM: Double = 200.0,
-): List<Pair<Double, Double>> {
-    val halfFov = fovDeg / 2.0
-    val numArcPoints = 7
-
-    val result = mutableListOf<Pair<Double, Double>>()
-    result.add(Pair(userLng, userLat))
-
-    val angleStep = fovDeg / (numArcPoints - 1)
-    for (i in 0 until numArcPoints) {
-        val angleFromHeading = -halfFov + i * angleStep
-        val bearingDeg = (heading + angleFromHeading + 360) % 360
-        val bearingRad = Math.toRadians(bearingDeg)
-
-        val dLat = maxDistM * Math.cos(bearingRad) / 111_320.0
-        val dLng = maxDistM * Math.sin(bearingRad) / (111_320.0 * Math.cos(Math.toRadians(userLat)))
-
-        result.add(Pair(userLng + dLng, userLat + dLat))
-    }
-
-    result.add(Pair(userLng, userLat))
-    return result
-}
-
-/**
- * Sutherland-Hodgman 폴리곤 클리핑.
- * subject (임의 모양) ∩ clip (convex, CW) = visible polygon.
- */
-private fun clipPolygon(
-    subject: List<Pair<Double, Double>>,
-    clip: List<Pair<Double, Double>>,
-): List<Pair<Double, Double>> {
-    if (subject.size < 3 || clip.size < 3) return emptyList()
-
-    val subjectClean = if (subject.first() == subject.last()) subject.dropLast(1) else subject
-    val clipClean = if (clip.first() == clip.last()) clip.dropLast(1) else clip
-
-    var output = subjectClean.toMutableList()
-
-    for (i in clipClean.indices) {
-        if (output.isEmpty()) break
-
-        val input = output.toList()
-        output = mutableListOf()
-
-        val edgeStart = clipClean[i]
-        val edgeEnd = clipClean[(i + 1) % clipClean.size]
-
-        for (j in input.indices) {
-            val current = input[j]
-            val previous = input[(j - 1 + input.size) % input.size]
-
-            val currentInside = isInsideEdge(current, edgeStart, edgeEnd)
-            val previousInside = isInsideEdge(previous, edgeStart, edgeEnd)
-
-            when {
-                previousInside && currentInside -> output.add(current)
-                previousInside && !currentInside -> output.add(computeLineIntersection(previous, current, edgeStart, edgeEnd))
-                !previousInside && currentInside -> {
-                    output.add(computeLineIntersection(previous, current, edgeStart, edgeEnd))
-                    output.add(current)
-                }
-            }
-        }
-    }
-    return output
-}
-
-private fun isInsideEdge(
-    point: Pair<Double, Double>,
-    edgeStart: Pair<Double, Double>,
-    edgeEnd: Pair<Double, Double>,
-): Boolean {
-    // buildFovPolygon이 CW(시계방향) → inside = edge 오른쪽 → cross <= 0
-    val cross = (edgeEnd.first - edgeStart.first) * (point.second - edgeStart.second) -
-            (edgeEnd.second - edgeStart.second) * (point.first - edgeStart.first)
-    return cross <= 0
-}
-
-private fun computeLineIntersection(
-    p1: Pair<Double, Double>,
-    p2: Pair<Double, Double>,
-    edgeStart: Pair<Double, Double>,
-    edgeEnd: Pair<Double, Double>,
-): Pair<Double, Double> {
-    val x1 = p1.first; val y1 = p1.second
-    val x2 = p2.first; val y2 = p2.second
-    val x3 = edgeStart.first; val y3 = edgeStart.second
-    val x4 = edgeEnd.first; val y4 = edgeEnd.second
-
-    val denom = (x1 - x2) * (y3 - y4) - (y1 - y2) * (x3 - x4)
-    if (denom == 0.0) return p2
-
-    val t = ((x1 - x3) * (y3 - y4) - (y1 - y3) * (x3 - x4)) / denom
-    return Pair(x1 + t * (x2 - x1), y1 + t * (y2 - y1))
-}
-
-/**
- * visible polygon에서 사용자에게 가장 가까운 모서리(front edge) 중점 반환.
- * 반환: Pair<lat, lng> (ARCore anchor 형식)
- */
-private fun computeFrontEdgeMidpoint(
-    visiblePolygon: List<Pair<Double, Double>>,  // Pair<lng, lat>
-    userLat: Double,
-    userLng: Double,
-): Pair<Double, Double>? {
-    if (visiblePolygon.isEmpty()) return null
-
-    // vertex 1개 — 그 점 자체를 마커 위치로 (시야 가장자리에 살짝 걸친 경우)
-    if (visiblePolygon.size == 1) {
-        val p = visiblePolygon[0]
-        return Pair(p.second, p.first)   // Pair<lat, lng>
-    }
-
-    // vertex 2개 이상 — 모서리 중점 중 사용자에게 가장 가까운 것
-    var bestMidLng = 0.0
-    var bestMidLat = 0.0
-    var bestDist = Double.MAX_VALUE
-
-    val n = visiblePolygon.size
-    for (i in 0 until n) {
-        val p1 = visiblePolygon[i]
-        val p2 = visiblePolygon[(i + 1) % n]
-
-        val midLng = (p1.first + p2.first) / 2.0
-        val midLat = (p1.second + p2.second) / 2.0
-
-        val r = FloatArray(1)
-        Location.distanceBetween(userLat, userLng, midLat, midLng, r)
-
-        if (r[0] < bestDist) {
-            bestDist = r[0].toDouble()
-            bestMidLat = midLat
-            bestMidLng = midLng
-        }
-    }
-
-    return Pair(bestMidLat, bestMidLng)
-}
-
-/**
- * 사용자 → target까지의 ray가 occluder polygon을 통과하는지.
- * polygon의 어떤 edge와도 교차하면 true (가려진 것).
- *
- * 좌표는 모두 (lng, lat) 형식. polygon은 닫힌 ring (마지막 점이 첫 점과 같지 않아도 자동 연결).
- */
-private fun isRayBlockedByPolygon(
-    userLng: Double, userLat: Double,
-    targetLng: Double, targetLat: Double,
-    occluderPolygon: List<Pair<Double, Double>>,
-): Boolean {
-    if (occluderPolygon.size < 3) return false
-    val n = occluderPolygon.size
-    for (i in 0 until n) {
-        val p1 = occluderPolygon[i]
-        val p2 = occluderPolygon[(i + 1) % n]
-        if (segmentsIntersect(
-                userLng, userLat, targetLng, targetLat,
-                p1.first, p1.second, p2.first, p2.second,
-            )) {
-            return true
-        }
-    }
-    return false
-}
-
-/**
- * 두 선분 (x1,y1)-(x2,y2)와 (x3,y3)-(x4,y4)가 교차하는지.
- * 표준 orientation 테스트.
- */
-private fun segmentsIntersect(
-    x1: Double, y1: Double, x2: Double, y2: Double,
-    x3: Double, y3: Double, x4: Double, y4: Double,
-): Boolean {
-    val d1 = direction(x3, y3, x4, y4, x1, y1)
-    val d2 = direction(x3, y3, x4, y4, x2, y2)
-    val d3 = direction(x1, y1, x2, y2, x3, y3)
-    val d4 = direction(x1, y1, x2, y2, x4, y4)
-    return ((d1 > 0 && d2 < 0) || (d1 < 0 && d2 > 0)) &&
-            ((d3 > 0 && d4 < 0) || (d3 < 0 && d4 > 0))
-}
-
-private fun direction(
-    x1: Double, y1: Double, x2: Double, y2: Double, x3: Double, y3: Double,
-): Double {
-    return (x3 - x1) * (y2 - y1) - (y3 - y1) * (x2 - x1)
-}
 

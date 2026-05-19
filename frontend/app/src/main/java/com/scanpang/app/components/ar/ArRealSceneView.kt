@@ -8,12 +8,14 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.offset
 import androidx.compose.ui.draw.scale
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -21,7 +23,12 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshots.SnapshotStateList
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.dp
+import com.google.ar.core.Anchor
+import com.scanpang.app.data.remote.Building
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.google.android.filament.Engine
@@ -51,6 +58,16 @@ import io.github.sceneview.rememberModelLoader
 import io.github.sceneview.rememberViewNodeManager
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+
+private data class NavBuildingPin(val id: String, val name: String, val lat: Double, val lng: Double)
+
+private data class NavBuildingCandidate(
+    val building: Building,
+    val centerLat: Double,
+    val centerLng: Double,
+    val distance: Float,
+    val visiblePolygon: List<Pair<Double, Double>>,
+)
 
 /** AR 길안내 화면이 외부에 노출하는 UI 상태. */
 data class ArNavUiState(
@@ -98,11 +115,8 @@ fun ArRealSceneView(
     onNavigationUpdate: (ArNavUiState) -> Unit = {},
     /** 라우트 응답 도착 시 한 번 호출. 미니맵 폴리라인/목적지 마커용. */
     onRouteAvailable: (routePoints: List<Pair<Double, Double>>, destinationLat: Double, destinationLng: Double) -> Unit = { _, _, _ -> },
-    /** 공간증강(주변 건물 인식) 활성 여부. true이면 5초마다 [onPlaceQueryRequest] 호출. */
-    spaceAugmentEnabled: Boolean = false,
-    /** 공간증강 쿼리 요청. 부모가 백엔드 호출(viewModel.queryPlace)을 처리. */
-    onPlaceQueryRequest: (heading: Double, lat: Double, lng: Double, alt: Double, pitch: Double) -> Unit = { _, _, _, _, _ -> },
     voiceOn: Boolean = true,
+    buildingsCache: Map<String, Building> = emptyMap(),
 ) {
     val context = LocalContext.current
     val engine = rememberEngine()
@@ -175,8 +189,11 @@ fun ArRealSceneView(
     var hasSpokenDeparture by remember { mutableStateOf(false) }  // 출발 안내 출력 여부
     var hasSpokenArrival by remember { mutableStateOf(false) }    // 도착 안내 출력 여부
 
-    // 공간증강 쿼리 throttle용 — 5초 간격 보장
-    var lastPlaceQueryTime by remember { mutableStateOf(0L) }
+    // 주변 건물 PIN 오버레이 상태 — FOV+Occlusion+FrontEdge (탐색모드와 동일 로직)
+    val navBuildingPins = remember { mutableStateListOf<NavBuildingPin>() }
+    val navBuildingAnchors = remember { mutableMapOf<String, Anchor>() }
+    val navBuildingScreenPositions = remember { mutableStateOf<Map<String, Pair<Float, Float>>>(emptyMap()) }
+    var lastNavBuildingVisibilityTime by remember { mutableStateOf(0L) }
 
     // 도착 상태 — ViewNode2 안의 Compose가 구독해서 배지를 초록 체크로 자동 전환
     val isArrivedState = remember { mutableStateOf(false) }
@@ -234,6 +251,13 @@ fun ArRealSceneView(
                         arCommand.destination.lat,
                         arCommand.destination.lng,
                     )
+
+                    // 새 라우트 도착 시 건물 PIN 상태 초기화 — FOV 로직이 다음 프레임부터 재구성
+                    navBuildingAnchors.values.forEach { runCatching { it.detach() } }
+                    navBuildingAnchors.clear()
+                    navBuildingScreenPositions.value = emptyMap()
+                    navBuildingPins.clear()
+                    lastNavBuildingVisibilityTime = 0L
                 }
 
                 // 출발 안내 음성 (route.speech) — 한 번만, 2초 지연 후 재생
@@ -280,11 +304,19 @@ fun ArRealSceneView(
             activeBackChildNodes.clear()
             anchorCreationAltitudes.clear()
             renderedIndices.clear()
+            navBuildingAnchors.values.forEach { runCatching { it.detach() } }
+            navBuildingAnchors.clear()
         }
     }
 
+    val configuration = LocalConfiguration.current
+    val density = LocalDensity.current
+    val screenWidthPx = with(density) { configuration.screenWidthDp.dp.toPx() }
+    val screenHeightPx = with(density) { configuration.screenHeightDp.dp.toPx() }
+
+    Box(modifier = modifier.fillMaxSize()) {
     ARScene(
-        modifier = modifier.fillMaxSize(),
+        modifier = Modifier.fillMaxSize(),
         engine = engine,
         modelLoader = modelLoader,
         materialLoader = materialLoader,
@@ -337,17 +369,108 @@ fun ArRealSceneView(
             frame.camera.pose.toMatrix(poseMatrix, 0)
             val isLookingDown = poseMatrix[9] > 0.5f
 
-            // 공간증강(주변 건물 인식) — 활성 시 5초마다 쿼리 발사
-            if (spaceAugmentEnabled && now - lastPlaceQueryTime > 5000) {
-                lastPlaceQueryTime = now
-                // pose의 quaternion에서 forward 벡터 분해 → pitch 계산 (ArExploreScreen과 동일)
-                val q = pose.eastUpSouthQuaternion
-                val fx = 2f * (q[0] * q[2] + q[3] * q[1])
-                val fy = 2f * (q[1] * q[2] - q[3] * q[0])
-                val fz = 1f - 2f * (q[0] * q[0] + q[1] * q[1])
-                val horiz = kotlin.math.sqrt(fx * fx + fz * fz)
-                val pitch = Math.toDegrees(kotlin.math.atan2(-fy.toDouble(), horiz.toDouble()))
-                onPlaceQueryRequest(pose.heading, lat, lng, pose.altitude, pitch)
+            // ── 건물 PIN: 300ms 스로틀로 FOV+Occlusion+FrontEdge 계산 (탐색모드 동일 로직) ──
+            if (buildingsCache.isNotEmpty() && now - lastNavBuildingVisibilityTime > 300) {
+                lastNavBuildingVisibilityTime = now
+
+                val fov = buildFovPolygon(lat, lng, pose.heading)
+
+                val candidates = buildingsCache.values
+                    .mapNotNull { b ->
+                        val center = computeCentroid(b.geom) ?: return@mapNotNull null
+                        computeAngularFootprint(b.geom, lat, lng) ?: return@mapNotNull null
+                        val r = FloatArray(1)
+                        Location.distanceBetween(lat, lng, center.first, center.second, r)
+                        val dist = r[0]
+                        if (dist >= 70f) return@mapNotNull null
+                        val firstRing = b.geom.coordinates.firstOrNull()?.firstOrNull() ?: return@mapNotNull null
+                        val buildingPoly = firstRing.map { Pair(it[0], it[1]) }
+                        val visible = clipPolygon(buildingPoly, fov)
+                        if (visible.isEmpty()) return@mapNotNull null
+                        NavBuildingCandidate(b, center.first, center.second, dist, visible)
+                    }
+                    .sortedBy { it.distance }
+
+                data class VisibleEntry(val b: Building, val markerPos: Pair<Double, Double>, val dist: Float)
+                val visibleCandidates = mutableListOf<VisibleEntry>()
+                for (cand in candidates) {
+                    val markerPos = computeFrontEdgeMidpoint(cand.visiblePolygon, lat, lng)
+                        ?: Pair(cand.centerLat, cand.centerLng)
+                    val isOccluded = visibleCandidates.any { entry ->
+                        if (cand.distance - entry.dist < 5f) return@any false
+                        val occluderPoly = entry.b.geom.coordinates.firstOrNull()
+                            ?.firstOrNull()?.map { Pair(it[0], it[1]) } ?: return@any false
+                        isRayBlockedByPolygon(lng, lat, markerPos.second, markerPos.first, occluderPoly)
+                    }
+                    if (!isOccluded) visibleCandidates.add(VisibleEntry(cand.building, markerPos, cand.distance))
+                    if (visibleCandidates.size >= 30) break
+                }
+
+                val newVisibleIds = visibleCandidates.map { e ->
+                    "navbld_${e.b.ufid.ifEmpty { e.b.h3_index_10 }}_${e.b.hashCode()}"
+                }.toSet()
+
+                // 더 이상 보이지 않는 핀 제거
+                val toRemove = navBuildingPins.filter { it.id !in newVisibleIds }.map { it.id }
+                toRemove.forEach { id ->
+                    navBuildingAnchors[id]?.runCatching { detach() }
+                    navBuildingAnchors.remove(id)
+                }
+                navBuildingPins.removeAll { it.id !in newVisibleIds }
+
+                // 새/갱신 핀 처리
+                val existingIds = navBuildingPins.map { it.id }.toSet()
+                for (entry in visibleCandidates) {
+                    val id = "navbld_${entry.b.ufid.ifEmpty { entry.b.h3_index_10 }}_${entry.b.hashCode()}"
+                    val groundAlt = cameraAlt - 1.5
+                    val labelAlt = groundAlt + (entry.b.render_height / 2.0)
+                    if (id !in existingIds) {
+                        runCatching {
+                            val anchor = earth.createAnchor(entry.markerPos.first, entry.markerPos.second, labelAlt, 0f, 0f, 0f, 1f)
+                            if (anchor != null) {
+                                navBuildingAnchors[id] = anchor
+                                navBuildingPins.add(NavBuildingPin(id, entry.b.bld_nm ?: "건물", entry.markerPos.first, entry.markerPos.second))
+                            }
+                        }
+                    } else {
+                        val existing = navBuildingPins.firstOrNull { it.id == id } ?: continue
+                        val r = FloatArray(1)
+                        Location.distanceBetween(existing.lat, existing.lng, entry.markerPos.first, entry.markerPos.second, r)
+                        if (r[0] > 3f) {
+                            runCatching {
+                                val newAnchor = earth.createAnchor(entry.markerPos.first, entry.markerPos.second, labelAlt, 0f, 0f, 0f, 1f)
+                                if (newAnchor != null) {
+                                    navBuildingAnchors[id]?.runCatching { detach() }
+                                    navBuildingAnchors[id] = newAnchor
+                                    val idx = navBuildingPins.indexOfFirst { it.id == id }
+                                    if (idx != -1) navBuildingPins[idx] = navBuildingPins[idx].copy(lat = entry.markerPos.first, lng = entry.markerPos.second)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // 건물 앵커 → 화면 좌표 투영 (매 프레임)
+            if (navBuildingAnchors.isNotEmpty()) {
+                val proj = FloatArray(16)
+                val view = FloatArray(16)
+                frame.camera.getProjectionMatrix(proj, 0, 0.1f, 500f)
+                frame.camera.getViewMatrix(view, 0)
+                val viewProj = FloatArray(16)
+                android.opengl.Matrix.multiplyMM(viewProj, 0, proj, 0, view, 0)
+                val newPositions = mutableMapOf<String, Pair<Float, Float>>()
+                navBuildingAnchors.forEach { (key, anchor) ->
+                    val t = anchor.pose.translation
+                    val clip = FloatArray(4)
+                    android.opengl.Matrix.multiplyMV(clip, 0, viewProj, 0, floatArrayOf(t[0], t[1], t[2], 1f), 0)
+                    if (clip[3] <= 0f) return@forEach
+                    val ndcX = clip[0] / clip[3]
+                    val ndcY = clip[1] / clip[3]
+                    if (ndcX < -1.4f || ndcX > 1.4f || ndcY < -1.4f || ndcY > 1.4f) return@forEach
+                    newPositions[key] = (ndcX + 1f) / 2f to (1f - ndcY) / 2f
+                }
+                navBuildingScreenPositions.value = newPositions
             }
 
             val navState = mainViewModel.navigationState.value
@@ -586,6 +709,24 @@ fun ArRealSceneView(
             }
         },
     )
+
+    // 건물 PIN 오버레이 — FOV+Occlusion 필터된 핀을 화면 투영 위치에 표시
+    val positions = navBuildingScreenPositions.value
+    navBuildingPins.forEach { pin ->
+        val pos = positions[pin.id]
+        if (pos != null) {
+            val xDp = with(density) { (pos.first * screenWidthPx).toDp() }
+            val yDp = with(density) { (pos.second * screenHeightPx).toDp() }
+            key(pin.id) {
+                ArPoiCard(
+                    title = pin.name,
+                    subtitle = "건물",
+                    modifier = Modifier.offset(x = xDp - 60.dp, y = yDp - 32.dp),
+                )
+            }
+        }
+    }
+    } // Box
 }
 
 /**

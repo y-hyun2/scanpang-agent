@@ -52,8 +52,16 @@ data class ArCommand(
     val destination: NavDestination,
     val total_distance_m: Int,
     val total_time_min: Int,
-    /** T-map raw GeoJSON features — 원본 parseTmapRoute가 그대로 처리할 수 있는 구조. */
     val tmap_features: List<TmapFeature> = emptyList(),
+    val nearby_buildings: List<NearbyBuilding> = emptyList(),
+)
+
+data class NearbyBuilding(
+    val ufid: String? = null,
+    val bld_nm: String = "",
+    val category: String = "",
+    val lat: Double = 0.0,
+    val lng: Double = 0.0,
 )
 
 data class LatLng(
