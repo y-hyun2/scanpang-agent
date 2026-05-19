@@ -63,7 +63,7 @@ fun QiblaCompass(
                 val outerR = min(size.width, size.height) / 2f * 0.84f
                 val innerR = outerR * 0.58f
 
-                // ── Face fill (앱 카드 색상)
+                // ── Face fill
                 drawCircle(color = ScanPangColors.Background, radius = outerR, center = center)
 
                 // ── Outer ring
@@ -82,7 +82,7 @@ fun QiblaCompass(
                     style = Stroke(width = 1.dp.toPx()),
                 )
 
-                // ── Cardinal notches (4방향 subtle 노치)
+                // ── Cardinal notches
                 for (deg in listOf(0, 90, 180, 270)) {
                     val rad = (deg - 90.0) * PI / 180.0
                     val cosA = cos(rad).toFloat()
@@ -97,33 +97,42 @@ fun QiblaCompass(
                     )
                 }
 
-                // ── Qibla 인디케이터: 위치핀 스타일 (선 + 링 위 채운 원)
+                // ── Qibla 화살표 — 메카 방향을 가리키는 메인 인디케이터
                 val qRad = (qiblaFromNorth - 90.0) * PI / 180.0
                 val qCos = cos(qRad).toFloat()
                 val qSin = sin(qRad).toFloat()
 
-                // 선: 중심 → 외곽 링
+                val tipDist = outerR * 0.78f
+                val arrowHeadLen = 16.dp.toPx()
+                val arrowHeadWidth = 12.dp.toPx()
+
+                val tipX = cx + qCos * tipDist
+                val tipY = cy + qSin * tipDist
+                val shaftEndX = cx + qCos * (tipDist - arrowHeadLen)
+                val shaftEndY = cy + qSin * (tipDist - arrowHeadLen)
+                val perpX = -qSin
+                val perpY = qCos
+
+                // 샤프트: 중심 → 화살표 머리 기저부
                 drawLine(
-                    color = ScanPangColors.Primary.copy(alpha = 0.70f),
-                    start = Offset(cx + qCos * innerR * 0.18f, cy + qSin * innerR * 0.18f),
-                    end = Offset(cx + qCos * outerR, cy + qSin * outerR),
-                    strokeWidth = 2.dp.toPx(),
+                    color = ScanPangColors.Primary,
+                    start = Offset(cx, cy),
+                    end = Offset(shaftEndX, shaftEndY),
+                    strokeWidth = 3.dp.toPx(),
                     cap = StrokeCap.Round,
                 )
-                // 끝 점: 링 위 채운 원 (위치 핀 헤드)
-                drawCircle(
-                    color = ScanPangColors.Primary,
-                    radius = 5.5.dp.toPx(),
-                    center = Offset(cx + qCos * outerR, cy + qSin * outerR),
-                )
-                drawCircle(
-                    color = Color.White,
-                    radius = 2.5.dp.toPx(),
-                    center = Offset(cx + qCos * outerR, cy + qSin * outerR),
-                )
+
+                // 화살표 머리 (filled triangle)
+                val arrowPath = Path().apply {
+                    moveTo(tipX, tipY)
+                    lineTo(shaftEndX + perpX * arrowHeadWidth / 2, shaftEndY + perpY * arrowHeadWidth / 2)
+                    lineTo(shaftEndX - perpX * arrowHeadWidth / 2, shaftEndY - perpY * arrowHeadWidth / 2)
+                    close()
+                }
+                drawPath(arrowPath, color = ScanPangColors.Primary)
             }
 
-            // ── Cardinal labels — 앱 배지 스타일 (PrimarySoft bg + Primary text)
+            // ── Cardinal labels
             val lPad = 8.dp
             listOf(
                 Alignment.TopCenter to "N",
@@ -140,7 +149,7 @@ fun QiblaCompass(
                                 Alignment.BottomCenter -> Modifier.padding(bottom = lPad)
                                 Alignment.CenterEnd -> Modifier.padding(end = lPad)
                                 else -> Modifier.padding(start = lPad)
-                            }
+                            },
                         )
                         .background(
                             color = if (label == "N") ScanPangColors.PrimarySoft else Color.Transparent,
@@ -161,30 +170,11 @@ fun QiblaCompass(
             }
         }
 
-        // ── Fixed overlay (non-rotating) ─────────────────────────────
+        // ── Fixed overlay — 중심 점 (고정, 화살표 샤프트 시작점을 깔끔하게 마감)
         Canvas(modifier = Modifier.fillMaxSize()) {
             val cx = size.width / 2f
             val cy = size.height / 2f
             val center = Offset(cx, cy)
-            val outerR = min(size.width, size.height) / 2f * 0.84f
-
-            // 고정 Navigation 화살표 (12시 방향)
-            val aW = 17.dp.toPx()
-            val aH = 23.dp.toPx()
-            val tipY  = cy - outerR - aH * 0.42f
-            val baseY = cy - outerR + aH * 0.38f
-            val navPath = Path().apply {
-                moveTo(cx, tipY)
-                lineTo(cx - aW / 2f, baseY + aH * 0.20f)
-                lineTo(cx - aW / 5f, baseY)
-                lineTo(cx, baseY + aH * 0.33f)
-                lineTo(cx + aW / 5f, baseY)
-                lineTo(cx + aW / 2f, baseY + aH * 0.20f)
-                close()
-            }
-            drawPath(navPath, color = ScanPangColors.Primary)
-
-            // 중심 점
             drawCircle(color = ScanPangColors.Primary, radius = 5.5.dp.toPx(), center = center)
             drawCircle(color = Color.White, radius = 2.5.dp.toPx(), center = center)
         }

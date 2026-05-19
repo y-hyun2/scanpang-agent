@@ -121,7 +121,10 @@ fun HomeScreen(
     val prayerTimes by viewModel.prayerTimes.collectAsState()
     val qibla by viewModel.qibla.collectAsState()
     val qiblaText = qibla?.let { "키블라 방향: ${it.direction.toInt()}°" } ?: "키블라 방향: 292°"
-    val nextPrayerText = prayerTimes?.let { "다음 기도: ${it.next_prayer} ${it.next_prayer_time}" } ?: "다음 기도: Dhuhr 12:15"
+    val nextPrayerText = prayerTimes
+        ?.takeIf { it.next_prayer.isNotBlank() }
+        ?.let { "다음 기도: ${it.next_prayer} ${it.next_prayer_time}" }
+        ?: "기도 시간을 불러올 수 없습니다. 잠시 후 다시 시도해 주세요"
 
     // 현재 위치 — GPS + 역지오코딩 (권한 없거나 실패 시 fallback 문구).
     var locationText by remember { mutableStateOf("현재 위치를 가져오는 중...") }
