@@ -250,7 +250,7 @@ fun ProfileScreen(
                         label = "도움말",
                         icon = Icons.AutoMirrored.Rounded.Help,
                         iconTint = ScanPangColors.Primary,
-                        onClick = { },
+                        onClick = { navController.navigate(AppRoutes.Help) },
                         showDividerBelow = true,
                     )
                     ProfileSettingsRow(
