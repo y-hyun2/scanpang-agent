@@ -328,9 +328,13 @@ private fun PlaceDetailContent(
             if (!isSubway && !isRestroom && place.website.isNotBlank())
                 DetailInfoLine(Icons.Rounded.Language, "웹사이트", place.website)
             // 화장실 카테고리 — 칸 수 / 편의시설 / 안전시설 (피그마 상세-매장(화장실))
+            // DB에 0/공란/문자 인 row 도 있어서 "남성 0칸" 같이 무의미한 표시 회피.
+            // 숫자 파싱해서 양수만 노출, 둘 다 0/없으면 칸 수 행 자체 숨김.
+            val maleCnt   = place.toiletMale.toIntOrNull() ?: 0
+            val femaleCnt = place.toiletFemale.toIntOrNull() ?: 0
             val toiletStr = buildList {
-                if (place.toiletMale.isNotBlank())   add("남성 ${place.toiletMale}칸")
-                if (place.toiletFemale.isNotBlank()) add("여성 ${place.toiletFemale}칸")
+                if (maleCnt > 0)   add("남성 ${maleCnt}칸")
+                if (femaleCnt > 0) add("여성 ${femaleCnt}칸")
             }.joinToString(", ")
             if (toiletStr.isNotBlank())
                 DetailInfoLine(Icons.Rounded.Wc, "칸 수", toiletStr)
