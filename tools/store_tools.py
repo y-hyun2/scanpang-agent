@@ -62,8 +62,12 @@ async def get_store_detail(
     cache_id = f"{place_id}__{store_name}"
     pool     = await get_pool()
 
-    # outdoor 카테고리 — store_details 캐시 / INSERT 모두 우회.
-    # 화장실·지하철·물품보관·기도실은 정부 raw 테이블이 단일 출처라 매장 캐시 X.
+    # outdoor 시설(건물 내에 X) — store_details 우회. raw 테이블이 단일 출처.
+    # · 화장실 = public_restrooms
+    # · 지하철역 = subway_exits + TAGO
+    # · 물품보관함 = subwayLockerInfo
+    # · 기도실 = static_json
+    # 건물 내 매장(카페/식당/쇼핑/은행 등)만 store_details lazy 캐시 적재.
     _OUTDOOR = {"restroom", "subway", "subway_station", "locker", "prayer_room"}
     pre_category = classify_category(category_name="", store_name=store_name)
     is_outdoor = pre_category in _OUTDOOR
@@ -133,7 +137,7 @@ async def get_store_detail(
         if schedule:
             details["schedule"] = schedule
 
-    # outdoor: store_details INSERT 우회. fetcher 결과를 그대로 응답으로 사용.
+    # outdoor: store_details INSERT 우회. raw 테이블에서 가져온 풀필드 그대로 응답.
     if is_outdoor:
         return {
             "id":            cache_id,
@@ -155,7 +159,7 @@ async def get_store_detail(
             "source":        source,
         }
 
-    # ── ⑤ store_details UPSERT ──────────────────────────────────────────────
+    # ── ⑤ store_details UPSERT — 건물 내 매장만 ─────────────────────────────
     async with pool.acquire() as conn:
         await conn.execute(
             """
