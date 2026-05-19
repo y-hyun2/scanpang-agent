@@ -113,9 +113,10 @@ fun HomeScreen(
     val showQiblaCard = valueAdded == ValueAdded.HALAL
 
     // ── 우리 백엔드 통합 ─────────────────────────────────────────────────────
-    // 기도시간·키블라는 API에서 실시간 fetch (DummyData 사용 안 함).
-    LaunchedEffect(Unit) {
-        viewModel.loadPrayerTimesAndQibla()
+    // 기도시간·키블라는 할랄 모드 사용자에게만 노출되므로 그 때만 /halal/query 호출.
+    // 비건/기본 모드에서는 카드가 안 보이는데 API 만 매번 호출되던 불필요 트래픽 제거.
+    LaunchedEffect(showQiblaCard) {
+        if (showQiblaCard) viewModel.loadPrayerTimesAndQibla()
     }
     val prayerTimes by viewModel.prayerTimes.collectAsState()
     val qibla by viewModel.qibla.collectAsState()
