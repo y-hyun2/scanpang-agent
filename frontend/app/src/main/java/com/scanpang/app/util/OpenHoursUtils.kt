@@ -18,7 +18,8 @@ object OpenHoursUtils {
     private val DAY_FULL  = listOf("월요일", "화요일", "수요일", "목요일", "금요일", "토요일", "일요일")
 
     private val ALWAYS_OPEN      = listOf("24시간", "연중무휴")
-    private val CLOSED_KEYWORDS  = listOf("휴무", "휴업", "closed")
+    // "휴무일"을 "휴무" 보다 먼저 처리해 "일" 잔류 방지
+    private val CLOSED_KEYWORDS  = listOf("휴무일", "휴무", "휴업", "closed")
 
     private val TIME_RANGE = Regex("""(\d{1,2}:\d{2})\s*[-~–—]\s*(\d{1,2}:\d{2})""")
     private val DAY_RANGE  = Regex("""([월화수목금토일])\s*[-~–—]\s*([월화수목금토일])""")
@@ -94,7 +95,8 @@ object OpenHoursUtils {
     /** 원문 → 요일 인덱스(0=월…6=일) → 시간 문자열 맵 */
     private fun parseSchedule(text: String): Map<Int, String> {
         val result = mutableMapOf<Int, String>()
-        val lines = text.split("\n").map { it.trim() }.filter { it.isNotEmpty() }
+        // "월 11:00-19:00 / 화 11:00-19:00 / ..." 형식과 줄바꿈 형식 모두 지원
+        val lines = text.split(Regex("""\n|\s*/\s*""")).map { it.trim() }.filter { it.isNotEmpty() }
 
         for (line in lines) {
             val timeMatch = TIME_RANGE.find(line)
