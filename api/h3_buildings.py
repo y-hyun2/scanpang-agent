@@ -6,7 +6,7 @@ from cachetools import TTLCache
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
 
-from core.db import get_pool
+from core.db import get_building_pool
 
 
 router = APIRouter(prefix="/buildings", tags=["spatial"])
@@ -73,7 +73,7 @@ async def get_buildings_chunk(
         FROM buildings
         WHERE h3_index_10 = ANY($1::varchar[]);
     """
-    pool = await get_pool()
+    pool = await get_building_pool()
     async with pool.acquire() as conn:
         rows = await conn.fetch(query, cells)
 

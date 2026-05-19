@@ -2,6 +2,8 @@ import json
 import re
 from dotenv import load_dotenv
 from langchain_openai import ChatOpenAI
+import h3
+from core.db import get_pool
 from tools.navigation_tools import search_poi, get_pedestrian_route
 from schemas.navigation import NavRequest, RouteRequest
 
@@ -64,6 +66,54 @@ Turn points:
 Destination: {destination_name}
 Total: {total_distance_m}m, {total_time_min} minutes
 """
+
+
+async def _fetch_nearby_buildings(lat: float, lng: float) -> list[dict]:
+    """
+    사용자 위치 기준 H3 resolution-10 셀 + 1-ring(7개 셀) 내 건물을 조회한다.
+    place_info 테이블과 LEFT JOIN해 탐색모드와 동일한 카테고리·층별 매장 데이터를 포함한다.
+    """
+    try:
+        cell = h3.latlng_to_cell(lat, lng, 10)
+        cells = list(h3.grid_disk(cell, 1))
+
+        pool = await get_pool()
+        async with pool.acquire() as conn:
+            rows = await conn.fetch(
+                """
+                SELECT
+                    b.ufid,
+                    b.bld_nm,
+                    ST_Y(ST_Centroid(b.geom)) AS lat,
+                    ST_X(ST_Centroid(b.geom)) AS lng,
+                    p.name_ko,
+                    p.category,
+                    p.floor_info,
+                    p.halal_info
+                FROM buildings b
+                LEFT JOIN place_info p ON b.ufid = p.ufid
+                WHERE b.h3_index_10 = ANY($1::varchar[])
+                  AND b.bld_nm IS NOT NULL
+                LIMIT 20
+                """,
+                cells,
+            )
+
+        return [
+            {
+                "ufid": r["ufid"],
+                "bld_nm": r["name_ko"] or r["bld_nm"] or "",
+                "category": r["category"] or "",
+                "floor_info": r["floor_info"] or [],
+                "halal_info": r["halal_info"] or "",
+                "lat": float(r["lat"]),
+                "lng": float(r["lng"]),
+            }
+            for r in rows
+        ]
+    except Exception as e:
+        print(f"[navigation] 주변 건물 조회 실패 (무시): {e}")
+        return []
 
 
 async def run_search_agent(req: NavRequest) -> dict:
@@ -151,15 +201,19 @@ async def run_route_agent(req: RouteRequest) -> dict:
     """
     dest = req.destination
 
-    # Step 3: 보행자 경로 계산
-    route = await get_pedestrian_route(
-        start_lat=req.lat,
-        start_lng=req.lng,
-        end_poi_id=dest.poi_id,
-        end_lat=dest.pns_lat,
-        end_lng=dest.pns_lon,
-        end_name=dest.name,
-        search_option=0,
+    # Step 3: 보행자 경로 계산 + 주변 건물 조회 (병렬)
+    import asyncio
+    route, nearby_buildings = await asyncio.gather(
+        get_pedestrian_route(
+            start_lat=req.lat,
+            start_lng=req.lng,
+            end_poi_id=dest.poi_id,
+            end_lat=dest.pns_lat,
+            end_lng=dest.pns_lon,
+            end_name=dest.name,
+            search_option=0,
+        ),
+        _fetch_nearby_buildings(req.lat, req.lng),
     )
 
     # Step 4: 턴포인트별 TTS 문구 생성 (LLM 1회 호출)
@@ -221,5 +275,7 @@ async def run_route_agent(req: RouteRequest) -> dict:
             },
             "total_distance_m": route["total_distance_m"],
             "total_time_min": route["total_time_min"],
+            # 탐색모드와 동일한 건물 인식 — H3 셀 기반 주변 건물 + place_info 데이터
+            "nearby_buildings": nearby_buildings,
         },
     }

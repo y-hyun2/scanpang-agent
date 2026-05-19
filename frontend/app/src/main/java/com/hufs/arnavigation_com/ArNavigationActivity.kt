@@ -35,10 +35,36 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.util.Locale
+import android.opengl.Matrix
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.offset
+import androidx.compose.runtime.mutableStateListOf
+import androidx.compose.runtime.mutableStateMapOf
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.ComposeView
+import androidx.compose.ui.platform.ViewCompositionStrategy
+import androidx.compose.ui.unit.IntOffset
+import com.scanpang.app.components.ar.ArPoiCard
+import com.scanpang.app.data.remote.PlaceQueryRequest
+import com.scanpang.app.data.remote.RetrofitClient
+import com.scanpang.app.ui.theme.ScanPangTheme
+import kotlin.math.roundToInt
+import kotlin.math.sqrt
+import kotlin.math.atan2
 
 enum class NavigationState { INITIALIZING, LOCALIZING, READY_TO_ROUTE }
 enum class NodeType { START, END, TURN_POINT, PATH_POINT }
 data class ArRouteNode(val lat: Double, val lng: Double, val type: NodeType, val turnType: Int = 0, val isCalculated: Boolean = false, val speech: String = "")
+
+private data class BuildingPoi(
+    val id: String,
+    val name: String,
+    val category: String = "",
+    val distance: Float = 0f,
+    val lat: Double = 0.0,
+    val lng: Double = 0.0,
+)
 
 @SuppressLint("SetTextI18n")
 class ArNavigationActivity : AppCompatActivity() {
@@ -75,6 +101,13 @@ class ArNavigationActivity : AppCompatActivity() {
     private var targetDotAngle = 0f
     private var dotAnimator: android.animation.ValueAnimator? = null
 
+    // ── 건물 인식 (탐색모드와 동일) ──
+    private var lastPlaceQueryTime = 0L
+    private var placeQueryJob: kotlinx.coroutines.Job? = null
+    private val buildingPois = mutableStateListOf<BuildingPoi>()
+    private val buildingAnchors = mutableMapOf<String, com.google.ar.core.Anchor>()
+    private val buildingAnchorScreenPositions = mutableStateMapOf<String, Pair<Float, Float>>()
+
     private val frameCallback = com.hufs.arnavigation_com.util.ArFrameCallback(
         Runnable { updateGeospatialAndChunk() }
     )
@@ -106,7 +139,7 @@ class ArNavigationActivity : AppCompatActivity() {
         }
     }
 
-    override fun onDestroy() { super.onDestroy(); frameCallback.stop(); activeArNodes.values.forEach { it.destroy() } }
+    override fun onDestroy() { super.onDestroy(); frameCallback.stop(); activeArNodes.values.forEach { it.destroy() }; buildingAnchors.values.forEach { it.detach() }; buildingAnchors.clear() }
 
     private fun setupSearchUI() {
         binding.searchButton.setOnClickListener {
@@ -137,6 +170,31 @@ class ArNavigationActivity : AppCompatActivity() {
     }
 
     private fun setupOverlayUI() {
+        // 건물 카드 핀 오버레이 (탐색모드 동일 방식)
+        val buildingOverlay = ComposeView(this).apply {
+            setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed)
+            setContent {
+                ScanPangTheme {
+                    Box(modifier = Modifier.fillMaxSize()) {
+                        buildingPois.forEach { poi ->
+                            val pos = buildingAnchorScreenPositions[poi.id] ?: return@forEach
+                            Box(modifier = Modifier.offset { IntOffset(pos.first.roundToInt(), pos.second.roundToInt()) }) {
+                                ArPoiCard(
+                                    title = poi.name,
+                                    subtitle = buildString {
+                                        if (poi.category.isNotEmpty()) append("${poi.category} · ")
+                                        append("${"%.0f".format(poi.distance)}m")
+                                    },
+                                    onClick = null,
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        binding.uiContainer.addView(buildingOverlay, FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT))
+
         statusTextView = TextView(this).apply { setTextColor(Color.WHITE); textSize = 18f; setBackgroundColor(Color.parseColor("#80000000")); setPadding(32, 32, 32, 32); gravity = Gravity.CENTER }
         binding.uiContainer.addView(statusTextView, FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.WRAP_CONTENT).apply { gravity = Gravity.BOTTOM; setMargins(0, 0, 0, 100) })
         (supportFragmentManager.findFragmentById(R.id.miniMap) as com.google.android.gms.maps.SupportMapFragment).getMapAsync { map ->
@@ -245,6 +303,9 @@ class ArNavigationActivity : AppCompatActivity() {
       updateGeospatialAndChunk() {
         val earth = sceneView.session?.earth ?: return; if (earth.trackingState != TrackingState.TRACKING) return
         val pose = earth.cameraGeospatialPose; val lat = pose.latitude; val lng = pose.longitude; val now = System.currentTimeMillis()
+        val q = pose.eastUpSouthQuaternion
+        val fx = 2f * (q[0] * q[2] + q[3] * q[1]); val fy = 2f * (q[1] * q[2] - q[3] * q[0]); val fz = 1f - 2f * (q[0] * q[0] + q[1] * q[1])
+        val currentPitch = Math.toDegrees(atan2(-fy.toDouble(), sqrt((fx * fx + fz * fz).toDouble())))
         if (viewModel.navigationState.value == NavigationState.LOCALIZING && pose.horizontalAccuracy < 3.0 && targetDestination.isNotEmpty()) { viewModel.updateState(NavigationState.READY_TO_ROUTE); viewModel.fetchRoute(lng.toString(), lat.toString(), targetDestination) }
         if (viewModel.navigationState.value == NavigationState.READY_TO_ROUTE && majorPointIndices.isNotEmpty()) {
             if (lastAnchorAltitude != Double.MAX_VALUE && kotlin.math.abs(pose.altitude - lastAnchorAltitude) > 1.5) {
@@ -269,6 +330,54 @@ class ArNavigationActivity : AppCompatActivity() {
             }
             if (now - lastChunkRenderTime > 2000) { renderNearbyArrows(lat, lng); lastChunkRenderTime = now }
             updateDirectionDots(lat, lng, pose.heading)
+        }
+
+        // ── 건물 인식: 5초마다 /place/query 호출 (탐색모드 동일) ──
+        if (viewModel.navigationState.value == NavigationState.READY_TO_ROUTE) {
+            if (now - lastPlaceQueryTime > 5000) {
+                lastPlaceQueryTime = now
+                val capturedLat = lat; val capturedLng = lng
+                val capturedAlt = pose.altitude; val capturedHeading = pose.heading; val capturedPitch = currentPitch
+                placeQueryJob?.cancel()
+                placeQueryJob = lifecycleScope.launch {
+                    try {
+                        val response = RetrofitClient.api.queryPlace(
+                            PlaceQueryRequest(heading = capturedHeading, user_lat = capturedLat, user_lng = capturedLng, user_alt = capturedAlt, pitch = capturedPitch)
+                        )
+                        val overlay = response.ar_overlay ?: return@launch
+                        if (overlay.name.isBlank() || buildingPois.any { it.name == overlay.name }) return@launch
+                        val newId = "nav_${overlay.name}_$now"
+                        try { earth.createAnchor(capturedLat, capturedLng, capturedAlt, 0f, 0f, 0f, 1f)?.let { buildingAnchors[newId] = it } } catch (_: Exception) {}
+                        buildingPois.add(BuildingPoi(id = newId, name = overlay.name, category = overlay.category, lat = capturedLat, lng = capturedLng))
+                    } catch (e: Exception) { android.util.Log.e("ArNav", "place/query 실패: ${e.message}") }
+                }
+            }
+
+            // 거리 업데이트
+            val distRes = FloatArray(1)
+            for (i in buildingPois.indices) {
+                Location.distanceBetween(lat, lng, buildingPois[i].lat, buildingPois[i].lng, distRes)
+                if (kotlin.math.abs(distRes[0] - buildingPois[i].distance) > 1f) buildingPois[i] = buildingPois[i].copy(distance = distRes[0])
+            }
+
+            // 앵커 → 화면 좌표 투영
+            val frame = latestFrame; if (frame != null) {
+                val camera = frame.camera
+                val viewMat = FloatArray(16); camera.getViewMatrix(viewMat, 0)
+                val projMat = FloatArray(16); camera.getProjectionMatrix(projMat, 0, 0.1f, 100.0f)
+                val sw = binding.root.width.toFloat(); val sh = binding.root.height.toFloat()
+                val newPos = mutableMapOf<String, Pair<Float, Float>>()
+                buildingAnchors.forEach { (id, anchor) ->
+                    if (anchor.trackingState == TrackingState.TRACKING) {
+                        val p = anchor.pose; val t = floatArrayOf(p.tx(), p.ty(), p.tz(), 1f)
+                        val vc = FloatArray(4); Matrix.multiplyMV(vc, 0, viewMat, 0, t, 0)
+                        if (vc[2] <= 0) { val cc = FloatArray(4); Matrix.multiplyMV(cc, 0, projMat, 0, vc, 0)
+                            if (cc[3] != 0f) newPos[id] = Pair(((cc[0] / cc[3] + 1f) / 2f) * sw, ((1f - cc[1] / cc[3]) / 2f) * sh)
+                        }
+                    }
+                }
+                buildingAnchorScreenPositions.clear(); buildingAnchorScreenPositions.putAll(newPos)
+            }
         }
     }
 
@@ -354,6 +463,8 @@ class ArNavigationActivity : AppCompatActivity() {
     private fun clearAllArNodes() {
         altitudeCorrectionJob?.cancel(); altitudeCorrectionJob = null; dotAnimator?.cancel(); dotAnimator = null; currentDotAngle = 0f; targetDotAngle = 0f
         activeArNodes.values.forEach { it.destroy() }; activeArNodes.clear(); activeModelNodes.clear(); renderedIndices.clear(); turnDirectionMap.clear(); lastAnchorAltitude = Double.MAX_VALUE
+        placeQueryJob?.cancel(); placeQueryJob = null
+        buildingAnchors.values.forEach { it.detach() }; buildingAnchors.clear(); buildingPois.clear(); buildingAnchorScreenPositions.clear()
         runOnUiThread { binding.compassView.visibility = android.view.View.GONE }
     }
 

@@ -68,6 +68,16 @@ class Destination(BaseModel):
     name: str
 
 
+class NearbyBuilding(BaseModel):
+    ufid: Optional[str] = None
+    bld_nm: str
+    category: str = ""
+    floor_info: List[dict] = []
+    halal_info: str = ""
+    lat: float
+    lng: float
+
+
 class ArCommand(BaseModel):
     type: str
     route_line: List[LatLng]
@@ -75,6 +85,7 @@ class ArCommand(BaseModel):
     destination: Destination
     total_distance_m: int
     total_time_min: int
+    nearby_buildings: List[NearbyBuilding] = []
 
 
 class NavResponse(BaseModel):
