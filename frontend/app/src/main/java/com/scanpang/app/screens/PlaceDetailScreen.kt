@@ -292,6 +292,11 @@ private fun PlaceDetailContent(
     exchangeRates: List<ExchangeRate>,
     subwayDetail: SubwayDetail? = null,
 ) {
+    val isSubway = subwayDetail != null
+    // 화장실 — public_restrooms DB 에 description/intro 필드 없음. DummyData fallback
+    // 의 소개 텍스트가 새어 나오면 안 되니까 화장실 카테고리는 소개·웹사이트·매장 층수 숨김.
+    val isRestroom = place.categoryKey in setOf("restroom", "public_restroom")
+
     if (menuItems.isNotEmpty()) {
         DetailSection(title = "대표 메뉴") {
             Column(verticalArrangement = Arrangement.spacedBy(ScanPangSpacing.sm)) {
@@ -301,7 +306,7 @@ private fun PlaceDetailContent(
         DetailScreenDivider()
     }
 
-    if (place.description.isNotBlank()) {
+    if (!isRestroom && place.description.isNotBlank()) {
         DetailSection(title = "소개") {
             DetailIntroBody(text = place.description)
         }
@@ -311,9 +316,6 @@ private fun PlaceDetailContent(
     // 상세 정보(공통) — 지하철 섹션 위로. 피그마 시안 순서.
     // 지하철은 영업시간을 별도 '열차 시간표' 섹션으로 표시하므로 여기선 숨김.
     // Kakao place.map URL(homepage)은 공식 웹사이트가 아니라 카카오 자체 페이지라 지하철엔 숨김.
-    val isSubway = subwayDetail != null
-    // 화장실 — Kakao place.map URL이 의미 없음 + 매장 층수도 보통 무의미해서 숨김
-    val isRestroom = place.categoryKey in setOf("restroom", "public_restroom")
     DetailSection(title = "상세 정보") {
         Column(verticalArrangement = Arrangement.spacedBy(INFO_ROW_SPACING)) {
             if (!isSubway && place.openHours.isNotBlank())
