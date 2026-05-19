@@ -587,15 +587,21 @@ private fun PlaceDetailResponse.mergeOnto(fallback: Place?, categoryKey: String)
         if (details["has_disabled"]     as? Boolean == true) add("장애인 화장실")
         if (details["has_child"]        as? Boolean == true) add("유아 화장실")
         if (details["has_diaper_table"] as? Boolean == true) add("기저귀 교환대")
+        // 기도실 카테고리 — facilities 객체 평탄화
+        if (details["wudu"]              as? Boolean == true) add("우두 시설")
+        if (details["gender_separation"] as? Boolean == true) add("남녀 분리")
+        if (details["prayer_mat"]        as? Boolean == true) add("기도 매트")
+        if (details["quran_available"]   as? Boolean == true) add("꾸란 비치")
     }
     val safetyList = buildList {
         if (details["has_cctv"]           as? Boolean == true) add("CCTV")
         if (details["has_emergency_bell"] as? Boolean == true) add("비상벨")
     }
 
-    // 소개 — 할랄 식당은 details.short_description_ko, 그 외는 details.intro (naver scraper) 사용.
+    // 소개 — 할랄 식당: short_description_ko / naver scraper: intro / 기도실: notes.
     val backendDesc = (details["short_description_ko"] as? String)?.trim().orEmpty()
         .ifBlank { (details["intro"] as? String)?.trim().orEmpty() }
+        .ifBlank { (details["notes"] as? String)?.trim().orEmpty() }
 
     return base.copy(
         id = id.ifBlank { base.id },

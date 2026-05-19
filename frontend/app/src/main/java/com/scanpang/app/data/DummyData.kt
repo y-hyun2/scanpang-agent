@@ -525,7 +525,11 @@ object DummyData {
             "pharmacy" -> pharmacyPlaces
             else -> emptyList()
         }
-        return pool.firstOrNull { it.id == placeId } ?: pool.firstOrNull()
+        // dummy id 정확 매칭만 사용. `pool.firstOrNull()` fallback 은 절대 두지 말 것 —
+        // backend id ('halal__00006', 'prayer__웨스틴 조선 호텔 기도실' 등)는 dummy id
+        // ('r1','p1' 등)와 절대 매칭 안 돼 무조건 첫 dummy 매장이 반환되고, mergeOnto 가
+        // 매핑 안 한 facility/notes/description 필드는 dummy 값이 그대로 화면에 노출됨.
+        return pool.firstOrNull { it.id == placeId }
     }
 
     /**
