@@ -86,9 +86,19 @@ async def get_store_detail(
     # 아니면 place_info에서 건물 좌표 조회 (시나리오 a).
     if lat is None or lng is None:
         async with pool.acquire() as conn:
+            # 1차: place_info — 매장명/floor_info까지 등록된 정식 라우팅용
             coord = await conn.fetchrow(
                 "SELECT lat, lng FROM place_info WHERE ufid = $1", place_id
             )
+            # 2차: buildings.center_lat/lng — place_info에 row가 없어도 건물 폴리곤
+            # 중심 좌표는 buildings에 들어있음. 명동 내 매장처럼 floor_info 아직
+            # 안 채워진 케이스에서 명동 fallback 좌표보다 정확.
+            if not coord or coord["lat"] is None:
+                coord = await conn.fetchrow(
+                    "SELECT center_lat AS lat, center_lng AS lng "
+                    "FROM buildings WHERE ufid = $1",
+                    place_id,
+                )
         lat = float(coord["lat"]) if coord and coord["lat"] is not None else _DEFAULT_LAT
         lng = float(coord["lng"]) if coord and coord["lng"] is not None else _DEFAULT_LNG
     else:
@@ -97,7 +107,10 @@ async def get_store_detail(
     # ── ③ Kakao Local 1차 — category_name 확보용 (분류 입력) ─────────────────
     kakao = await check_kakao_open_status(store_name, lat, lng) or {}
     category_name = kakao.get("category", "") or ""
-    category_key  = classify_category(category_name, store_name)
+    # 분류는 풀스트링("음식점 > 간식 > 도넛")으로 — short(level-2)만 보면
+    # "간식"/"패스트푸드" 같이 룰에 없는 단어로 떨어져 "other"가 됨.
+    category_full = kakao.get("category_full", "") or category_name
+    category_key  = classify_category(category_full, store_name)
     print(f"[store_tools] {store_name!r} → category_name={category_name!r}, category_key={category_key!r}")
 
     # ── ④ 카테고리별 fetcher 디스패치 ───────────────────────────────────────

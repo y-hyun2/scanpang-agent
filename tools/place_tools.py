@@ -33,10 +33,16 @@ async def check_kakao_open_status(
         return {}
 
     doc = documents[0]
-    cat_parts = doc.get("category_name", "").split(" > ")
+    category_full = doc.get("category_name", "")
+    cat_parts = category_full.split(" > ")
     return {
         "name_ko": doc.get("place_name", ""),
+        # UI 표시·DB 저장용 짧은 카테고리 (level-2 or level-1)
         "category": cat_parts[1] if len(cat_parts) > 1 else cat_parts[0],
+        # 분류기(classify_category)용 풀 카테고리 — "음식점 > 간식 > 도넛" 등
+        # level-2만 보면 "간식" 같은 모호한 단어로 떨어져 "other"가 되니
+        # 풀스트링을 분류 입력으로 써서 "음식점"/"도넛" 부분문자열 매치를 살린다.
+        "category_full": category_full,
         "lat": float(doc.get("y", 0)),
         "lng": float(doc.get("x", 0)),
         "addr": doc.get("road_address_name", ""),

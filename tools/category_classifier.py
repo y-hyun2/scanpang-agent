@@ -22,6 +22,17 @@ _CATEGORY_RULES: list[tuple[str, str]] = [
     ("디저트",        "cafe"),
     ("베이커리",      "cafe"),
     ("제과",          "cafe"),
+    # 도넛/아이스크림/빙수 체인은 메뉴 결이 카페에 가까워 cafe로.
+    # 던킨 = "음식점 > 간식 > 도넛" → "도넛" 매치.
+    ("도넛",          "cafe"),
+    ("아이스크림",    "cafe"),
+    ("빙수",          "cafe"),
+    # 패스트푸드/햄버거/치킨/피자 — "음식점" 룰만으로도 restaurant로 잡히지만,
+    # 명시적으로 두면 분류가 더 견고.
+    ("패스트푸드",    "restaurant"),
+    ("햄버거",        "restaurant"),
+    ("치킨",          "restaurant"),
+    ("피자",          "restaurant"),
     ("음식점",        "restaurant"),
     ("한식",          "restaurant"),
     ("양식",          "restaurant"),
@@ -158,7 +169,9 @@ CATEGORY_SOURCES: dict[str, list[str]] = {
     "restaurant":        ["naver_place", "tour_api"],
     "accommodation":     ["naver_place", "tour_api"],
     "cafe":              ["naver_place"],
-    "convenience_store": ["kakao"],
+    # 편의점도 영업시간/홈페이지/편의시설(택배·반값택배 등)이 Naver Place에 풍부.
+    # naver_place 우선, miss시 kakao_basic fallback.
+    "convenience_store": ["naver_place", "kakao"],
     "pharmacy":          ["kakao"],
     "hospital":          ["kakao"],
     "bank":              ["kakao"],
