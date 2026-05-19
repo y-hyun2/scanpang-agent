@@ -57,7 +57,6 @@ import com.scanpang.app.components.auth.LogoutConfirmDialog
 import com.scanpang.app.data.AppSettingsPreferences
 import com.scanpang.app.data.OnboardingPreferences
 import com.scanpang.app.navigation.AppRoutes
-import com.scanpang.app.ui.ScanPangFigmaAssets
 import com.scanpang.app.ui.theme.ScanPangColors
 import com.scanpang.app.ui.theme.ScanPangDimens
 import com.scanpang.app.ui.theme.ScanPangShapes
@@ -145,8 +144,8 @@ fun ProfileScreen(
                                 .size(ScanPangDimens.profileAvatar)
                                 .clip(CircleShape)
                                 .background(ScanPangColors.Background),
+                            contentAlignment = Alignment.Center,
                         ) {
-                            // hufs-cdp 합류 — 사용자가 업로드한 사진이 있으면 표시, 없으면 Figma 기본 아바타
                             val photoUri = onboardingPrefs.getProfilePhotoUri()
                             if (!photoUri.isNullOrBlank()) {
                                 AsyncImage(
@@ -159,13 +158,10 @@ fun ProfileScreen(
                                     modifier = Modifier.fillMaxSize(),
                                 )
                             } else {
-                                AsyncImage(
-                                    model = ImageRequest.Builder(context)
-                                        .data(ScanPangFigmaAssets.ProfileAvatar)
-                                        .crossfade(true)
-                                        .build(),
+                                Icon(
+                                    imageVector = Icons.Rounded.AccountCircle,
                                     contentDescription = null,
-                                    contentScale = ContentScale.Crop,
+                                    tint = ScanPangColors.OnSurfacePlaceholder,
                                     modifier = Modifier.fillMaxSize(),
                                 )
                             }

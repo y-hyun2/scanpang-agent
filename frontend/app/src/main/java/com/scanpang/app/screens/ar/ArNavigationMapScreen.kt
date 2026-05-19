@@ -249,7 +249,7 @@ fun ArNavigationMapScreen(
                 },
             )
             ScanPangTabBar(
-                selectedTab = ScanPangMainTab.None,
+                selectedTab = ScanPangMainTab.Explore,
                 onHomeClick = {
                     navController.navigate(AppRoutes.Home) {
                         popUpTo(AppRoutes.Home) { inclusive = false }
