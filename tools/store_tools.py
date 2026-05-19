@@ -126,13 +126,14 @@ async def get_store_detail(
     # fetcher 결과가 비어있으면 Kakao 1차 메타로 fallback
     phone      = fetched.get("phone")      or kakao.get("phone", "")
     addr       = fetched.get("addr")       or kakao.get("addr", "")
-    # homepage 소셜 URL 필터 — 인스타·블로그는 제외. fetcher 결과가 소셜이면
-    # Kakao place_url로 fallback (Kakao place_url은 Kakao 자체 페이지라 항상 OK).
+    # homepage 소셜 URL 필터 — 인스타·블로그는 제외.
+    # fetcher 결과가 없거나 소셜이면 빈 값으로 둔다 (Kakao place_url 은 매장 공식
+    # 홈페이지가 아니라 Kakao 자체 매장 페이지라 의미 없음 → fallback 제거).
     raw_homepage = fetched.get("homepage", "") or ""
     if _is_social_url(raw_homepage):
         print(f"[store_tools] 소셜/블로그 URL 제외: {raw_homepage}")
         raw_homepage = ""
-    homepage   = raw_homepage or kakao.get("place_url", "")
+    homepage   = raw_homepage
     open_hours = fetched.get("open_hours", "")
     closed_days = fetched.get("closed_days", "")
     image_urls = fetched.get("image_urls", []) or []

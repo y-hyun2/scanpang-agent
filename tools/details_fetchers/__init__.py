@@ -26,6 +26,7 @@ from typing import Awaitable, Callable
 from tools.category_classifier import CATEGORY_SOURCES
 from tools.details_fetchers import (
     kakao_basic,
+    kakao_scraper,
     naver_place,
     tour_api,
     seoul_openapi,
@@ -36,8 +37,11 @@ from tools.details_fetchers import (
 
 
 # source 키 → fetch 함수 매핑.
-# Phase 1에서는 kakao_basic만 실제 구현, 나머지는 stub (빈 dict 반환).
+# kakao_scraper: Kakao Local API place_id 로 place.map.kakao.com 직접 진입 — 매칭 100%.
+# naver_place : 매장명 검색 + entryIframe — 메뉴/편의시설/intro 풍부.
+# kakao_basic : Kakao Local API 만 (영업시간 X) — 마지막 fallback.
 _FETCHER_BY_SOURCE: dict[str, Callable[..., Awaitable[dict]]] = {
+    "kakao_scraper": kakao_scraper.fetch,
     "naver_place":   naver_place.fetch,
     "tour_api":      tour_api.fetch,
     "kakao":         kakao_basic.fetch,

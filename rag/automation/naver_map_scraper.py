@@ -373,6 +373,17 @@ async def fetch_place_detail(
                               f"expected_addr={expected_addr!r}, got_road={got_road!r})")
                         return {}
 
+                # 공식 홈페이지 — base.shopWindow.homepages.repr.url 에 nested.
+                # base 안에 인라인으로 들어있는 경우와 __ref 참조인 경우 둘 다 처리.
+                def _resolve(node):
+                    if isinstance(node, dict) and "__ref" in node:
+                        return apollo.get(node["__ref"]) or {}
+                    return node or {}
+                shop_window  = _resolve(base.get("shopWindow"))
+                homepages    = _resolve(shop_window.get("homepages")) if shop_window else {}
+                home_repr    = _resolve(homepages.get("repr")) if homepages else {}
+                naver_home   = (home_repr.get("url") or home_repr.get("landingUrl") or "")
+
                 result = {
                     "place_id":     place_id,
                     "name":         name,
@@ -381,6 +392,7 @@ async def fetch_place_detail(
                     "address":      base.get("address", "") or "",
                     "category":     base.get("category", "") or "",
                     "conveniences": base.get("conveniences", []) or [],
+                    "homepage":     naver_home,
                     # base.road = "을지로3가역 12번출구 앞, 포포인츠 호텔 명동점 1층"
                     # 매장이 속한 건물명·층 정보. floor 정규화 추출용.
                     "road_detail":  base.get("road", "") or "",

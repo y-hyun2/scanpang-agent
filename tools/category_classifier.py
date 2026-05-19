@@ -163,27 +163,32 @@ def classify_category(category_name: str, store_name: str = "") -> str:
 # Phase 2에서 사용 예정 — 각 category_key별 데이터 출처 우선순위 표.
 # 디스패처가 이 표를 참조해 적절한 fetcher 함수를 호출한다.
 CATEGORY_SOURCES: dict[str, list[str]] = {
-    "tourist":           ["naver_place", "tour_api"],
-    "cultural":          ["naver_place", "tour_api"],
-    "shopping":          ["naver_place", "tour_api"],
-    "restaurant":        ["naver_place", "tour_api"],
-    "accommodation":     ["naver_place", "tour_api"],
-    "cafe":              ["naver_place"],
-    # 편의점도 영업시간/홈페이지/편의시설(택배·반값택배 등)이 Naver Place에 풍부.
-    # naver_place 우선, miss시 kakao_basic fallback.
-    "convenience_store": ["naver_place", "kakao"],
-    "pharmacy":          ["kakao"],
-    "hospital":          ["kakao"],
-    # 은행/ATM/환전소: 매장 정보(영업시간/주차/홈페이지)는 naver_place,
-    # 환율은 koreaexim — dispatcher 가 merge 모드로 두 source 결과를 합친다.
-    "bank":              ["naver_place", "koreaexim"],
-    "atm":               ["naver_place", "koreaexim"],
-    "exchange":          ["naver_place", "koreaexim"],
+    # kakao_scraper 를 1순위로 두는 이유:
+    #  - Kakao Local API 가 좌표 기반 결과를 주고, 그 place_id 로 페이지를 직접
+    #    진입하므로 매장 매칭이 100% 보장됨(naver_place 의 fuzzy 매칭 거절률 문제 해소).
+    #  - 영업시간/홈페이지/주소/전화/이미지 같은 핵심 필드 다 잡힘.
+    # naver_place 를 2순위로 두는 이유:
+    #  - 메뉴/편의시설(택배·반값택배)/intro 같은 풍부도는 naver 만 노출.
+    # dispatcher 가 merge 모드라 kakao base 위에 빈 필드(특히 details.menu/
+    # details.conveniences/details.intro)만 naver 가 보강한다.
+    "tourist":           ["kakao_scraper", "naver_place", "tour_api"],
+    "cultural":          ["kakao_scraper", "naver_place", "tour_api"],
+    "shopping":          ["kakao_scraper", "naver_place", "tour_api"],
+    "restaurant":        ["kakao_scraper", "naver_place", "tour_api"],
+    "accommodation":     ["kakao_scraper", "naver_place", "tour_api"],
+    "cafe":              ["kakao_scraper", "naver_place"],
+    "convenience_store": ["kakao_scraper", "naver_place"],
+    "pharmacy":          ["kakao_scraper", "naver_place"],
+    "hospital":          ["kakao_scraper", "naver_place"],
+    # 은행/ATM/환전소: kakao + naver 매장정보 + koreaexim 환율 — 3-way merge.
+    "bank":              ["kakao_scraper", "naver_place", "koreaexim"],
+    "atm":               ["kakao_scraper", "naver_place", "koreaexim"],
+    "exchange":          ["kakao_scraper", "naver_place", "koreaexim"],
     "subway":            ["tago_subway"],   # 국토교통부 TAGO 지하철정보
     "restroom":          ["seoul_openapi"], # OA-22586
     "locker":            ["seoul_openapi"], # OA-22731
     "prayer_room":       ["static_json"],   # prayer_rooms.json
-    "other":             ["kakao"],
+    "other":             ["kakao_scraper", "naver_place"],
 }
 
 
