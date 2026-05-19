@@ -174,9 +174,11 @@ CATEGORY_SOURCES: dict[str, list[str]] = {
     "convenience_store": ["naver_place", "kakao"],
     "pharmacy":          ["kakao"],
     "hospital":          ["kakao"],
-    "bank":              ["kakao"],
-    "atm":               ["kakao"],
-    "exchange":          ["koreaexim"],     # 한국수출입은행 환율 API
+    # 은행/ATM/환전소: 매장 정보(영업시간/주차/홈페이지)는 naver_place,
+    # 환율은 koreaexim — dispatcher 가 merge 모드로 두 source 결과를 합친다.
+    "bank":              ["naver_place", "koreaexim"],
+    "atm":               ["naver_place", "koreaexim"],
+    "exchange":          ["naver_place", "koreaexim"],
     "subway":            ["tago_subway"],   # 국토교통부 TAGO 지하철정보
     "restroom":          ["seoul_openapi"], # OA-22586
     "locker":            ["seoul_openapi"], # OA-22731

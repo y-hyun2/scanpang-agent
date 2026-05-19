@@ -57,15 +57,22 @@ async def fetch_by_category(
     category_name: str = "",
 ) -> dict:
     """
-    category_key 기준으로 적절한 fetcher를 순서대로 호출해 첫 비공식 결과를 반환.
+    category_key 기준 fetcher 체인 호출 — **merge 보강 모드**.
 
-    CATEGORY_SOURCES에 등록된 source 리스트를 순회하며,
-    각 fetcher의 결과 dict에 의미있는 데이터(`source` 키 외에 무엇이라도)가
-    있으면 채택. 모두 비어있으면 빈 dict.
+    CATEGORY_SOURCES의 source 리스트를 순서대로 호출하되:
+    1) 첫 의미있는 결과를 base로 채택 (source 필드는 이 base 것을 유지)
+    2) 이후 source는 base에서 비어있는 필드만 보강 (덮어쓰지 않음)
+    3) details 는 dict 단위로 머지(base 우선)
+
+    설계 의도:
+    - exchange/bank/atm 처럼 매장정보(naver_place) + 글로벌 환율(koreaexim) 두
+      소스를 동시에 채워야 하는 카테고리를 위해 보강 패턴 도입.
+    - 단일 source 카테고리(cafe=naver_place 등)는 동작 변화 없음.
+    - 빈 source가 첫 번째로 호출되면 자연스럽게 fallback 동작도 유지됨.
     """
     sources = CATEGORY_SOURCES.get(category_key, ["kakao"])
     print(f"[details_fetchers] dispatch category_key={category_key!r} sources={sources}")
-    last_result: dict = {}
+    merged: dict = {}
     for src in sources:
         fetcher = _FETCHER_BY_SOURCE.get(src)
         if fetcher is None:
@@ -83,10 +90,22 @@ async def fetch_by_category(
             print(f"[details_fetchers] {src} 실패 ({store_name!r}): {e}")
             continue
         meaningful = {k: v for k, v in result.items() if k != "source" and v}
-        if meaningful:
-            print(f"[details_fetchers] ✓ {src} 성공 (fields={list(meaningful.keys())})")
-            return result
-        else:
+        if not meaningful:
             print(f"[details_fetchers] {src} 빈 결과 → 다음 fetcher 시도")
-        last_result = result
-    return last_result
+            continue
+        print(f"[details_fetchers] ✓ {src} 성공 (fields={list(meaningful.keys())})")
+        if not merged:
+            merged = dict(result)
+        else:
+            # 빈 필드만 보강
+            for k, v in result.items():
+                if k == "source":
+                    continue
+                if not merged.get(k) and v:
+                    merged[k] = v
+            # details 는 dict 단위 머지 (base 우선)
+            base_det = merged.get("details") or {}
+            new_det = result.get("details") or {}
+            if isinstance(base_det, dict) and isinstance(new_det, dict):
+                merged["details"] = {**new_det, **base_det}
+    return merged
