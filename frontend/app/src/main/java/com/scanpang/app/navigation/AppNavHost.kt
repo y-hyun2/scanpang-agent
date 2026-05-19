@@ -28,6 +28,8 @@ import com.scanpang.app.screens.onboarding.OnboardingPreferenceScreen
 import com.scanpang.app.screens.NearbyHalalRestaurantsScreen
 import com.scanpang.app.screens.NearbyPrayerRoomsScreen
 import com.scanpang.app.screens.PlaceDetailScreen
+import com.scanpang.app.screens.profile.ContactScreen
+import com.scanpang.app.screens.profile.HelpScreen
 import com.scanpang.app.screens.profile.ProfileEditScreen
 import com.scanpang.app.screens.profile.ProfileScreen
 import com.scanpang.app.screens.QiblaDirectionScreen
@@ -97,6 +99,8 @@ object AppRoutes {
     const val OAuthLoadingArgProvider = "provider"
     const val LoginError = "login_error"
     const val Withdrawal = "withdrawal"
+    const val Contact = "contact"
+    const val Help = "help"
 
     /** OAuth Loading 화면으로 이동할 때 provider 식별자를 함께 전달 */
     fun oauthLoadingRoute(provider: String): String = "oauth_loading?provider=$provider"
@@ -127,6 +131,8 @@ fun AppNavHost(
         composable(AppRoutes.SettingsLanguage) { LanguageSettingsScreen(navController = navController) }
         composable(AppRoutes.SettingsValueAdded) { ValueAddedSettingsScreen(navController = navController) }
         composable(AppRoutes.SettingsNotification) { NotificationSettingsScreen(navController = navController) }
+        composable(AppRoutes.Contact) { ContactScreen(navController = navController) }
+        composable(AppRoutes.Help) { HelpScreen(navController = navController) }
         composable(AppRoutes.NearbyHalal) { NearbyHalalRestaurantsScreen(navController = navController) }
         composable(AppRoutes.NearbyPrayer) { NearbyPrayerRoomsScreen(navController = navController) }
         composable(

@@ -106,7 +106,7 @@ object ScanPangColors {
     /** AR 하단 시트 드래그 핸들 */
     val ArNavDragHandle = Color(0xFFD1D5DB)
     /** AR 길안내 하단 시트 배경 */
-    val ArNavBottomSheetBackground = Color(0xB3FFFFFF)
+    val ArNavBottomSheetBackground = Color(0xCCFFFFFF)
     /** AR 장소 상세 플로팅 패널 rgba(255,255,255,0.9) */
     val DetailArPanelSurface = Color(0xE6FFFFFF)
     /** AR 매장 카드 상단 rgba(255,255,255,0.93) */
@@ -178,10 +178,10 @@ object ScanPangSpacing {
 object ScanPangDimens {
     val screenHorizontal: Dp = 20.dp
     val headerTopPadding: Dp = 16.dp
-    val bottomBarContainerHeight: Dp = 95.dp
+    val bottomBarContainerHeight: Dp = 80.dp
     val bottomPillHeight: Dp = 62.dp
     /** FAB·라벨 묶음을 위로 띄우는 오프셋 */
-    val tabBarFabCenterOffsetUp: Dp = 28.dp
+    val tabBarFabCenterOffsetUp: Dp = 16.dp
     /** 메인 탭(ScanPangTabBar) 위 콘텐츠 하단 여백 */
     val mainTabContentBottomInset: Dp = bottomBarContainerHeight + tabBarFabCenterOffsetUp
     /** AR 탐색 화면 상단 그라데이션 오버레이 높이 */
@@ -252,7 +252,7 @@ object ScanPangDimens {
     val arStatusPillHorizontalPad: Dp = 12.dp
     val arSideColumnEnd: Dp = 16.dp
     val arSideColumnWidth: Dp = 40.dp
-    val arSideColumnTop: Dp = 84.dp
+    val arSideColumnTop: Dp = 115.dp
     val arSideIconGap: Dp = 12.dp
     val arSideFab44: Dp = 44.dp
     val arPoiCardHeight: Dp = 51.dp
@@ -263,10 +263,10 @@ object ScanPangDimens {
     val arPoiOneTop: Dp = 222.dp
     val arPoiTwoStart: Dp = 272.dp
     val arPoiTwoTop: Dp = 309.dp
-    val arChatAreaMaxHeight: Dp = 220.dp
-    val arChatAreaBottomPad: Dp = 10.dp
+    val arChatAreaMaxHeight: Dp = 250.dp
+    val arChatAreaBottomPad: Dp = 20.dp
     val arChatBubbleGap: Dp = 10.dp
-    val arInputBarMinHeight: Dp = 60.dp
+    val arInputBarMinHeight: Dp = 48.dp
     val arInputBarRadius: Dp = 30.dp
     val arInputInnerPadH: Dp = 10.dp
     val arInputInnerPadV: Dp = 8.dp
@@ -301,7 +301,7 @@ object ScanPangDimens {
     val arNavNextStepHeight: Dp = 38.dp
     val arNavNextStepOffsetStart: Dp = 5.dp
     val arNavNextStepTop: Dp = 66.dp
-    val arNavActionClusterTop: Dp = 84.dp
+    val arNavActionClusterTop: Dp = 120.dp
     val arNavActionClusterStart: Dp = 16.dp
     val arNavTurnBadgeSize: Dp = 72.dp
     val arNavTurnBadgeIcon: Dp = 50.dp
@@ -383,7 +383,7 @@ object ScanPangShapes {
         bottomStart = 4.dp,
         bottomEnd = 20.dp,
     )
-    val arNavBottomSheetTop = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp)
+    val arNavBottomSheetTop = RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp)
     val arNavNextStepChip = RoundedCornerShape(bottomStart = 12.dp, bottomEnd = 12.dp)
     val arNavDragBar = RoundedCornerShape(2.dp)
     val detailArStoreCard = RoundedCornerShape(20.dp)
