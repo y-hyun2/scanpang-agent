@@ -1,6 +1,13 @@
 package com.scanpang.app.data
 
 import android.content.Context
+import com.scanpang.app.data.auth.AuthRepository
+import com.scanpang.app.data.remote.RetrofitClient
+import com.scanpang.app.data.remote.UserPreferencesUpsertRequest
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
 
 /**
  * 온보딩 3단계에서 선택하는 부가가치(여행 선호) — 앱 전역에서 Home/Profile 분기에 쓰인다.
@@ -15,6 +22,10 @@ enum class ValueAdded(val rawValue: String) {
         fun fromRaw(raw: String?): ValueAdded? = entries.firstOrNull { it.rawValue == raw }
     }
 }
+
+// syncToBackend() 가 fire & forget 으로 사용하는 IO 코루틴 scope. SupervisorJob 으로
+// 한 요청 실패가 다른 요청을 cancel 시키지 않게 격리.
+private val syncScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
 class OnboardingPreferences(context: Context) {
     private val prefs = context.applicationContext.getSharedPreferences(PREF_FILE, Context.MODE_PRIVATE)
@@ -76,20 +87,20 @@ class OnboardingPreferences(context: Context) {
     /**
      * 현재 SharedPreferences 값을 backend `user_preferences` 테이블에 upsert.
      * - Supabase Auth 로그인 안 돼 있으면 skip (FK 위반 방지).
-     * - GlobalScope fire & forget — 호출자는 await 불필요.
+     * - 별도 IO scope 에서 fire & forget — 호출자는 await 불필요.
      * - 호출 시점: 온보딩 완료, 프로필 이름/부가가치 변경 직후.
      */
     fun syncToBackend() {
-        val userId = com.scanpang.app.data.auth.AuthRepository.currentUserId() ?: return
-        val req = com.scanpang.app.data.remote.UserPreferencesUpsertRequest(
+        val userId = AuthRepository.currentUserId() ?: return
+        val req = UserPreferencesUpsertRequest(
             user_id = userId,
             display_name = getDisplayName(),
             language = getLanguageCode(),
             value_added = getValueAdded()?.rawValue?.uppercase(),
         )
-        kotlinx.coroutines.GlobalScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+        syncScope.launch {
             try {
-                com.scanpang.app.data.remote.RetrofitClient.api.upsertUserPreferences(req)
+                RetrofitClient.api.upsertUserPreferences(req)
                 android.util.Log.d("OnboardingPrefs", "syncToBackend OK: user=$userId display=${req.display_name} value=${req.value_added}")
             } catch (e: Exception) {
                 android.util.Log.e("OnboardingPrefs", "syncToBackend FAILED", e)
