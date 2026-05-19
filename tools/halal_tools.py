@@ -11,8 +11,6 @@ from datetime import datetime, timezone, timedelta
 
 import httpx
 
-from tools.convenience_tools import haversine_m
-
 # ── 경로 ─────────────────────────────────────────────────────────────────────
 
 _DATA_DIR = os.path.join(os.path.dirname(__file__), "..", "rag", "data")
@@ -222,39 +220,44 @@ def _load_prayer_rooms() -> list:
     return _prayer_rooms_cache
 
 
-def halal_prayer_room_search(lat: float, lng: float, radius: int = 0) -> list:
+async def halal_prayer_room_search(lat: float, lng: float, radius: int = 0) -> list:
     """
-    JSON에서 기도실 검색.
-    Returns: 거리순 상위 5개 list[dict]
+    PostGIS prayer_rooms 테이블 거리 검색 (ST_DWithin + ST_Distance 정렬).
+    Returns: 거리순 list[dict] — schemas.halal.PrayerRoomItem 형식.
     """
+    from core.db import get_pool
     if radius <= 0:
         radius = DEFAULT_RADIUS["prayer_room"]
 
-    rooms = _load_prayer_rooms()
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        rows = await conn.fetch(
+            """
+            SELECT name, name_en, address, floor, open_hours,
+                   facilities::text AS facilities,
+                   availability_status, lat, lng,
+                   ST_Distance(geom, ST_SetSRID(ST_MakePoint($2, $1), 4326)::geography) AS dist
+            FROM prayer_rooms
+            WHERE ST_DWithin(geom, ST_SetSRID(ST_MakePoint($2, $1), 4326)::geography, $3)
+            ORDER BY dist
+            """,
+            float(lat), float(lng), float(radius),
+        )
+
     results = []
-
-    for r in rooms:
-        r_lat = r.get("lat")
-        r_lng = r.get("lng")
-        if r_lat is None or r_lng is None:
-            continue
-
-        dist = haversine_m(lat, lng, r_lat, r_lng)
-        if dist > radius:
-            continue
-
+    for r in rows:
+        try: fac = json.loads(r["facilities"]) if r["facilities"] else {}
+        except Exception: fac = {}
         results.append({
-            "name": r.get("name", ""),
-            "name_en": r.get("name_en", ""),
-            "distance_m": round(dist, 1),
-            "lat": r_lat,
-            "lng": r_lng,
-            "address": r.get("address", ""),
-            "floor": r.get("floor", ""),
-            "open_hours": r.get("open_hours", ""),
-            "facilities": r.get("facilities", {}),
-            "availability_status": r.get("availability_status", "unknown"),
+            "name":               r["name"] or "",
+            "name_en":            r["name_en"] or "",
+            "distance_m":         round(r["dist"], 1),
+            "lat":                float(r["lat"]) if r["lat"] is not None else None,
+            "lng":                float(r["lng"]) if r["lng"] is not None else None,
+            "address":            r["address"] or "",
+            "floor":              r["floor"] or "",
+            "open_hours":         r["open_hours"] or "",
+            "facilities":         fac,
+            "availability_status": r["availability_status"] or "unknown",
         })
-
-    results.sort(key=lambda x: x["distance_m"])
     return results[:5]
