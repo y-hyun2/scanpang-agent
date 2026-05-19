@@ -77,6 +77,8 @@ object ScanPangColors {
     /** AR 탐색 카메라 상단 스크림 (흰색 70% → 투명, Edge-to-edge 오버레이) */
     val ArExploreScrimGradientTop = Color(0xB3FFFFFF)
     val ArExploreScrimGradientBottom = Color(0x00FFFFFF)
+    /** 화면 고정 버튼 활성 색 (Primary 80% 불투명) */
+    val ArPrimaryTranslucent = Color(0xCC1A73E8)
     /** AR 검색·필터 바깥 스크림 */
     val ArOverlayScrimDark = Color(0x66000000)
     /** TTS 꺼짐 시 아이콘 틴트 */
@@ -252,7 +254,7 @@ object ScanPangDimens {
     val arStatusPillHorizontalPad: Dp = 12.dp
     val arSideColumnEnd: Dp = 16.dp
     val arSideColumnWidth: Dp = 40.dp
-    val arSideColumnTop: Dp = 115.dp
+    val arSideColumnTop: Dp = 113.dp
     val arSideIconGap: Dp = 12.dp
     val arSideFab44: Dp = 44.dp
     val arPoiCardHeight: Dp = 51.dp
@@ -301,7 +303,7 @@ object ScanPangDimens {
     val arNavNextStepHeight: Dp = 38.dp
     val arNavNextStepOffsetStart: Dp = 5.dp
     val arNavNextStepTop: Dp = 66.dp
-    val arNavActionClusterTop: Dp = 120.dp
+    val arNavActionClusterTop: Dp = 113.dp
     val arNavActionClusterStart: Dp = 16.dp
     val arNavTurnBadgeSize: Dp = 72.dp
     val arNavTurnBadgeIcon: Dp = 50.dp

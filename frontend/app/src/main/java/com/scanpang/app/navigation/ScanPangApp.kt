@@ -17,6 +17,7 @@ private val mainTabRoutes = setOf(
     AppRoutes.Search,
     AppRoutes.Saved,
     AppRoutes.Profile,
+    AppRoutes.ArExplore,
 )
 
 @Composable
