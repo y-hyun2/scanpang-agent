@@ -293,10 +293,12 @@ async def fetch_place_detail(
                     if search_handle:
                         search_frame = await search_handle.content_frame()
                         if search_frame:
-                            first = search_frame.locator("li").first
-                            if await first.count() > 0:
+                            # li 자체엔 클릭 핸들러가 없는 카테고리(편의점 /cvs/list 등)가
+                            # 있어, li 안 첫 anchor를 클릭해야 entryIframe이 뜬다.
+                            first_anchor = search_frame.locator("li a").first
+                            if await first_anchor.count() > 0:
                                 try:
-                                    await first.click(timeout=3_000)
+                                    await first_anchor.click(timeout=3_000)
                                     await page.wait_for_timeout(4_000)
                                 except Exception as click_e:
                                     print(f"[naver_map_scraper] 검색결과 클릭 실패 ({query!r}): {click_e}")
@@ -314,7 +316,8 @@ async def fetch_place_detail(
                 #   음식점/카페:  pcmap.place.naver.com/restaurant/{id}/home
                 #   카페 변형:     pcmap.place.naver.com/cafe/{id}/home
                 #   숙박:         pcmap.place.naver.com/accommodation/{id}/home
-                m = re.search(r"/(?:place|restaurant|cafe|accommodation|attraction)/(\d+)", entry_frame.url)
+                #   편의점:        pcmap.place.naver.com/cvs/{id}/home
+                m = re.search(r"/(?:place|restaurant|cafe|accommodation|attraction|cvs)/(\d+)", entry_frame.url)
                 place_id = m.group(1) if m else None
                 if not place_id:
                     print(f"[naver_map_scraper] place_id 추출 실패 ({query!r}, url={entry_frame.url!r})")
@@ -557,6 +560,17 @@ async def fetch_place_detail(
     except Exception as e:
         print(f"[naver_map_scraper] fetch_place_detail 실패 ({query!r}): {e}")
         return {}
+
+    # Naver Place의 placeholder 텍스트("영업시간 수정 제안하기")는 점주가 영업시간을
+    # 등록 안 한 매장에 항상 보이는 CTA. 정보가 없는 거지 영업시간이 아니라서 제거.
+    # 일부 매장은 "24시간 영업...영업시간 수정 제안하기"처럼 suffix로 붙기도 한다.
+    _PLACEHOLDER = "영업시간 수정 제안하기"
+    if "open_hours" in result:
+        oh = (result["open_hours"] or "").strip()
+        if oh == _PLACEHOLDER:
+            result["open_hours"] = ""
+        elif oh.endswith(_PLACEHOLDER):
+            result["open_hours"] = oh[: -len(_PLACEHOLDER)].strip()
 
     print(f"[naver_map_scraper] place_detail 성공: place_id={result.get('place_id')!r} "
           f"name={result.get('name')!r}")
