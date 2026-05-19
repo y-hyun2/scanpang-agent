@@ -31,6 +31,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
@@ -38,15 +39,13 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowRight
 import androidx.compose.material.icons.automirrored.rounded.Send
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.TextField
-import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.material.icons.rounded.AccountBalance
 import androidx.compose.material.icons.rounded.CameraAlt
 import androidx.compose.material.icons.rounded.Check
@@ -77,6 +76,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -88,6 +88,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
@@ -500,7 +501,6 @@ fun ArExploreInteractiveChatSection(
     Column(
         modifier = modifier
             .fillMaxWidth()
-            .background(ScanPangColors.ArBottomChatScrim)
             .padding(horizontal = ScanPangDimens.arTopBarHorizontal)
             .padding(bottom = ScanPangDimens.arChatAreaBottomPad),
         verticalArrangement = Arrangement.spacedBy(ScanPangDimens.arChatBubbleGap),
@@ -509,7 +509,7 @@ fun ArExploreInteractiveChatSection(
             state = listState,
             modifier = Modifier
                 .fillMaxWidth()
-                .heightIn(max = 220.dp),
+                .heightIn(max = 172.dp),
             verticalArrangement = Arrangement.spacedBy(ScanPangDimens.arChatBubbleGap),
         ) {
             itemsIndexed(messages, key = { index, msg -> "$index-${msg.isUser}-${msg.text}" }) { _, msg ->
@@ -518,6 +518,7 @@ fun ArExploreInteractiveChatSection(
                     horizontalArrangement = if (msg.isUser) Arrangement.End else Arrangement.Start,
                 ) {
                     Surface(
+                        modifier = Modifier.widthIn(max = 300.dp),
                         shape = if (msg.isUser) ScanPangShapes.arBubbleUser else ScanPangShapes.arBubbleAgent,
                         color = if (msg.isUser) ArAgentUserBubbleBlue else Color.White,
                         shadowElevation = if (msg.isUser) 0.dp else 2.dp,
@@ -535,13 +536,10 @@ fun ArExploreInteractiveChatSection(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .heightIn(min = ScanPangDimens.arInputBarMinHeight)
+                .heightIn(min = ScanPangDimens.arInputBarMinHeight, max = 120.dp)
                 .clip(ScanPangShapes.arInputPill)
                 .background(ScanPangColors.ArOverlayWhite93)
-                .padding(
-                    horizontal = ScanPangDimens.arInputInnerPadH,
-                    vertical = ScanPangDimens.arInputInnerPadV,
-                ),
+                .padding(horizontal = 6.dp, vertical = 6.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(ScanPangSpacing.sm),
         ) {
@@ -549,34 +547,35 @@ fun ArExploreInteractiveChatSection(
                 isListening = isSttListening,
                 onClick = onMicClick,
             )
-            TextField(
+            BasicTextField(
                 value = inputText,
                 onValueChange = onInputChange,
                 modifier = Modifier.weight(1f),
-                placeholder = {
-                    Text(
-                        text = "무엇이든 물어보세요",
-                        style = ScanPangType.searchPlaceholderRegular,
-                        color = ScanPangColors.OnSurfacePlaceholder,
-                    )
-                },
+                singleLine = false,
+                maxLines = 4,
                 textStyle = ScanPangType.body15Medium.copy(color = ScanPangColors.OnSurfaceStrong),
-                singleLine = true,
-                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
-                keyboardActions = KeyboardActions(onSend = { onSend() }),
-                colors = TextFieldDefaults.colors(
-                    focusedContainerColor = Color.Transparent,
-                    unfocusedContainerColor = Color.Transparent,
-                    disabledContainerColor = Color.Transparent,
-                    focusedIndicatorColor = Color.Transparent,
-                    unfocusedIndicatorColor = Color.Transparent,
-                    disabledIndicatorColor = Color.Transparent,
-                    cursorColor = ScanPangColors.Primary,
-                ),
+                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Default),
+                cursorBrush = SolidColor(ScanPangColors.Primary),
+                decorationBox = { innerTextField ->
+                    Box(contentAlignment = Alignment.CenterStart) {
+                        if (inputText.isEmpty()) {
+                            Text(
+                                text = "무엇이든 물어보세요",
+                                style = ScanPangType.searchPlaceholderRegular,
+                                color = ScanPangColors.OnSurfacePlaceholder,
+                            )
+                        }
+                        innerTextField()
+                    }
+                },
             )
-            IconButton(
-                onClick = onSend,
-                enabled = inputText.isNotBlank(),
+            Box(
+                modifier = Modifier
+                    .size(36.dp)
+                    .clip(RoundedCornerShape(16.dp))
+                    .background(Color(0xFF6B7280).copy(alpha = 0.1f))
+                    .clickable(enabled = inputText.isNotBlank()) { onSend() },
+                contentAlignment = Alignment.Center,
             ) {
                 Icon(
                     imageVector = Icons.AutoMirrored.Rounded.Send,

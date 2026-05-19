@@ -18,25 +18,29 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.CameraAlt
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.CropFree
 import androidx.compose.material.icons.rounded.FilterList
 import androidx.compose.material.icons.rounded.Home
 import androidx.compose.material.icons.rounded.History
 import androidx.compose.material.icons.rounded.KeyboardArrowDown
+import androidx.compose.material.icons.rounded.Pause
 import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -178,10 +182,6 @@ fun ArExploreScreen(
                     text = "안녕하세요! 스캔팡입니다. 주변 장소를 AR로 안내해 드릴게요.",
                     isUser = false,
                 ),
-                ArAgentChatMessage(
-                    text = "아미나님, 오늘은 어떤 할랄 맛집을 찾으세요?",
-                    isUser = true,
-                ),
             ),
         )
     }
@@ -197,6 +197,7 @@ fun ArExploreScreen(
     var isSearchOpen by remember { mutableStateOf(false) }
     var showArSearchResults by remember { mutableStateOf(false) }
 
+    var isFrozen by remember { mutableStateOf(false) }
     var isTtsOn by remember { mutableStateOf(true) }
 
     var isSttListening by remember { mutableStateOf(false) }
@@ -621,40 +622,38 @@ fun ArExploreScreen(
                     .padding(horizontal = ScanPangDimens.arTopBarHorizontal)
                     .padding(bottom = ScanPangDimens.arTopBarBottomPadding),
             ) {
-                Row(
+                Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(
-                            maxOf(
-                                ScanPangDimens.arCircleBtn36,
-                                ScanPangDimens.arStatusPillHeight,
-                            ),
-                        ),
-                    verticalAlignment = Alignment.CenterVertically,
+                        .heightIn(min = ScanPangDimens.arStatusPillHeight),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    ArExploreStatusPill(
+                        isFrozen = isFrozen,
+                        selectedFilters = categorySelection,
+                        hasHighAccuracy = hasAchievedHighAccuracy,
+                        onClick = {
+                            if (isFrozen) isFrozen = false
+                            else isFilterOpen = true
+                        },
+                    )
+                }
+                Spacer(modifier = Modifier.height(8.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
                 ) {
                     ArCircleIconButton(
-                        icon = Icons.Rounded.Home,
-                        contentDescription = "홈",
-                        onClick = { navController.popBackStack() },
-                        modifier = Modifier,
+                        icon = Icons.Rounded.CameraAlt,
+                        contentDescription = "화면 고정",
+                        onClick = { isFrozen = !isFrozen },
+                        surfaceColor = if (isFrozen) ScanPangColors.ArPrimaryTranslucent else ScanPangColors.ArOverlayWhite80,
+                        iconTint = if (isFrozen) Color.White else ScanPangColors.OnSurfaceStrong,
                     )
-                    Box(
-                        modifier = Modifier
-                            .weight(1f)
-                            .padding(horizontal = ScanPangSpacing.sm),
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        ArExploreStatusPill(
-                            selectedFilters = categorySelection,
-                            hasHighAccuracy = hasAchievedHighAccuracy,
-                            onClick = { isFilterOpen = true },
-                        )
-                    }
                     ArCircleIconButton(
                         icon = Icons.Rounded.Search,
                         contentDescription = "검색",
                         onClick = { isSearchOpen = true },
-                        modifier = Modifier,
                     )
                 }
             }
@@ -690,6 +689,7 @@ fun ArExploreScreen(
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
                     .fillMaxWidth()
+                    .padding(bottom = ScanPangDimens.mainTabContentBottomInset)
                     .navigationBarsPadding(),
             ) {
                 ArExploreInteractiveChatSection(
@@ -746,13 +746,13 @@ fun ArExploreScreen(
             // ── 필터 패널 ──
             AnimatedVisibility(
                 visible = isFilterOpen,
-                enter = slideInVertically { it },
-                exit = slideOutVertically { it },
+                enter = slideInVertically { -it },
+                exit = slideOutVertically { -it },
             ) {
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
-                        .background(ScanPangColors.ArOverlayScrimDark)
+                        .background(Color.Transparent)
                         .clickable { isFilterOpen = false },
                 ) {
                     Surface(
@@ -760,10 +760,10 @@ fun ArExploreScreen(
                             .align(Alignment.TopCenter)
                             .fillMaxWidth()
                             .padding(horizontal = ScanPangDimens.arFilterPanelHorizontal)
-                            .padding(top = ScanPangSpacing.lg)
+                            .padding(top = ScanPangDimens.arFilterPanelTopOffset)
                             .clickable(enabled = false) { },
-                        shape = ScanPangShapes.arFilterPanelTop,
-                        color = ScanPangColors.Surface,
+                        shape = RoundedCornerShape(16.dp),
+                        color = ScanPangColors.ArOverlayWhite93,
                         shadowElevation = ScanPangDimens.arPoiCardShadowElevation,
                     ) {
                         Column(
@@ -1051,11 +1051,48 @@ private fun BoxScope.ArDynamicPoiMarkers(
 
 @Composable
 private fun ArExploreStatusPill(
+    isFrozen: Boolean,
     selectedFilters: Set<String>,
     hasHighAccuracy: Boolean = true,
     onClick: () -> Unit,
 ) {
     when {
+        isFrozen -> {
+            Surface(
+                modifier = Modifier
+                    .height(ScanPangDimens.arStatusPillHeight)
+                    .clip(CircleShape)
+                    .clickable(onClick = onClick),
+                shape = CircleShape,
+                color = ScanPangColors.Primary,
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = ScanPangDimens.arStatusPillHorizontalPad),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(ScanPangSpacing.xs),
+                ) {
+                    Icon(
+                        imageVector = Icons.Rounded.Pause,
+                        contentDescription = null,
+                        modifier = Modifier.size(ScanPangDimens.icon18),
+                        tint = Color.White,
+                    )
+                    Text(
+                        text = "화면 고정 중",
+                        style = ScanPangType.arStatusPill15,
+                        color = Color.White,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    Icon(
+                        imageVector = Icons.Rounded.KeyboardArrowDown,
+                        contentDescription = null,
+                        modifier = Modifier.size(ScanPangDimens.arNavDestinationChevron),
+                        tint = Color.White,
+                    )
+                }
+            }
+        }
         !hasHighAccuracy -> {
             Surface(
                 modifier = Modifier

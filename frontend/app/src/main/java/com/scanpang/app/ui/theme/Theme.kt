@@ -77,6 +77,8 @@ object ScanPangColors {
     /** AR 탐색 카메라 상단 스크림 (흰색 70% → 투명, Edge-to-edge 오버레이) */
     val ArExploreScrimGradientTop = Color(0xB3FFFFFF)
     val ArExploreScrimGradientBottom = Color(0x00FFFFFF)
+    /** 화면 고정 버튼 활성 색 (Primary 80% 불투명) */
+    val ArPrimaryTranslucent = Color(0xCC1A73E8)
     /** AR 검색·필터 바깥 스크림 */
     val ArOverlayScrimDark = Color(0x66000000)
     /** TTS 꺼짐 시 아이콘 틴트 */
