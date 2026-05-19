@@ -257,7 +257,7 @@ fun ProfileScreen(
                         label = "문의하기",
                         icon = Icons.Rounded.Mail,
                         iconTint = ScanPangColors.Primary,
-                        onClick = { },
+                        onClick = { navController.navigate(AppRoutes.Contact) },
                         showDividerBelow = true,
                     )
                     ProfileSettingsRow(
