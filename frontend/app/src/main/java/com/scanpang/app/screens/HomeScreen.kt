@@ -79,8 +79,8 @@ private data class HomeQuickAction(
 
 private fun quickActionsFor(value: ValueAdded): List<HomeQuickAction> = when (value) {
     ValueAdded.HALAL -> listOf(
-        HomeQuickAction("할랄 식당", Icons.Rounded.Restaurant) { it.navigate(AppRoutes.NearbyHalal) },
-        HomeQuickAction("기도실", Icons.Rounded.Mosque) { it.navigate(AppRoutes.NearbyPrayer) },
+        HomeQuickAction("할랄 식당", Icons.Rounded.Restaurant) { it.navigateToSearchWithQuery("할랄 식당") },
+        HomeQuickAction("기도실", Icons.Rounded.Mosque) { it.navigateToSearchWithQuery("기도실") },
         HomeQuickAction("관광명소", Icons.Rounded.Whatshot) { it.navigateToSearchWithQuery("관광지") },
     )
     ValueAdded.VEGAN -> listOf(

@@ -92,13 +92,13 @@ private fun pinnedRecommendsFor(valueAdded: ValueAdded?): List<SearchRecommendCa
             label = "할랄 식당",
             icon = Icons.Rounded.Restaurant,
             iconTint = ScanPangColors.CategoryRestaurant,
-            targetRoute = AppRoutes.NearbyHalal,
+            searchQuery = "할랄 식당",
         ),
         SearchRecommendCategory(
             label = "기도실",
             icon = Icons.Rounded.Mosque,
             iconTint = ScanPangColors.Primary,
-            targetRoute = AppRoutes.NearbyPrayer,
+            searchQuery = "기도실",
         ),
     )
     ValueAdded.VEGAN -> listOf(
