@@ -148,7 +148,7 @@ fun ProfileScreen(
                         ) {
                             // hufs-cdp 합류 — 사용자가 업로드한 사진이 있으면 표시, 없으면 Figma 기본 아바타
                             val photoUri = onboardingPrefs.getProfilePhotoUri()
-                            if (photoUri != null) {
+                            if (!photoUri.isNullOrBlank()) {
                                 AsyncImage(
                                     model = ImageRequest.Builder(context)
                                         .data(photoUri)
@@ -308,11 +308,6 @@ private fun ProfilePreferenceTag(label: String) {
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(ScanPangDimens.stackGap6),
     ) {
-        Box(
-            modifier = Modifier
-                .size(ScanPangDimens.profileTagIcon)
-                .background(ScanPangColors.Primary),
-        )
         Text(
             text = label,
             style = ScanPangType.chip12Medium,
