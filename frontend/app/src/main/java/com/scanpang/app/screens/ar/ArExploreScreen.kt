@@ -144,6 +144,7 @@ private data class DynamicPoi(
     val arOverlay: ArOverlay? = null,
     val docent: Docent? = null,
     val isPending: Boolean = false,
+    val bdMgtSn: String? = null,
 )
 
 private data class BuildingCandidate(
@@ -516,6 +517,7 @@ fun ArExploreScreen(
                                                     distance = cand.dist,
                                                     latitude = markerPos.first,
                                                     longitude = markerPos.second,
+                                                    bdMgtSn = cand.b.bd_mgt_sn,
                                                 ),
                                             )
                                         } catch (e: Exception) {
@@ -679,11 +681,18 @@ fun ArExploreScreen(
                     dynamicPois = dynamicPois,
                     anchorScreenPositions = anchorScreenPositions,
                     onPoiClick = { poi ->
-                        // 마커 클릭 시 정보 패널 띄움 (도슨트는 안 부름)
                         selectedPoi = poi.name
                         selectedPoiOverlay = poi.arOverlay
                         selectedPoiDocent = null
                         activeDetailTab = ArPoiTabBuilding
+                        if (poi.bdMgtSn != null) {
+                            viewModel.queryPlace(
+                                heading = currentHeading,
+                                lat = currentLat,
+                                lng = currentLng,
+                                bdMgtSn = poi.bdMgtSn,
+                            )
+                        }
                     },
                 )
 

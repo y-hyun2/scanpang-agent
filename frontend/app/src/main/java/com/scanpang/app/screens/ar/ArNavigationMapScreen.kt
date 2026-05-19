@@ -42,11 +42,15 @@ import com.scanpang.app.components.ar.ArNavSideVolumeCamera
 import com.scanpang.app.components.ar.ArNavTopHud
 import com.scanpang.app.components.ar.ArNavStopNavigationSheet
 import com.scanpang.app.components.ar.ArNavStopConfirmDialog
+import com.scanpang.app.components.ar.ArPoiFloatingDetailOverlay
+import com.scanpang.app.components.ar.ArFloorStoreGuideOverlay
+import com.scanpang.app.components.ar.ArPoiTabBuilding
 import com.scanpang.app.components.ScanPangMainTab
 import com.scanpang.app.components.ScanPangTabBar
 import com.scanpang.app.navigation.AppRoutes
 import com.scanpang.app.ui.theme.ScanPangColors
 import com.scanpang.app.ui.theme.ScanPangDimens
+import androidx.compose.runtime.LaunchedEffect
 
 private const val NAV_TAB_MAP = "map"
 private const val NAV_TAB_AI = "ai"
@@ -124,6 +128,14 @@ fun ArNavigationMapScreen(
     var showStopNavSheet by remember { mutableStateOf(false) }
     var showStopConfirmDialog by remember { mutableStateOf(false) }
 
+    // 건물 핀 클릭 → 상세 오버레이
+    var selectedBuildingPoi by remember { mutableStateOf<String?>(null) }
+    var activeDetailTab by remember { mutableStateOf(ArPoiTabBuilding) }
+    var selectedStore by remember { mutableStateOf<String?>(null) }
+    val placeResult by viewModel.placeResult.collectAsState()
+    val storeResult by viewModel.storeResult.collectAsState()
+
+
     // 탐색모드와 동일하게 GPS 기반으로 주변 건물을 가져와 길안내 중에도 건물 핀 표시
     val buildingsCache by viewModel.buildingsCache.collectAsState()
 
@@ -146,6 +158,19 @@ fun ArNavigationMapScreen(
             },
             voiceOn = isTtsOn,
             buildingsCache = buildingsCache,
+            onBuildingPinClick = { name, bdMgtSn ->
+                selectedBuildingPoi = name
+                activeDetailTab = ArPoiTabBuilding
+                selectedStore = null
+                if (bdMgtSn != null) {
+                    viewModel.queryPlace(
+                        heading = userHeading,
+                        lat = userLat,
+                        lng = userLng,
+                        bdMgtSn = bdMgtSn,
+                    )
+                }
+            },
         )
 
         ArNavActionCardCluster(
@@ -246,7 +271,11 @@ fun ArNavigationMapScreen(
                 onProfileClick = {
                     navController.navigate(AppRoutes.Profile) { launchSingleTop = true }
                 },
-                onExploreClick = { /* 이미 AR 길안내 중 */ },
+                onExploreClick = {
+                    navController.navigate(AppRoutes.ArExplore) {
+                        launchSingleTop = true
+                    }
+                },
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
                     .fillMaxWidth(),
@@ -275,6 +304,41 @@ fun ArNavigationMapScreen(
                     showStopConfirmDialog = true
                 },
                 modifier = Modifier.fillMaxSize(),
+            )
+        }
+
+        // 건물 핀 클릭 → 건물 상세 오버레이 (탐색모드와 동일 로직)
+        selectedBuildingPoi?.let { poi ->
+            ArPoiFloatingDetailOverlay(
+                poiName = poi,
+                activeDetailTab = activeDetailTab,
+                onActiveDetailTabChange = { activeDetailTab = it },
+                onDismiss = {
+                    selectedBuildingPoi = null
+                    selectedStore = null
+                    activeDetailTab = ArPoiTabBuilding
+                },
+                onFloorStoreClick = { selectedStore = it },
+                onSave = {},
+                modifier = Modifier.fillMaxSize(),
+                arOverlay = placeResult?.ar_overlay,
+                docent = placeResult?.docent,
+            )
+        }
+
+        selectedStore?.let { store ->
+            LaunchedEffect(store) { viewModel.queryStore(placeId = "", storeName = store) }
+            val s = storeResult?.takeIf { it.store_name == store }
+            ArFloorStoreGuideOverlay(
+                storeName = store,
+                onDismiss = { selectedStore = null },
+                onStartNavigation = {
+                    navController.navigate(AppRoutes.arNavMapRoute(store)) { launchSingleTop = true }
+                    selectedStore = null
+                },
+                modifier = Modifier.fillMaxSize(),
+                category = s?.category.orEmpty(),
+                isOpenNow = s?.is_open_now,
             )
         }
 
