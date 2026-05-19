@@ -504,6 +504,7 @@ async def place_detail(req: PlaceDetailRequest):
     - `restroom__{mng_no}` → public_restrooms 테이블
     - `halal__{restaurant_id}` → halal_restaurants 테이블
     - `prayer__{room_id}` → prayer_rooms 테이블
+    - `tourist__{ufid}` → store_details 테이블 (import_tourist_places.py 배치 적재)
     - 그 외 → store_details 테이블 (건물 내 매장 캐시)
     """
     # outdoor 라우팅

@@ -34,9 +34,7 @@ async def fetch(
         return {}
 
     try:
-        # lazy import — rag.build_place_db가 sentence_transformers를 module-level
-        # 로 끌어와서 cold import가 무거움. fetcher 호출 시점에만 로드.
-        from rag.build_place_db import fetch_tour_info
+        from tools.tour_api_client import fetch_tour_info
         info = await fetch_tour_info(place_name=store_name)
     except Exception as e:
         print(f"[tour_api] fetch_tour_info 실패 ({store_name!r}): {e}")
