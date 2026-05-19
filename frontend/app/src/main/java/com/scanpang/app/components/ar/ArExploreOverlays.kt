@@ -43,7 +43,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowRight
 import androidx.compose.material.icons.automirrored.rounded.Send
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material.icons.rounded.AccountBalance
@@ -1254,7 +1253,12 @@ fun ArExploreSearchPanelContent(
                                 color = ScanPangColors.OnSurfaceMuted,
                             )
                         }
-                        recentQueries.forEach { q ->
+                        Column(
+                            modifier = Modifier
+                                .heightIn(max = 270.dp)
+                                .verticalScroll(rememberScrollState()),
+                        ) {
+                        recentQueries.take(30).forEach { q ->
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
@@ -1284,6 +1288,7 @@ fun ArExploreSearchPanelContent(
                                     tint = ScanPangColors.OnSurfaceMuted,
                                 )
                             }
+                        }
                         }
                     }
                 }
@@ -1380,12 +1385,6 @@ private fun ArExploreSearchResultCard(
                         color = ScanPangColors.OnSurfaceMuted,
                     )
                 }
-                Icon(
-                    imageVector = Icons.AutoMirrored.Rounded.KeyboardArrowRight,
-                    contentDescription = null,
-                    modifier = Modifier.size(16.dp),
-                    tint = ScanPangColors.OnSurfaceMuted,
-                )
             }
             Row(
                 modifier = Modifier.fillMaxWidth(),
