@@ -50,6 +50,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -220,6 +221,7 @@ fun SearchDefaultScreen(
                 .fillMaxSize()
                 .background(ScanPangColors.Surface)
                 .statusBarsPadding()
+                .navigationBarsPadding()
                 .padding(horizontal = ScanPangDimens.screenHorizontal),
         ) {
             Spacer(modifier = Modifier.height(ScanPangSpacing.xl))
