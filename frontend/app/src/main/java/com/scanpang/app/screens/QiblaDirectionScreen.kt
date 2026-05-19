@@ -120,7 +120,6 @@ fun QiblaDirectionScreen(
     val azimuthState = rememberDeviceAzimuthDegrees()
     val deviceAzimuth = azimuthState.floatValue
     val qiblaFromNorth = apiQibla?.direction?.toFloat() ?: getQiblaDirection()
-    val needleRotation = ((qiblaFromNorth - deviceAzimuth + 360f) % 360f)
 
     val prayerTimes = getPrayerTimes()
     val meccaKm = getMeccaDistanceKm()
