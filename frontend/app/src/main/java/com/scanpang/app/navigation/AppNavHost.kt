@@ -25,8 +25,6 @@ import com.scanpang.app.screens.auth.WithdrawalScreen
 import com.scanpang.app.screens.onboarding.OnboardingLanguageScreen
 import com.scanpang.app.screens.onboarding.OnboardingNameScreen
 import com.scanpang.app.screens.onboarding.OnboardingPreferenceScreen
-import com.scanpang.app.screens.NearbyHalalRestaurantsScreen
-import com.scanpang.app.screens.NearbyPrayerRoomsScreen
 import com.scanpang.app.screens.PlaceDetailScreen
 import com.scanpang.app.screens.profile.ContactScreen
 import com.scanpang.app.screens.profile.HelpScreen
@@ -65,9 +63,6 @@ object AppRoutes {
     const val SettingsLanguage = "settings_language"
     const val SettingsValueAdded = "settings_value_added"
     const val SettingsNotification = "settings_notification"
-    const val NearbyHalal = "nearby_halal"
-    const val NearbyPrayer = "nearby_prayer"
-
     /**
      * 통합 Detail 라우트 베이스. 실제 이동은 [placeDetailRoute] 가 만든
      * `place_detail/{categoryKey}/{placeId}` 형태의 URL 로 한다.
@@ -133,8 +128,6 @@ fun AppNavHost(
         composable(AppRoutes.SettingsNotification) { NotificationSettingsScreen(navController = navController) }
         composable(AppRoutes.Contact) { ContactScreen(navController = navController) }
         composable(AppRoutes.Help) { HelpScreen(navController = navController) }
-        composable(AppRoutes.NearbyHalal) { NearbyHalalRestaurantsScreen(navController = navController) }
-        composable(AppRoutes.NearbyPrayer) { NearbyPrayerRoomsScreen(navController = navController) }
         composable(
             route = "${AppRoutes.PlaceDetail}/{categoryKey}/{placeId}",
             arguments = listOf(

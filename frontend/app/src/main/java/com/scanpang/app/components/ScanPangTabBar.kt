@@ -9,15 +9,22 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.AccountCircle
+import androidx.compose.material.icons.outlined.Home
+import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material.icons.rounded.AccountCircle
+import androidx.compose.material.icons.rounded.Bookmark
 import androidx.compose.material.icons.rounded.BookmarkBorder
 import androidx.compose.material.icons.rounded.CropFree
 import androidx.compose.material.icons.rounded.Home
@@ -44,7 +51,7 @@ enum class ScanPangMainTab {
     Search,
     Saved,
     Profile,
-    None,
+    Explore,
 }
 
 /**
@@ -67,7 +74,8 @@ fun ScanPangTabBar(
             .height(
                 ScanPangDimens.bottomBarContainerHeight +
                     ScanPangDimens.tabBarFabCenterOffsetUp,
-            ),
+            )
+            .windowInsetsPadding(WindowInsets.navigationBars),
     ) {
         Row(
             modifier = Modifier
@@ -88,26 +96,30 @@ fun ScanPangTabBar(
         ) {
             BottomTabSlot(
                 label = "홈",
-                icon = Icons.Rounded.Home,
+                iconUnselected = Icons.Outlined.Home,
+                iconSelected = Icons.Rounded.Home,
                 selected = selectedTab == ScanPangMainTab.Home,
                 onClick = onHomeClick,
             )
             BottomTabSlot(
                 label = "검색",
-                icon = Icons.Rounded.Search,
+                iconUnselected = Icons.Outlined.Search,
+                iconSelected = Icons.Rounded.Search,
                 selected = selectedTab == ScanPangMainTab.Search,
                 onClick = onSearchClick,
             )
             Spacer(modifier = Modifier.weight(1f))
             BottomTabSlot(
                 label = "저장",
-                icon = Icons.Rounded.BookmarkBorder,
+                iconUnselected = Icons.Rounded.BookmarkBorder,
+                iconSelected = Icons.Rounded.Bookmark,
                 selected = selectedTab == ScanPangMainTab.Saved,
                 onClick = onSavedClick,
             )
             BottomTabSlot(
                 label = "내 정보",
-                icon = Icons.Rounded.AccountCircle,
+                iconUnselected = Icons.Outlined.AccountCircle,
+                iconSelected = Icons.Rounded.AccountCircle,
                 selected = selectedTab == ScanPangMainTab.Profile,
                 onClick = onProfileClick,
             )
@@ -149,7 +161,8 @@ fun ScanPangTabBar(
 @Composable
 private fun RowScope.BottomTabSlot(
     label: String,
-    icon: ImageVector,
+    iconUnselected: ImageVector,
+    iconSelected: ImageVector,
     selected: Boolean,
     onClick: () -> Unit,
 ) {
@@ -163,7 +176,8 @@ private fun RowScope.BottomTabSlot(
         verticalArrangement = Arrangement.spacedBy(ScanPangSpacing.xs),
     ) {
         Icon(
-            imageVector = icon,
+            // 미선택 → outlined, 선택 → filled 로 자연스럽게 전환되도록 두 아이콘을 받아 스왑.
+            imageVector = if (selected) iconSelected else iconUnselected,
             contentDescription = label,
             modifier = Modifier.size(ScanPangDimens.tabIcon),
             tint = if (selected) activeColor else inactiveColor,

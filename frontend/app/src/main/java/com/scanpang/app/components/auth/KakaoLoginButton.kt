@@ -11,7 +11,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Chat
+import androidx.compose.material.icons.automirrored.rounded.Chat
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
@@ -76,7 +76,7 @@ fun KakaoLoginButton(
             )
         } else {
             Icon(
-                imageVector = Icons.Filled.Chat,
+                imageVector = Icons.AutoMirrored.Rounded.Chat,
                 contentDescription = null,
                 tint = ScanPangColors.KakaoLabel,
                 modifier = Modifier

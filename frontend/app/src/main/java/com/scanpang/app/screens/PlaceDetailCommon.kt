@@ -212,16 +212,21 @@ fun DetailImageFullscreenDialog(
                     contentScale = ContentScale.Fit,
                 )
             }
-            IconButton(
-                onClick = onDismiss,
+            Box(
                 modifier = Modifier
                     .align(Alignment.TopEnd)
                     .statusBarsPadding()
-                    .padding(ScanPangSpacing.sm),
+                    .padding(ScanPangSpacing.md)
+                    .size(36.dp)
+                    .clip(CircleShape)
+                    .background(Color.Black.copy(alpha = 0.25f))
+                    .clickable(onClick = onDismiss),
+                contentAlignment = Alignment.Center,
             ) {
                 Icon(
                     imageVector = Icons.Rounded.Close,
                     contentDescription = "닫기",
+                    modifier = Modifier.size(24.dp),
                     tint = Color.White,
                 )
             }
@@ -257,61 +262,50 @@ fun DetailHeroPhotoPager(
                 contentScale = ContentScale.Crop,
             )
         }
-        IconButton(
-            onClick = onBack,
+        Box(
             modifier = Modifier
                 .align(Alignment.TopStart)
                 .statusBarsPadding()
-                .padding(ScanPangSpacing.sm),
+                .padding(start = 20.dp, top = 12.dp)
+                .size(ScanPangDimens.arCircleBtn36)
+                .clip(CircleShape)
+                .background(Color.Black.copy(alpha = 0.25f))
+                .clickable(onClick = onBack),
+            contentAlignment = Alignment.Center,
         ) {
-            Surface(
-                shape = CircleShape,
-                color = ScanPangColors.ArOverlayWhite93,
-                shadowElevation = ScanPangDimens.arPoiCardShadowElevation,
-            ) {
-                Icon(
-                    imageVector = Icons.AutoMirrored.Rounded.ArrowBack,
-                    contentDescription = "뒤로",
-                    modifier = Modifier.padding(ScanPangSpacing.sm),
-                    tint = ScanPangColors.OnSurfaceStrong,
-                )
-            }
+            Icon(
+                imageVector = Icons.AutoMirrored.Rounded.ArrowBack,
+                contentDescription = "뒤로",
+                modifier = Modifier.size(24.dp),
+                tint = Color.White,
+            )
         }
-        if (onFullscreenClick != null) {
-            IconButton(
-                onClick = onFullscreenClick,
-                modifier = Modifier
-                    .align(Alignment.TopEnd)
-                    .statusBarsPadding()
-                    .padding(ScanPangSpacing.sm),
-            ) {
-                Surface(
-                    shape = CircleShape,
-                    color = ScanPangColors.ArOverlayWhite93,
-                    shadowElevation = ScanPangDimens.arPoiCardShadowElevation,
-                ) {
-                    Icon(
-                        imageVector = Icons.Rounded.Fullscreen,
-                        contentDescription = "전체 화면",
-                        modifier = Modifier.padding(ScanPangSpacing.sm),
-                        tint = ScanPangColors.OnSurfaceStrong,
-                    )
-                }
+        Row(
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .padding(bottom = 14.dp),
+            horizontalArrangement = Arrangement.spacedBy(5.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            repeat(gallery.size) { index ->
+                Box(
+                    modifier = Modifier
+                        .size(6.dp)
+                        .clip(CircleShape)
+                        .background(Color.White.copy(alpha = if (index == pagerState.currentPage) 1f else 0.38f)),
+                )
             }
         }
         Surface(
             modifier = Modifier
                 .align(Alignment.BottomEnd)
-                .padding(ScanPangSpacing.lg),
+                .padding(end = ScanPangSpacing.lg, bottom = ScanPangSpacing.lg),
             shape = ScanPangShapes.badge6,
-            color = ScanPangColors.DetailImageCountScrim,
+            color = Color.Black.copy(alpha = 0.45f),
         ) {
             Text(
                 text = "${pagerState.currentPage + 1}/${gallery.size}",
-                modifier = Modifier.padding(
-                    horizontal = ScanPangSpacing.sm,
-                    vertical = ScanPangDimens.badgePadVertical,
-                ),
+                modifier = Modifier.padding(horizontal = ScanPangSpacing.sm, vertical = 3.dp),
                 style = ScanPangType.detailImageCount9,
                 color = Color.White,
             )
@@ -353,31 +347,40 @@ fun DetailTitleBookmarkRow(
     title: String,
     bookmarked: Boolean,
     onBookmarkClick: () -> Unit,
-    modifier: Modifier = Modifier,
     trailingContent: (@Composable () -> Unit)? = null,
+    modifier: Modifier = Modifier,
 ) {
     Row(
         modifier = modifier.fillMaxWidth(),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(ScanPangSpacing.sm),
+        verticalAlignment = Alignment.Top,
+        horizontalArrangement = Arrangement.SpaceBetween,
     ) {
         Text(
             text = title,
             style = ScanPangType.detailRestaurantTitle24,
             color = ScanPangColors.OnSurfaceStrong,
-            modifier = Modifier.weight(1f),
+            modifier = Modifier.weight(1f).padding(end = ScanPangSpacing.sm),
         )
-        trailingContent?.invoke()
-        IconButton(onClick = onBookmarkClick) {
-            Icon(
-                imageVector = if (bookmarked) Icons.Rounded.Bookmark else Icons.Rounded.BookmarkBorder,
-                contentDescription = if (bookmarked) "저장됨" else "저장",
-                tint = if (bookmarked) {
-                    ScanPangColors.Primary
-                } else {
-                    ScanPangColors.OnSurfacePlaceholder
-                },
-            )
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(ScanPangSpacing.sm),
+        ) {
+            trailingContent?.invoke()
+            Box(
+                modifier = Modifier
+                    .size(36.dp)
+                    .clip(CircleShape)
+                    .background(ScanPangColors.Background)
+                    .clickable(onClick = onBookmarkClick),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    imageVector = if (bookmarked) Icons.Rounded.Bookmark else Icons.Rounded.BookmarkBorder,
+                    contentDescription = if (bookmarked) "저장됨" else "저장",
+                    modifier = Modifier.size(20.dp),
+                    tint = if (bookmarked) ScanPangColors.Primary else ScanPangColors.OnSurfaceMuted,
+                )
+            }
         }
     }
 }
@@ -409,16 +412,13 @@ fun DetailCategoryTagDistanceRow(
         horizontalArrangement = Arrangement.spacedBy(ScanPangSpacing.sm),
     ) {
         Surface(
-            shape = ScanPangShapes.badge6,
+            shape = androidx.compose.foundation.shape.RoundedCornerShape(8.dp),
             color = ScanPangColors.PrimarySoft,
         ) {
             Text(
                 text = categoryLabel,
-                modifier = Modifier.padding(
-                    horizontal = ScanPangSpacing.sm,
-                    vertical = ScanPangDimens.chipPadVertical,
-                ),
-                style = ScanPangType.category11SemiBold,
+                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                style = ScanPangType.trust10SemiBold,
                 color = ScanPangColors.Primary,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
@@ -630,28 +630,28 @@ fun DetailInfoLine(
 ) {
     Row(
         modifier = modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(ScanPangSpacing.md),
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
         verticalAlignment = Alignment.Top,
     ) {
         Icon(
             imageVector = icon,
             contentDescription = null,
-            modifier = Modifier.size(ScanPangDimens.icon18),
+            modifier = Modifier.size(ScanPangDimens.icon16),
             tint = ScanPangColors.OnSurfaceMuted,
         )
         Column(
             modifier = Modifier.weight(1f),
-            verticalArrangement = Arrangement.spacedBy(ScanPangDimens.icon5),
+            verticalArrangement = Arrangement.spacedBy(3.dp),
         ) {
             Text(
                 text = label,
-                style = ScanPangType.meta11Medium,
-                color = ScanPangColors.OnSurfacePlaceholder,
+                style = ScanPangType.quickLabel12,
+                color = ScanPangColors.OnSurfaceStrong,
             )
             Text(
                 text = value,
-                style = ScanPangType.detailIntro13,
-                color = ScanPangColors.OnSurfaceStrong,
+                style = ScanPangType.caption12,
+                color = ScanPangColors.OnSurfaceMuted,
             )
         }
     }
@@ -780,6 +780,7 @@ fun DetailCtaRow(
     onNavigate: () -> Unit,
     onPhoneClick: () -> Unit,
     modifier: Modifier = Modifier,
+    hasPhone: Boolean = true,
 ) {
     Row(
         modifier = modifier.fillMaxWidth(),
@@ -812,20 +813,22 @@ fun DetailCtaRow(
                 )
             }
         }
-        Box(
-            modifier = Modifier
-                .size(ScanPangDimens.detailCtaSide)
-                .clip(ScanPangShapes.radius14)
-                .background(ScanPangColors.Background)
-                .clickable(onClick = onPhoneClick),
-            contentAlignment = Alignment.Center,
-        ) {
-            Icon(
-                imageVector = Icons.Rounded.Phone,
-                contentDescription = "전화",
-                modifier = Modifier.size(22.dp),
-                tint = ScanPangColors.OnSurfaceMuted,
-            )
+        if (hasPhone) {
+            Box(
+                modifier = Modifier
+                    .size(ScanPangDimens.detailCtaSide)
+                    .clip(ScanPangShapes.radius14)
+                    .background(ScanPangColors.Background)
+                    .clickable(onClick = onPhoneClick),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    imageVector = Icons.Rounded.Phone,
+                    contentDescription = "전화",
+                    modifier = Modifier.size(22.dp),
+                    tint = ScanPangColors.OnSurfaceMuted,
+                )
+            }
         }
     }
 }
