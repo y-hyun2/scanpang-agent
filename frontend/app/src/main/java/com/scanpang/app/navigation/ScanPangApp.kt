@@ -2,6 +2,7 @@ package com.scanpang.app.navigation
 
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
@@ -32,7 +33,9 @@ fun ScanPangApp(modifier: Modifier = Modifier) {
         )
         if (showTabBar) {
             ScanPangTabBar(
-                modifier = Modifier.align(Alignment.BottomCenter),
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .navigationBarsPadding(),
                 selectedTab = when (currentRoute) {
                     AppRoutes.Home -> ScanPangMainTab.Home
                     AppRoutes.Search -> ScanPangMainTab.Search
