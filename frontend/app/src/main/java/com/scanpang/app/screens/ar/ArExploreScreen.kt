@@ -22,9 +22,7 @@ import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBarsPadding
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
@@ -622,26 +620,16 @@ fun ArExploreScreen(
                     .padding(horizontal = ScanPangDimens.arTopBarHorizontal)
                     .padding(bottom = ScanPangDimens.arTopBarBottomPadding),
             ) {
-                Box(
+                Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .heightIn(min = ScanPangDimens.arStatusPillHeight),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    ArExploreStatusPill(
-                        isFrozen = isFrozen,
-                        selectedFilters = categorySelection,
-                        hasHighAccuracy = hasAchievedHighAccuracy,
-                        onClick = {
-                            if (isFrozen) isFrozen = false
-                            else isFilterOpen = true
-                        },
-                    )
-                }
-                Spacer(modifier = Modifier.height(8.dp))
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
+                        .height(
+                            maxOf(
+                                ScanPangDimens.arSideFab44,
+                                ScanPangDimens.arStatusPillHeight,
+                            ),
+                        ),
+                    verticalAlignment = Alignment.CenterVertically,
                 ) {
                     ArCircleIconButton(
                         icon = Icons.Rounded.CameraAlt,
@@ -650,6 +638,22 @@ fun ArExploreScreen(
                         surfaceColor = if (isFrozen) ScanPangColors.ArPrimaryTranslucent else ScanPangColors.ArOverlayWhite80,
                         iconTint = if (isFrozen) Color.White else ScanPangColors.OnSurfaceStrong,
                     )
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .padding(horizontal = ScanPangSpacing.sm),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        ArExploreStatusPill(
+                            isFrozen = isFrozen,
+                            selectedFilters = categorySelection,
+                            hasHighAccuracy = hasAchievedHighAccuracy,
+                            onClick = {
+                                if (isFrozen) isFrozen = false
+                                else isFilterOpen = true
+                            },
+                        )
+                    }
                     ArCircleIconButton(
                         icon = Icons.Rounded.Search,
                         contentDescription = "검색",
