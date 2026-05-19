@@ -220,6 +220,41 @@ fun SearchDefaultScreen(
         pinned + randomFill
     }
 
+    // 검색 트리거 시점에 매번 lastLocation 받아서 콜백 안에서 검색 호출.
+    // LaunchedEffect 의 비동기 GPS 콜백이 아직 안 도착해서 userLat/Lng 가 null 인 경우 방어.
+    fun searchWithFreshLocation(q: String) {
+        val hasPermission =
+            android.content.pm.PackageManager.PERMISSION_GRANTED ==
+                androidx.core.content.ContextCompat.checkSelfPermission(
+                    context, android.Manifest.permission.ACCESS_FINE_LOCATION
+                ) ||
+            android.content.pm.PackageManager.PERMISSION_GRANTED ==
+                androidx.core.content.ContextCompat.checkSelfPermission(
+                    context, android.Manifest.permission.ACCESS_COARSE_LOCATION
+                )
+        if (!hasPermission) {
+            viewModel.searchPlaces(q, lat = userLat, lng = userLng)
+            return
+        }
+        com.google.android.gms.location.LocationServices
+            .getFusedLocationProviderClient(context)
+            .lastLocation
+            .addOnSuccessListener { loc ->
+                val finalLat = loc?.latitude ?: userLat
+                val finalLng = loc?.longitude ?: userLng
+                if (loc != null) {
+                    userLat = loc.latitude
+                    userLng = loc.longitude
+                    viewModel.setUserLocation(loc.latitude, loc.longitude)
+                }
+                android.util.Log.d("SearchScreen", "search q=$q lat=$finalLat lng=$finalLng (loc=$loc)")
+                viewModel.searchPlaces(q, lat = finalLat, lng = finalLng)
+            }
+            .addOnFailureListener {
+                viewModel.searchPlaces(q, lat = userLat, lng = userLng)
+            }
+    }
+
     fun submitSearch(raw: String) {
         val q = raw.trim()
         if (q.isEmpty()) return
@@ -228,7 +263,7 @@ fun SearchDefaultScreen(
         recent = historyPrefs.getRecent()
         // 별도 navigation 없이 query 상태만 갱신 → 같은 화면에서 결과 모드로 전환.
         query = q
-        viewModel.searchPlaces(q, lat = userLat, lng = userLng)
+        searchWithFreshLocation(q)
     }
 
     val trimmedQuery = query.trim()

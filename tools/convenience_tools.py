@@ -233,7 +233,9 @@ async def public_restroom_search(lat: float, lng: float, radius: int) -> list[di
                 "waste_method":       r.get("WSTE_PRCS_MTH_NM") or "",
             },
         })
-    return results[:5]
+    # find_nearest 가 이미 LIMIT 100 으로 가져오니 여기선 잘라내지 않음.
+    # caller(/convenience/query 마커, /place/search 검색)가 limit 결정.
+    return results
 
 
 async def seoul_locker_search(lat: float, lng: float, radius: int) -> list[dict]:
