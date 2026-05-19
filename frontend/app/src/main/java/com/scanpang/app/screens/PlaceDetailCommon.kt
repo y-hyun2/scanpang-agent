@@ -82,6 +82,7 @@ import com.scanpang.app.ui.theme.ScanPangDimens
 import com.scanpang.app.ui.theme.ScanPangShapes
 import com.scanpang.app.ui.theme.ScanPangSpacing
 import com.scanpang.app.ui.theme.ScanPangType
+import com.scanpang.app.util.OpenHoursUtils
 
 /** Coil용 더미 갤러리 — API 연동 시 동일 시그니처로 교체 */
 fun defaultPlaceDetailGallery(): List<String> = ScanPangFigmaAssets.RestaurantDetailGallery
@@ -843,6 +844,8 @@ fun DetailTodayVisitStatus(
 ) {
     val statusColor = if (isOpen) ScanPangColors.StatusOpen else ScanPangColors.Error
     val cardBg = if (isOpen) ScanPangColors.DetailVisitOpenSurface else ScanPangColors.DetailVisitClosedSurface
+    // 오늘 요일에 해당하는 시간만 추출 ("월-일 11:00-22:00" → "11:00-22:00")
+    val todayHours = remember(openHours) { OpenHoursUtils.todayHoursText(openHours) }
     Column(
         modifier = modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(ScanPangSpacing.md),
@@ -872,16 +875,18 @@ fun DetailTodayVisitStatus(
                         style = ScanPangType.caption12Medium,
                         color = statusColor,
                     )
-                    Text(
-                        text = "·",
-                        style = ScanPangType.caption12Medium,
-                        color = ScanPangColors.OnSurfaceStrong,
-                    )
-                    Text(
-                        text = openHours,
-                        style = ScanPangType.caption12Medium,
-                        color = ScanPangColors.OnSurfaceStrong,
-                    )
+                    if (todayHours.isNotBlank()) {
+                        Text(
+                            text = "·",
+                            style = ScanPangType.caption12Medium,
+                            color = ScanPangColors.OnSurfaceStrong,
+                        )
+                        Text(
+                            text = todayHours,
+                            style = ScanPangType.caption12Medium,
+                            color = ScanPangColors.OnSurfaceStrong,
+                        )
+                    }
                 }
                 if (lastOrder.isNotBlank()) {
                     Row(

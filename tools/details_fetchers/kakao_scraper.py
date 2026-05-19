@@ -243,7 +243,9 @@ async def fetch(
         "category":    local["category"] or data.get("category", "") or category_name,
         "open_hours":  data.get("open_hours", ""),
         "closed_days": data.get("closed_days", ""),
-        "image_urls":  data.get("image_urls", []),
+        # 이미지는 Naver Place '업체 사진' 만 채택 — kakao 사진은 사용하지 않음
+        # (dispatcher merge 가 빈 list 를 미보강 상태로 보고 naver_place 가 보강).
+        "image_urls":  [],
         "floor":       "",  # Kakao 페이지엔 층 정보 없음 (naver base.road 보강 필요)
         "details": {
             "place_id":     place_id,

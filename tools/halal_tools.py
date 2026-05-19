@@ -118,78 +118,79 @@ def _load_restaurants() -> list:
     return _restaurants_cache
 
 
-def halal_restaurant_search(
+async def halal_restaurant_search(
     lat: float, lng: float, radius: int = 0, halal_type: str = ""
 ) -> list:
     """
-    JSON에서 할랄 식당 검색.
+    halal_restaurants 테이블(PostGIS) 거리 검색.
     halal_type: "HALAL_MEAT" / "SEAFOOD" / "VEGGIE" / "" (전체)
-    Returns: 거리순 상위 10개 list[dict]
+    Returns: 거리순 상위 20개 list[dict]
     """
+    from core.db import get_pool
     if radius <= 0:
         radius = DEFAULT_RADIUS["restaurant"]
-
-    restaurants = _load_restaurants()
-    results = []
-
-    # halal_type 필터 매핑: HALAL_MEAT → "HALAL MEAT"
     type_filter = halal_type.replace("_", " ").upper() if halal_type else ""
 
-    for r in restaurants:
-        r_lat = r.get("latitude")
-        r_lng = r.get("longitude")
-        if r_lat is None or r_lng is None:
-            continue
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        rows = await conn.fetch(
+            """
+            SELECT restaurant_id, name_ko, name_en, halal_type,
+                   muslim_cooks_available, no_alcohol_sales,
+                   cuisine_type::text AS cuisine_type,
+                   menu_examples::text AS menu_examples,
+                   short_description_ko, address, phone,
+                   opening_hours::text AS opening_hours,
+                   break_time::text AS break_time,
+                   last_order::text AS last_order,
+                   lat, lng,
+                   ST_Distance(geom, ST_SetSRID(ST_MakePoint($2, $1), 4326)::geography) AS dist
+            FROM halal_restaurants
+            WHERE ST_DWithin(geom, ST_SetSRID(ST_MakePoint($2, $1), 4326)::geography, $3)
+              AND ($4 = '' OR UPPER(halal_type) LIKE '%' || $4 || '%')
+            ORDER BY dist
+            LIMIT 20
+            """,
+            float(lat), float(lng), float(radius), type_filter,
+        )
 
-        dist = haversine_m(lat, lng, r_lat, r_lng)
-        if dist > radius:
-            continue
-
-        # halal_type 필터
-        if type_filter and type_filter not in r.get("halal_type", "").upper():
-            continue
-
-        # menu_examples → 이름 리스트로 변환
-        menu_names = []
-        for m in r.get("menu_examples", []):
-            if isinstance(m, dict):
-                menu_names.append(f"{m.get('name_en', m.get('name_ko', ''))}")
-            else:
-                menu_names.append(str(m))
-
-        # opening_hours: dict → 오늘 요일 기준 문자열
-        oh = r.get("opening_hours", "")
-        if isinstance(oh, dict):
-            days = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"]
-            kst = timezone(timedelta(hours=9))
-            today_idx = datetime.now(kst).weekday()
-            oh_today = oh.get(days[today_idx], "")
-            oh_str = oh_today if oh_today else "정보 없음"
+    results = []
+    kst = timezone(timedelta(hours=9))
+    today_idx = datetime.now(kst).weekday()
+    days = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"]
+    for r in rows:
+        menu = json.loads(r["menu_examples"]) if r["menu_examples"] else []
+        menu_names = [
+            (m.get("name_en") or m.get("name_ko") or "") if isinstance(m, dict) else str(m)
+            for m in menu
+        ]
+        oh_raw = json.loads(r["opening_hours"]) if r["opening_hours"] else {}
+        if isinstance(oh_raw, dict):
+            oh_str = oh_raw.get(days[today_idx], "") or "정보 없음"
         else:
-            oh_str = str(oh) if oh else ""
-
+            oh_str = str(oh_raw) if oh_raw else ""
+        bt = json.loads(r["break_time"]) if r["break_time"] else {}
+        lo = json.loads(r["last_order"]) if r["last_order"] else {}
         results.append({
-            "restaurant_id": r.get("restaurant_id", ""),
-            "name_ko": r.get("name_ko", ""),
-            "name_en": r.get("name_en", ""),
-            "halal_type": r.get("halal_type", ""),
-            "muslim_cooks_available": r.get("muslim_cooks_available"),
-            "no_alcohol_sales": r.get("no_alcohol_sales"),
-            "cuisine_type": r.get("cuisine_type", []),
+            "restaurant_id": r["restaurant_id"],
+            "name_ko":       r["name_ko"],
+            "name_en":       r["name_en"],
+            "halal_type":    r["halal_type"],
+            "muslim_cooks_available": r["muslim_cooks_available"],
+            "no_alcohol_sales":       r["no_alcohol_sales"],
+            "cuisine_type":  json.loads(r["cuisine_type"]) if r["cuisine_type"] else [],
             "menu_examples": menu_names,
-            "short_description_ko": r.get("short_description_ko", ""),
-            "distance_m": round(dist, 1),
-            "lat": r_lat,
-            "lng": r_lng,
-            "address": r.get("address", ""),
-            "phone": r.get("phone", ""),
+            "short_description_ko": r["short_description_ko"] or "",
+            "distance_m":    round(r["dist"], 1),
+            "lat":           float(r["lat"]) if r["lat"] is not None else None,
+            "lng":           float(r["lng"]) if r["lng"] is not None else None,
+            "address":       r["address"] or "",
+            "phone":         r["phone"] or "",
             "opening_hours": oh_str,
-            "break_time": _dict_to_today_str(r.get("break_time")),
-            "last_order": _dict_to_today_str(r.get("last_order")),
+            "break_time":    _dict_to_today_str(bt),
+            "last_order":    _dict_to_today_str(lo),
         })
-
-    results.sort(key=lambda x: x["distance_m"])
-    return results[:20]
+    return results
 
 
 def _dict_to_today_str(val) -> str:

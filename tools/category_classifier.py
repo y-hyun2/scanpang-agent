@@ -203,6 +203,9 @@ _QUERY_KEYWORD_TO_CATEGORY: list[tuple[str, str]] = [
     ("물품보관",     "locker"),
     ("락커",         "locker"),
     ("기도실",       "prayer_room"),
+    ("할랄 식당",    "halal_restaurant"),
+    ("할랄식당",     "halal_restaurant"),
+    ("할랄",         "halal_restaurant"),
     ("지하철역",     "subway"),
     ("지하철",       "subway"),
     # 건물 내 매장
