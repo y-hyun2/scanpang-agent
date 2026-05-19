@@ -16,7 +16,6 @@ Playwright 로 직접 진입해 상세를 긁는다.
 
 import os
 import re
-from typing import Optional
 
 import httpx
 
@@ -24,11 +23,18 @@ import httpx
 _KAKAO_LOCAL_URL = "https://dapi.kakao.com/v2/local/search/keyword.json"
 
 
-async def _find_place_id(store_name: str, lat: float, lng: float) -> Optional[str]:
-    """Kakao Local keyword API → place_url 에서 id 추출."""
+async def _find_place_info(store_name: str, lat: float, lng: float) -> dict:
+    """
+    Kakao Local keyword API → place_id + 매장 메타정보(addr/phone/lat/lng).
+
+    Kakao Local 응답과 place.map.kakao.com 페이지의 정합성을 보장할 수 없음
+    (같은 place_id 인데 응답·페이지 주소가 다른 매장 실제로 존재 — 예: 우체국365코너
+    Local='서울 서대문구', 페이지='부산 사하구'). 따라서 Local API 응답을 신뢰할
+    base 로 두고, 페이지 데이터는 시·도가 일치할 때만 영업시간/홈페이지/이미지만 채택.
+    """
     key = os.getenv("KAKAO_REST_API_KEY", "")
     if not key:
-        return None
+        return {}
     params = {
         "query": store_name,
         "x": str(lng),
@@ -42,10 +48,32 @@ async def _find_place_id(store_name: str, lat: float, lng: float) -> Optional[st
         r.raise_for_status()
         docs = r.json().get("documents", [])
     if not docs:
-        return None
-    url = docs[0].get("place_url", "")
+        return {}
+    d = docs[0]
+    url = d.get("place_url", "")
     m = re.search(r"/(\d+)/?$", url)
-    return m.group(1) if m else None
+    if not m:
+        return {}
+    cat_parts = d.get("category_name", "").split(" > ")
+    short_cat = cat_parts[1] if len(cat_parts) > 1 else (cat_parts[0] if cat_parts else "")
+    return {
+        "place_id":   m.group(1),
+        "place_name": d.get("place_name", ""),
+        "addr":       d.get("road_address_name", ""),
+        "phone":      d.get("phone", ""),
+        "category":   short_cat,
+        "lat":        float(d.get("y", 0)),
+        "lng":        float(d.get("x", 0)),
+    }
+
+
+def _major_region(addr: str) -> str:
+    """주소의 시·도 부분만 추출 — '서울'/'부산'/'경기' 등."""
+    if not addr:
+        return ""
+    first = addr.strip().split()[0]
+    # '서울특별시' → '서울', '경상남도' → '경상남도' 등 — 앞 2글자 비교가 가장 robust.
+    return first[:2]
 
 
 async def fetch(
@@ -63,10 +91,11 @@ async def fetch(
         print("[kakao_scraper] playwright 미설치")
         return {}
 
-    place_id = await _find_place_id(store_name, lat, lng)
-    if not place_id:
-        print(f"[kakao_scraper] place_id 미확보 ({store_name!r})")
+    local = await _find_place_info(store_name, lat, lng)
+    if not local:
+        print(f"[kakao_scraper] Local API 결과 없음 ({store_name!r})")
         return {}
+    place_id = local["place_id"]
 
     url = f"https://place.map.kakao.com/{place_id}"
     try:
@@ -187,21 +216,39 @@ async def fetch(
         print(f"[kakao_scraper] fetch 실패 ({store_name!r}): {e}")
         return {}
 
-    print(f"[kakao_scraper] 성공: place_id={place_id} name={name_el!r}")
+    # ── 시·도 정합성 검증 ─────────────────────────────────────────────────
+    # Kakao Local API 의 응답 좌표·주소는 신뢰할 수 있는 base (호출 시 우리가
+    # 좌표/radius 를 강제). 그러나 같은 place_id 의 페이지 데이터가 전혀 다른
+    # 시·도(예: 우체국365코너 Local='서울 서대문구', 페이지='부산 사하구')일 수
+    # 있음. 이런 경우 페이지에서 가져온 영업시간/홈페이지/이미지 모두 다른 매장
+    # 정보일 가능성이 높으므로 통째로 거절하고 Local API addr/phone 만 채택.
+    page_addr  = data.get("addr", "")
+    local_addr = local["addr"]
+    page_region  = _major_region(page_addr)
+    local_region = _major_region(local_addr)
+    region_match = (not page_region) or (not local_region) or (page_region == local_region)
+    if not region_match:
+        print(f"[kakao_scraper] 시·도 불일치 — Local={local_region!r} vs Page={page_region!r}, "
+              f"페이지 데이터 거절 ({store_name!r})")
+        data = {}
+
+    final_addr = local_addr or data.get("addr", "")
+    final_phone = local["phone"] or data.get("phone", "")
+    print(f"[kakao_scraper] 성공: place_id={place_id} name={name_el!r} addr={final_addr!r}")
 
     return {
-        "phone":       data.get("phone", ""),
-        "addr":        data.get("addr", ""),
+        "phone":       final_phone,
+        "addr":        final_addr,
         "homepage":    data.get("homepage", ""),
-        "category":    data.get("category", "") or category_name,
+        "category":    local["category"] or data.get("category", "") or category_name,
         "open_hours":  data.get("open_hours", ""),
         "closed_days": data.get("closed_days", ""),
         "image_urls":  data.get("image_urls", []),
         "floor":       "",  # Kakao 페이지엔 층 정보 없음 (naver base.road 보강 필요)
         "details": {
             "place_id":     place_id,
-            "matched_name": name_el or store_name,
-            "category":     data.get("category", "") or category_name,
+            "matched_name": name_el or local["place_name"] or store_name,
+            "category":     local["category"] or data.get("category", "") or category_name,
         },
         "source": "kakao_scraper",
     }
