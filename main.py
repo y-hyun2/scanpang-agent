@@ -18,6 +18,7 @@ from schemas.restaurant import RestaurantDetailRequest
 from tools.restaurant_tools import get_restaurant_detail
 from schemas.search import SearchRequest, SearchResponse, SearchResultItem
 from schemas.place_detail import PlaceDetailRequest, PlaceDetailResponse
+from schemas.user import UserPreferencesUpsertRequest, UserPreferencesResponse
 from tools.open_hours_parser import is_open_now_combined as _is_open_now_combined
 import json as _json
 from datetime import datetime, timedelta, timezone
@@ -101,6 +102,68 @@ async def place_store(req: StoreRequest):
             detail.get("open_hours") or "", schedule,
         )
     return detail
+
+
+@app.post("/user/preferences", response_model=UserPreferencesResponse)
+async def user_preferences_upsert(req: UserPreferencesUpsertRequest):
+    """
+    온보딩 완료/프로필 수정 시 frontend 호출.
+    user_id 는 frontend 가 발급한 device UUID (장기적으론 Supabase Auth uid).
+    NULL/빈 필드는 기존 값 유지 — COALESCE 패턴.
+    """
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        row = await conn.fetchrow(
+            """
+            INSERT INTO user_preferences
+                (user_id, display_name, language, value_added, saved_places,
+                 search_history, created_at, updated_at)
+            VALUES ($1, $2, $3, $4, '[]'::jsonb, '[]'::jsonb, NOW(), NOW())
+            ON CONFLICT (user_id) DO UPDATE SET
+                display_name = COALESCE(EXCLUDED.display_name, user_preferences.display_name),
+                language     = COALESCE(EXCLUDED.language,     user_preferences.language),
+                value_added  = COALESCE(EXCLUDED.value_added,  user_preferences.value_added),
+                updated_at   = NOW()
+            RETURNING user_id, display_name, language, value_added,
+                      saved_places::text AS saved_places,
+                      search_history::text AS search_history
+            """,
+            req.user_id, req.display_name, req.language, req.value_added,
+        )
+    return UserPreferencesResponse(
+        user_id=row["user_id"],
+        display_name=row["display_name"],
+        language=row["language"],
+        value_added=row["value_added"],
+        saved_places=_json.loads(row["saved_places"] or "[]"),
+        search_history=_json.loads(row["search_history"] or "[]"),
+    )
+
+
+@app.get("/user/preferences/{user_id}", response_model=UserPreferencesResponse)
+async def user_preferences_get(user_id: str):
+    """user_id 로 user_preferences 조회 — 앱 실행 시 첫 sync 용."""
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        row = await conn.fetchrow(
+            """
+            SELECT user_id, display_name, language, value_added,
+                   saved_places::text AS saved_places,
+                   search_history::text AS search_history
+            FROM user_preferences WHERE user_id = $1
+            """,
+            user_id,
+        )
+    if row is None:
+        raise HTTPException(status_code=404, detail="user_preferences not found")
+    return UserPreferencesResponse(
+        user_id=row["user_id"],
+        display_name=row["display_name"],
+        language=row["language"],
+        value_added=row["value_added"],
+        saved_places=_json.loads(row["saved_places"] or "[]"),
+        search_history=_json.loads(row["search_history"] or "[]"),
+    )
 
 
 @app.post("/convenience/query")

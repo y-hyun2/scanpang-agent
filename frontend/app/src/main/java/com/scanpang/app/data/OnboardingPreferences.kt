@@ -29,12 +29,14 @@ class OnboardingPreferences(context: Context) {
 
     fun setLanguageCode(code: String) {
         prefs.edit().putString(KEY_LANGUAGE, code).apply()
+        syncToBackend()
     }
 
     fun getDisplayName(): String? = prefs.getString(KEY_DISPLAY_NAME, null)?.takeIf { it.isNotBlank() }
 
     fun setDisplayName(name: String) {
         prefs.edit().putString(KEY_DISPLAY_NAME, name.trim()).apply()
+        syncToBackend()
     }
 
     // ── 프로필 사진 (ProfileEditScreen — hufs-cdp `c724b07` 합류) ──
@@ -53,6 +55,7 @@ class OnboardingPreferences(context: Context) {
 
     fun setValueAdded(value: ValueAdded) {
         prefs.edit().putString(KEY_VALUE_ADDED, value.rawValue).apply()
+        syncToBackend()
     }
 
     // ── String 기반 구 API (ProfileScreen 등 기존 호출처 호환용) ──
@@ -68,6 +71,30 @@ class OnboardingPreferences(context: Context) {
      */
     fun clearAll() {
         prefs.edit().clear().apply()
+    }
+
+    /**
+     * 현재 SharedPreferences 값을 backend `user_preferences` 테이블에 upsert.
+     * - Supabase Auth 로그인 안 돼 있으면 skip (FK 위반 방지).
+     * - GlobalScope fire & forget — 호출자는 await 불필요.
+     * - 호출 시점: 온보딩 완료, 프로필 이름/부가가치 변경 직후.
+     */
+    fun syncToBackend() {
+        val userId = com.scanpang.app.data.auth.AuthRepository.currentUserId() ?: return
+        val req = com.scanpang.app.data.remote.UserPreferencesUpsertRequest(
+            user_id = userId,
+            display_name = getDisplayName(),
+            language = getLanguageCode(),
+            value_added = getValueAdded()?.rawValue?.uppercase(),
+        )
+        kotlinx.coroutines.GlobalScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+            try {
+                com.scanpang.app.data.remote.RetrofitClient.api.upsertUserPreferences(req)
+                android.util.Log.d("OnboardingPrefs", "syncToBackend OK: user=$userId display=${req.display_name} value=${req.value_added}")
+            } catch (e: Exception) {
+                android.util.Log.e("OnboardingPrefs", "syncToBackend FAILED", e)
+            }
+        }
     }
 
     companion object {
