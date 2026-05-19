@@ -6,6 +6,7 @@ import android.location.Location
 import android.opengl.Matrix
 import android.speech.SpeechRecognizer
 import android.util.Log
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
@@ -22,16 +23,16 @@ import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBarsPadding
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.CameraAlt
 import androidx.compose.material.icons.rounded.Close
@@ -197,6 +198,13 @@ fun ArExploreScreen(
     var categorySelection by remember { mutableStateOf(setOf<String>()) }
     var isSearchOpen by remember { mutableStateOf(false) }
     var showArSearchResults by remember { mutableStateOf(false) }
+    var arSearchQuery by remember { mutableStateOf("") }
+
+    BackHandler(enabled = isSearchOpen) {
+        arSearchQuery = ""
+        showArSearchResults = false
+        isSearchOpen = false
+    }
 
     var isFrozen by remember { mutableStateOf(false) }
     var isTtsOn by remember { mutableStateOf(true) }
@@ -624,26 +632,16 @@ fun ArExploreScreen(
                     .padding(horizontal = ScanPangDimens.arTopBarHorizontal)
                     .padding(bottom = ScanPangDimens.arTopBarBottomPadding),
             ) {
-                Box(
+                Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .heightIn(min = ScanPangDimens.arStatusPillHeight),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    ArExploreStatusPill(
-                        isFrozen = isFrozen,
-                        selectedFilters = categorySelection,
-                        hasHighAccuracy = hasAchievedHighAccuracy,
-                        onClick = {
-                            if (isFrozen) isFrozen = false
-                            else isFilterOpen = true
-                        },
-                    )
-                }
-                Spacer(modifier = Modifier.height(8.dp))
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
+                        .height(
+                            maxOf(
+                                ScanPangDimens.arSideFab44,
+                                ScanPangDimens.arStatusPillHeight,
+                            ),
+                        ),
+                    verticalAlignment = Alignment.CenterVertically,
                 ) {
                     ArCircleIconButton(
                         icon = Icons.Rounded.CameraAlt,
@@ -652,6 +650,22 @@ fun ArExploreScreen(
                         surfaceColor = if (isFrozen) ScanPangColors.ArPrimaryTranslucent else ScanPangColors.ArOverlayWhite80,
                         iconTint = if (isFrozen) Color.White else ScanPangColors.OnSurfaceStrong,
                     )
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .padding(horizontal = ScanPangSpacing.sm),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        ArExploreStatusPill(
+                            isFrozen = isFrozen,
+                            selectedFilters = categorySelection,
+                            hasHighAccuracy = hasAchievedHighAccuracy,
+                            onClick = {
+                                if (isFrozen) isFrozen = false
+                                else isFilterOpen = true
+                            },
+                        )
+                    }
                     ArCircleIconButton(
                         icon = Icons.Rounded.Search,
                         contentDescription = "검색",
@@ -857,14 +871,28 @@ fun ArExploreScreen(
                                         tint = ScanPangColors.OnSurfaceMuted,
                                         modifier = Modifier.size(ScanPangDimens.icon20),
                                     )
-                                    Text(
-                                        text = "장소·메뉴 검색",
-                                        style = ScanPangType.searchPlaceholderRegular,
-                                        color = ScanPangColors.OnSurfacePlaceholder,
+                                    BasicTextField(
+                                        value = arSearchQuery,
+                                        onValueChange = { arSearchQuery = it; if (it.isNotEmpty()) showArSearchResults = true },
+                                        modifier = Modifier.weight(1f),
+                                        textStyle = ScanPangType.body14Regular.copy(color = ScanPangColors.OnSurfaceStrong),
+                                        cursorBrush = SolidColor(ScanPangColors.Primary),
+                                        singleLine = true,
+                                        decorationBox = { inner ->
+                                            if (arSearchQuery.isEmpty()) {
+                                                Text(
+                                                    text = "장소·메뉴 검색",
+                                                    style = ScanPangType.searchPlaceholderRegular,
+                                                    color = ScanPangColors.OnSurfacePlaceholder,
+                                                )
+                                            }
+                                            inner()
+                                        },
                                     )
                                 }
                                 IconButton(
                                     onClick = {
+                                        arSearchQuery = ""
                                         isSearchOpen = false
                                         showArSearchResults = false
                                     },
