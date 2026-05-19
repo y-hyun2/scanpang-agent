@@ -125,7 +125,7 @@ fun ArTopGradientBar(
                 .fillMaxWidth()
                 .height(
                     maxOf(
-                        ScanPangDimens.arCircleBtn36,
+                        ScanPangDimens.arSideFab44,
                         ScanPangDimens.arStatusPillHeight,
                     ),
                 ),
@@ -158,21 +158,23 @@ fun ArCircleIconButton(
     contentDescription: String,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
+    surfaceColor: Color = ScanPangColors.ArOverlayWhite80,
+    iconTint: Color = ScanPangColors.OnSurfaceStrong,
 ) {
     Surface(
         modifier = modifier
-            .size(ScanPangDimens.arCircleBtn36)
+            .size(ScanPangDimens.arSideFab44)
             .clip(CircleShape)
             .clickable(onClick = onClick),
         shape = CircleShape,
-        color = ScanPangColors.ArOverlayWhite80,
+        color = surfaceColor,
     ) {
         Box(contentAlignment = Alignment.Center) {
             Icon(
                 imageVector = icon,
                 contentDescription = contentDescription,
                 modifier = Modifier.size(ScanPangDimens.icon20),
-                tint = ScanPangColors.OnSurfaceStrong,
+                tint = iconTint,
             )
         }
     }
@@ -311,6 +313,7 @@ private fun ArSideFab(
 fun ArPoiCard(
     title: String,
     subtitle: String,
+    category: String = "",
     modifier: Modifier = Modifier,
     onClick: (() -> Unit)? = null,
 ) {
@@ -333,20 +336,11 @@ fun ArPoiCard(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(ScanPangSpacing.sm),
         ) {
-            Surface(
-                modifier = Modifier.size(ScanPangDimens.arPoiIcon24),
-                shape = CircleShape,
-                color = ScanPangColors.PrimarySoft,
-            ) {
-                Box(contentAlignment = Alignment.Center) {
-                    Icon(
-                        imageVector = Icons.Rounded.Search,
-                        contentDescription = null,
-                        modifier = Modifier.size(ScanPangDimens.icon14),
-                        tint = ScanPangColors.Primary,
-                    )
-                }
-            }
+            ArCategoryIconBadge(
+                category = category,
+                badgeSize = ScanPangDimens.arPoiIcon24.value.toInt(),
+                iconSize = ScanPangDimens.icon14.value.toInt(),
+            )
             Column(verticalArrangement = Arrangement.spacedBy(0.dp)) {
                 Text(
                     text = title,
@@ -359,6 +353,63 @@ fun ArPoiCard(
                     color = ScanPangColors.ArPoiSubtitle,
                 )
             }
+        }
+    }
+}
+
+fun categoryIcon(category: String): ImageVector = when {
+    category.contains("쇼핑") || category.contains("의류") -> Icons.Rounded.LocalMall
+    category.contains("편의점") -> Icons.Rounded.Store
+    category.contains("카페") || category.contains("커피") -> Icons.Rounded.Coffee
+    category.contains("식당") || category.contains("음식") || category.contains("한식") ||
+        category.contains("패스트") -> Icons.Rounded.Restaurant
+    category.contains("환전") -> Icons.Rounded.CurrencyExchange
+    category.contains("은행") -> Icons.Rounded.AccountBalance
+    category.contains("ATM") || category.contains("atm") -> Icons.Rounded.LocalAtm
+    category.contains("병원") -> Icons.Rounded.LocalHospital
+    category.contains("약국") -> Icons.Rounded.Medication
+    category.contains("지하철") -> Icons.Rounded.DirectionsTransit
+    category.contains("화장실") -> Icons.Rounded.Wc
+    category.contains("물품") || category.contains("보관") -> Icons.Rounded.Luggage
+    else -> Icons.Rounded.Place
+}
+
+fun categoryIconTint(category: String): Color = when {
+    category.contains("쇼핑") || category.contains("의류") -> ScanPangColors.CategoryMall
+    category.contains("편의점") -> ScanPangColors.CategoryMall
+    category.contains("카페") || category.contains("커피") -> ScanPangColors.CategoryCafe
+    category.contains("식당") || category.contains("음식") || category.contains("한식") ||
+        category.contains("패스트") -> ScanPangColors.CategoryRestaurant
+    category.contains("환전") -> ScanPangColors.CategoryExchange
+    category.contains("은행") -> ScanPangColors.CategoryExchange
+    category.contains("ATM") || category.contains("atm") -> ScanPangColors.CategoryExchange
+    category.contains("병원") -> ScanPangColors.CategoryMedical
+    category.contains("약국") -> ScanPangColors.CategoryMedical
+    category.contains("지하철") -> ScanPangColors.Success
+    category.contains("화장실") || category.contains("물품") || category.contains("보관") -> Color(0xFF0D9488)
+    else -> ScanPangColors.Primary
+}
+
+@Composable
+fun ArCategoryIconBadge(
+    category: String,
+    modifier: Modifier = Modifier,
+    badgeSize: Int = 24,
+    iconSize: Int = 14,
+    tint: Color = categoryIconTint(category),
+) {
+    Surface(
+        modifier = modifier.size(badgeSize.dp),
+        shape = CircleShape,
+        color = tint.copy(alpha = 0.12f),
+    ) {
+        Box(contentAlignment = Alignment.Center) {
+            Icon(
+                imageVector = categoryIcon(category),
+                contentDescription = null,
+                modifier = Modifier.size(iconSize.dp),
+                tint = tint,
+            )
         }
     }
 }

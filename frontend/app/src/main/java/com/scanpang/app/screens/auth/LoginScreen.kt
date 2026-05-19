@@ -34,7 +34,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.scanpang.app.components.auth.GoogleLoginButton
 import com.scanpang.app.components.auth.KakaoLoginButton
-import com.scanpang.app.components.auth.LogoMark
+import com.scanpang.app.screens.auth.YouScanLogo
 import com.scanpang.app.data.AuthProvider
 import com.scanpang.app.ui.theme.ScanPangColors
 import com.scanpang.app.ui.theme.ScanPangSpacing
@@ -81,16 +81,9 @@ fun LoginScreen(
         ) {
             Spacer(modifier = Modifier.weight(1f))
 
-            LogoMark(size = 120.dp)
+            YouScanLogo(size = 120.dp)
             Spacer(modifier = Modifier.height(24.dp))
-            ScanPangWordmark()
-            Spacer(modifier = Modifier.height(16.dp))
-            Text(
-                text = "AR로 여는 무슬림 여행자의 한국 탐험",
-                style = ScanPangType.meta13,
-                color = ScanPangColors.OnSurfaceMuted,
-                textAlign = TextAlign.Center,
-            )
+            YouScanWordmark()
 
             Spacer(modifier = Modifier.weight(1f))
 
@@ -114,18 +107,18 @@ fun LoginScreen(
 }
 
 @Composable
-private fun ScanPangWordmark() {
+private fun YouScanWordmark() {
     Row(
         verticalAlignment = Alignment.Bottom,
         horizontalArrangement = Arrangement.spacedBy(2.dp),
     ) {
         Text(
-            text = "Scan",
+            text = "You",
             style = WordmarkBaseStyle.copy(fontWeight = FontWeight.Light),
             color = ScanPangColors.OnSurfaceStrong,
         )
         Text(
-            text = "Pang",
+            text = "Scan",
             style = WordmarkBaseStyle.copy(fontWeight = FontWeight.Bold),
             color = ScanPangColors.Primary,
         )
