@@ -170,3 +170,56 @@ CATEGORY_SOURCES: dict[str, list[str]] = {
     "prayer_room":       ["static_json"],   # prayer_rooms.json
     "other":             ["kakao"],
 }
+
+
+# 검색바 쿼리 → category_key. 한국어 카테고리명("카페"/"화장실")을 직접 분류한다.
+# classify_category 는 매장명+Kakao category_name 기반이라 단순 "카페" 같은
+# 일반어를 'other' 로 떨어뜨리는 한계가 있어서 검색 진입점에 별도 매핑.
+_QUERY_KEYWORD_TO_CATEGORY: list[tuple[str, str]] = [
+    # outdoor 카테고리(별도 출처)
+    ("공중화장실",   "restroom"),
+    ("화장실",       "restroom"),
+    ("물품보관함",   "locker"),
+    ("물품보관",     "locker"),
+    ("락커",         "locker"),
+    ("기도실",       "prayer_room"),
+    ("지하철역",     "subway"),
+    ("지하철",       "subway"),
+    # 건물 내 매장
+    ("관광지",       "tourist"),
+    ("관광",         "tourist"),
+    ("명소",         "tourist"),
+    ("문화시설",     "cultural"),
+    ("영화관",       "cultural"),
+    ("박물관",       "cultural"),
+    ("미술관",       "cultural"),
+    ("환전소",       "exchange"),
+    ("환전",         "exchange"),
+    ("ATM",          "atm"),
+    ("은행",         "bank"),
+    ("병원",         "hospital"),
+    ("의원",         "hospital"),
+    ("약국",         "pharmacy"),
+    ("편의점",       "convenience_store"),
+    ("호텔",         "accommodation"),
+    ("숙박",         "accommodation"),
+    ("백화점",       "shopping"),
+    ("쇼핑몰",       "shopping"),
+    ("쇼핑",         "shopping"),
+    ("식당",         "restaurant"),
+    ("음식점",       "restaurant"),
+    ("카페",         "cafe"),
+    ("커피",         "cafe"),
+    ("디저트",       "cafe"),
+    ("베이커리",     "cafe"),
+]
+
+
+def classify_query(query: str) -> str:
+    """검색바 입력 → category_key. 매칭 X면 classify_category 매장명 fallback,
+    그것도 매칭 X면 'other'."""
+    q = (query or "").strip()
+    for kw, key in _QUERY_KEYWORD_TO_CATEGORY:
+        if kw in q:
+            return key
+    return classify_category(category_name="", store_name=q)
