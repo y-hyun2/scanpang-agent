@@ -158,10 +158,18 @@ fun ArNavigationMapScreen(
             },
             voiceOn = isTtsOn,
             buildingsCache = buildingsCache,
-            onBuildingPinClick = { name ->
+            onBuildingPinClick = { name, bdMgtSn ->
                 selectedBuildingPoi = name
                 activeDetailTab = ArPoiTabBuilding
                 selectedStore = null
+                if (bdMgtSn != null) {
+                    viewModel.queryPlace(
+                        heading = userHeading,
+                        lat = userLat,
+                        lng = userLng,
+                        bdMgtSn = bdMgtSn,
+                    )
+                }
             },
         )
 
