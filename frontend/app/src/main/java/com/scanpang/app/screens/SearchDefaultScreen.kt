@@ -206,7 +206,11 @@ fun SearchDefaultScreen(
                     query = pending
                     historyPrefs.add(pending)
                     recent = historyPrefs.getRecent()
-                    viewModel.searchPlaces(pending, lat = userLat, lng = userLng)
+                    // GPS 비동기 콜백이 아직 안 도착해 userLat/Lng 가 null 일 수 있음.
+                    // 그대로 보내면 백엔드가 명동 fallback 좌표로 거리 정렬 → 용인
+                    // 사용자한테 명동 매장이 위에 올라옴. searchWithFreshLocation 으로
+                    // 위치 받은 직후 검색해 거리 정렬 정확도 보장.
+                    searchWithFreshLocation(pending)
                     entry.savedStateHandle[AppRoutes.SearchSavedStatePendingQueryKey] = null
                 }
             }
