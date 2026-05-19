@@ -120,9 +120,12 @@ fun PlaceDetailScreen(
     val context = LocalContext.current
 
     val restaurantExtra = remember(categoryKey, placeId) {
+        // dummy id 가 정확히 일치할 때만 매칭. 매칭 실패 시 null 로 두어 backend
+        // 데이터가 그대로 표시되도록 함 (이전엔 firstOrNull() fallback 때문에
+        // halal__00006 같은 backend id 가 들어오면 무조건 첫 dummy='봉추찜닭'이
+        // 표시돼 메뉴/소개가 다른 매장 정보로 덮어쓰여 보였음).
         if (categoryKey in setOf("restaurant", "halal_restaurant"))
             DummyData.halalRestaurants.firstOrNull { it.place.id == placeId }
-                ?: DummyData.halalRestaurants.firstOrNull()
         else null
     }
     val menuItems = remember(backend, categoryKey, placeId) {
@@ -585,6 +588,10 @@ private fun PlaceDetailResponse.mergeOnto(fallback: Place?, categoryKey: String)
         if (details["has_emergency_bell"] as? Boolean == true) add("비상벨")
     }
 
+    // 소개 — 할랄 식당은 details.short_description_ko, 그 외는 details.intro (naver scraper) 사용.
+    val backendDesc = (details["short_description_ko"] as? String)?.trim().orEmpty()
+        .ifBlank { (details["intro"] as? String)?.trim().orEmpty() }
+
     return base.copy(
         id = id.ifBlank { base.id },
         name = store_name.ifBlank { base.name },
@@ -599,6 +606,7 @@ private fun PlaceDetailResponse.mergeOnto(fallback: Place?, categoryKey: String)
         categoryKey = categoryKey,
         latitude = lat ?: base.latitude,
         longitude = lng ?: base.longitude,
+        description = backendDesc.ifBlank { base.description },
         toiletMale   = toiletMale.ifBlank   { base.toiletMale },
         toiletFemale = toiletFemale.ifBlank { base.toiletFemale },
         facilityTags = if (facilityList.isNotEmpty()) facilityList.joinToString(", ") else base.facilityTags,
@@ -612,13 +620,31 @@ private fun PlaceDetailResponse.mergeOnto(fallback: Place?, categoryKey: String)
  * Gson 디폴트로 LinkedTreeMap 이라 Map 캐스팅으로 안전 추출.
  */
 private fun PlaceDetailResponse.extractMenuItems(): List<MenuItem> {
-    val raw = details["menu"] as? List<*> ?: return emptyList()
-    return raw.mapNotNull { entry ->
-        val m = entry as? Map<*, *> ?: return@mapNotNull null
-        val name = (m["name"] as? String)?.trim().orEmpty()
-        val price = (m["price"] as? String)?.trim().orEmpty()
-        if (name.isBlank()) null else MenuItem(name = name, price = price)
+    // 1) Naver 크롤링 결과 — details.menu = [{name, price}, ...] (cafe/restaurant 등)
+    (details["menu"] as? List<*>)?.let { raw ->
+        val items = raw.mapNotNull { entry ->
+            val m = entry as? Map<*, *> ?: return@mapNotNull null
+            val name = (m["name"] as? String)?.trim().orEmpty()
+            val price = (m["price"] as? String)?.trim().orEmpty()
+            if (name.isBlank()) null else MenuItem(name = name, price = price)
+        }
+        if (items.isNotEmpty()) return items
     }
+    // 2) 할랄 식당 — details.menu_examples = [{name_ko, name_en, price_krw}, ...]
+    (details["menu_examples"] as? List<*>)?.let { raw ->
+        return raw.mapNotNull { entry ->
+            val m = entry as? Map<*, *> ?: return@mapNotNull null
+            val name = ((m["name_ko"] as? String) ?: (m["name_en"] as? String))?.trim().orEmpty()
+            val priceRaw = m["price_krw"]
+            val price = when (priceRaw) {
+                is Number -> "%,d원".format(priceRaw.toInt())
+                is String -> priceRaw.trim()
+                else -> ""
+            }
+            if (name.isBlank()) null else MenuItem(name = name, price = price)
+        }
+    }
+    return emptyList()
 }
 
 
