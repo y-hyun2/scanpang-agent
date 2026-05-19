@@ -166,6 +166,9 @@ fun SearchDefaultScreen(
     var query by rememberSaveable { mutableStateOf("") }
     var recent by remember { mutableStateOf(historyPrefs.getRecent()) }
     val backendResults by viewModel.searchResults.collectAsState()
+    // HomeScreen 이 GPS 받아서 ViewModel 에 저장한 위치. outdoor 카테고리 검색 시 거리 정렬용.
+    val userLat by viewModel.userLat.collectAsState()
+    val userLng by viewModel.userLng.collectAsState()
 
     // Home quick action 등 외부에서 사전입력 query 를 흘려보내면 진입 시 한 번 반영.
     LaunchedEffect(Unit) {
@@ -178,7 +181,7 @@ fun SearchDefaultScreen(
                     query = pending
                     historyPrefs.add(pending)
                     recent = historyPrefs.getRecent()
-                    viewModel.searchPlaces(pending)
+                    viewModel.searchPlaces(pending, lat = userLat, lng = userLng)
                     entry.savedStateHandle[AppRoutes.SearchSavedStatePendingQueryKey] = null
                 }
             }
@@ -200,7 +203,7 @@ fun SearchDefaultScreen(
         recent = historyPrefs.getRecent()
         // 별도 navigation 없이 query 상태만 갱신 → 같은 화면에서 결과 모드로 전환.
         query = q
-        viewModel.searchPlaces(q)
+        viewModel.searchPlaces(q, lat = userLat, lng = userLng)
     }
 
     val trimmedQuery = query.trim()

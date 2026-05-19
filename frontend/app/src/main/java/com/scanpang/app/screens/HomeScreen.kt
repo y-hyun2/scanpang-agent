@@ -135,6 +135,8 @@ fun HomeScreen(
         val fusedClient = LocationServices.getFusedLocationProviderClient(context)
         fusedClient.lastLocation.addOnSuccessListener { loc ->
             if (loc != null) {
+                // SearchDefaultScreen 등 다른 화면이 outdoor 카테고리 거리 검색에 사용.
+                viewModel.setUserLocation(loc.latitude, loc.longitude)
                 try {
                     @Suppress("DEPRECATION")
                     val geocoder = Geocoder(context, Locale.KOREAN)
