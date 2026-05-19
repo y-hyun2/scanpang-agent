@@ -90,6 +90,35 @@ object OpenHoursUtils {
         return sb.toString()
     }
 
+    /**
+     * 현재 시각 기준 영업 중이면 true, 영업 종료면 false, 판정 불가면 null.
+     * 판정 불가 시 서버에서 받은 isOpen 값을 fallback으로 사용.
+     */
+    fun isOpenNow(openHours: String): Boolean? {
+        if (openHours.isBlank()) return null
+        val text = openHours.trim()
+        if (ALWAYS_OPEN.any { text.contains(it) }) return true
+        val schedule = parseSchedule(text)
+        if (schedule.isEmpty()) return null
+        val hoursStr = schedule[todayIndex()] ?: return false
+        if (CLOSED_KEYWORDS.any { hoursStr.contains(it, ignoreCase = true) }) return false
+        val m = TIME_RANGE.find(hoursStr) ?: return null
+        val startMins = timeToMinutes(m.groupValues[1]) ?: return null
+        val endMins   = timeToMinutes(m.groupValues[2]) ?: return null
+        val cal = Calendar.getInstance()
+        val nowMins = cal.get(Calendar.HOUR_OF_DAY) * 60 + cal.get(Calendar.MINUTE)
+        return if (startMins <= endMins) nowMins in startMins until endMins
+               else nowMins >= startMins || nowMins < endMins
+    }
+
+    private fun timeToMinutes(timeStr: String): Int? {
+        val parts = timeStr.split(":")
+        if (parts.size != 2) return null
+        val h = parts[0].toIntOrNull() ?: return null
+        val m = parts[1].toIntOrNull() ?: return null
+        return h * 60 + m
+    }
+
     // ── 내부 파싱 ──────────────────────────────────────────────────────────────
 
     /** 원문 → 요일 인덱스(0=월…6=일) → 시간 문자열 맵 */
