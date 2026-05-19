@@ -246,7 +246,11 @@ fun ArNavigationMapScreen(
                 onProfileClick = {
                     navController.navigate(AppRoutes.Profile) { launchSingleTop = true }
                 },
-                onExploreClick = { /* 이미 AR 길안내 중 */ },
+                onExploreClick = {
+                    navController.navigate(AppRoutes.ArExplore) {
+                        launchSingleTop = true
+                    }
+                },
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
                     .fillMaxWidth(),
