@@ -252,7 +252,7 @@ fun PlaceDetailScreen(
             DetailScreenDivider()
 
             DetailCtaRow(
-                onNavigate = { navController.navigate(AppRoutes.ArNavMap) { launchSingleTop = true } },
+                onNavigate = { navController.navigate(AppRoutes.arNavMapRoute(place.name)) { launchSingleTop = true } },
                 onPhoneClick = { if (place.phone.isNotBlank()) context.openPhoneDialer(place.phone) },
             )
 

@@ -949,7 +949,7 @@ fun ArExploreScreen(
                                             }
                                             TextButton(
                                                 onClick = {
-                                                    navController.navigate(AppRoutes.ArNavMap) {
+                                                    navController.navigate(AppRoutes.arNavMapRoute(hit.title)) {
                                                         launchSingleTop = true
                                                     }
                                                     isSearchOpen = false
@@ -1004,7 +1004,7 @@ fun ArExploreScreen(
                     storeName = store,
                     onDismiss = { selectedStore = null },
                     onStartNavigation = {
-                        navController.navigate(AppRoutes.ArNavMap) { launchSingleTop = true }
+                        navController.navigate(AppRoutes.arNavMapRoute(store)) { launchSingleTop = true }
                         selectedStore = null
                     },
                     modifier = Modifier.fillMaxSize(),
