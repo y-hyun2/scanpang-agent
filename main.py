@@ -251,6 +251,9 @@ async def place_search(req: SearchRequest):
     # 사용자 위치 — 없으면 명동 fallback. 거리 정렬 위해 필수.
     user_lat = req.lat if req.lat is not None else 37.5636
     user_lng = req.lng if req.lng is not None else 126.9822
+    used_fallback = req.lat is None or req.lng is None
+    print(f"[place_search] q={q!r} category_key={category_key!r} "
+          f"user=({user_lat:.4f},{user_lng:.4f}){' [FALLBACK 명동]' if used_fallback else ''}")
     async with pool.acquire() as conn:
         # store_details: 매장명 ILIKE OR 분류된 category_key 매칭.
         # ORDER BY 거리(사용자 좌표 기준) — '식당' 칩이 용인 위치에서 외대 까르보네를
