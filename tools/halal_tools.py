@@ -19,9 +19,13 @@ PRAYER_ROOMS_PATH = os.path.join(_DATA_DIR, "prayer_rooms.json")
 
 # ── 기본 반경 ────────────────────────────────────────────────────────────────
 
+# 할랄 매장은 전국적으로 명동 등 일부 지역에만 19건 등록돼 있어, radius 1km 면
+# 외대 같은 명동 밖 사용자에겐 무조건 0건 — '조건에 맞는 장소 없음' 이 떠버림.
+# 거리 정렬은 ST_Distance 로 정확히 되므로 radius 를 크게 두고 사용자가 거리
+# 보고 판단하게 한다. 50km 면 서울+경기 전역 커버.
 DEFAULT_RADIUS = {
-    "restaurant": 1000,
-    "prayer_room": 2000,
+    "restaurant": 50_000,
+    "prayer_room": 50_000,
 }
 
 # ── 기도 시간 캐시 (같은 날짜+위치면 변하지 않음) ─────────────────────────────
@@ -120,13 +124,12 @@ async def halal_restaurant_search(
     lat: float, lng: float, radius: int = 0, halal_type: str = ""
 ) -> list:
     """
-    halal_restaurants 테이블(PostGIS) 거리 검색.
+    halal_restaurants 테이블(PostGIS) 거리 정렬 검색.
     halal_type: "HALAL_MEAT" / "SEAFOOD" / "VEGGIE" / "" (전체)
-    Returns: 거리순 상위 20개 list[dict]
+    radius 인자는 호환성 위해 받지만 사용하지 않음 — 다른 카테고리와 일관되게
+    거리 정렬 + LIMIT 만 적용. 사용자가 카드에 표시된 거리 보고 판단.
     """
     from core.db import get_pool
-    if radius <= 0:
-        radius = DEFAULT_RADIUS["restaurant"]
     type_filter = halal_type.replace("_", " ").upper() if halal_type else ""
 
     pool = await get_pool()
@@ -144,12 +147,11 @@ async def halal_restaurant_search(
                    lat, lng,
                    ST_Distance(geom, ST_SetSRID(ST_MakePoint($2, $1), 4326)::geography) AS dist
             FROM halal_restaurants
-            WHERE ST_DWithin(geom, ST_SetSRID(ST_MakePoint($2, $1), 4326)::geography, $3)
-              AND ($4 = '' OR UPPER(halal_type) LIKE '%' || $4 || '%')
+            WHERE ($3 = '' OR UPPER(halal_type) LIKE '%' || $3 || '%')
             ORDER BY dist
-            LIMIT 20
+            LIMIT 50
             """,
-            float(lat), float(lng), float(radius), type_filter,
+            float(lat), float(lng), type_filter,
         )
 
     results = []
