@@ -39,6 +39,7 @@ import androidx.core.content.ContextCompat
 import androidx.navigation.NavController
 import com.google.android.gms.location.LocationServices
 import com.scanpang.app.components.PrayerTimeCard
+import com.scanpang.app.components.PrayerTimeListCard
 import com.scanpang.app.components.QiblaCompass
 import com.scanpang.app.components.ScanPangHeaderWithBack
 import com.scanpang.app.qibla.getMeccaDistanceKm
@@ -211,11 +212,16 @@ fun QiblaDirectionScreen(
                     remainingLabel = prayerTimes.remainingLabel,
                 )
                 apiPrayerTimes?.let { pt ->
-                    PrayerTimeCard(subtitle = "Fajr", prayerNameTime = pt.fajr, remainingLabel = "")
-                    PrayerTimeCard(subtitle = "Dhuhr", prayerNameTime = pt.dhuhr, remainingLabel = "")
-                    PrayerTimeCard(subtitle = "Asr", prayerNameTime = pt.asr, remainingLabel = "")
-                    PrayerTimeCard(subtitle = "Maghrib", prayerNameTime = pt.maghrib, remainingLabel = "")
-                    PrayerTimeCard(subtitle = "Isha", prayerNameTime = pt.isha, remainingLabel = "")
+                    PrayerTimeListCard(
+                        times = listOf(
+                            "Fajr" to pt.fajr,
+                            "Dhuhr" to pt.dhuhr,
+                            "Asr" to pt.asr,
+                            "Maghrib" to pt.maghrib,
+                            "Isha" to pt.isha,
+                        ),
+                        nextPrayer = pt.next_prayer,
+                    )
                 }
             }
         }
