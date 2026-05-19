@@ -43,7 +43,7 @@ CATEGORY_CONFIG = {
 
 DEFAULT_RADIUS = {
     "exchange":    500,
-    "restroom":    300,
+    "restroom":    1500,   # 300→1500: 외대·시골 지역 화장실 데이터 밀도 낮아 1.5km 까지 확장
     "locker":      1000,
     "prayer_room": 1000,
 }
