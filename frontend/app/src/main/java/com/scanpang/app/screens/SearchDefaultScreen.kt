@@ -443,16 +443,48 @@ private data class ResultRow(
     val detailRoute: String,
 )
 
+// category_key (영어) → 화면 표시용 한국어 라벨. 백엔드가 한국어 category 를 같이 보내주면
+// 그걸 우선 쓰고, 비었을 때 이 맵으로 fallback.
+private val CATEGORY_KO = mapOf(
+    "cafe" to "카페",
+    "restaurant" to "식당",
+    "shopping" to "쇼핑",
+    "convenience_store" to "편의점",
+    "pharmacy" to "약국",
+    "hospital" to "병원",
+    "bank" to "은행",
+    "atm" to "ATM",
+    "exchange" to "환전소",
+    "subway" to "지하철역",
+    "subway_station" to "지하철역",
+    "restroom" to "화장실",
+    "public_restroom" to "화장실",
+    "locker" to "물품보관함",
+    "lockers" to "물품보관함",
+    "prayer_room" to "기도실",
+    "accommodation" to "호텔",
+    "cultural" to "문화시설",
+    "tourist" to "관광지",
+    "tourist_spot" to "관광지",
+    "halal_restaurant" to "할랄 식당",
+)
+
+private fun formatDistance(m: Double?): String = when {
+    m == null            -> ""
+    m < 1000             -> "${m.toInt()}m"
+    else                 -> "%.1fkm".format(m / 1000.0)
+}
+
 /**
- * 백엔드 store_details 검색 결과 → 화면 표시용 [ResultRow] 로 변환.
- * - category 우선순위: category(Kakao 원문) → category_key(분류기 키) → "—"
- * - 거리: 백엔드 응답에 없으니 placeholder. 추후 클라이언트에서 lat/lng 로 계산.
- * - isOpen: 백엔드에 open_hours 만 있고 즉시 판정 비용이 커서 false 기본.
+ * 백엔드 검색 결과 → 화면 표시용 [ResultRow] 로 변환.
+ * - category 우선순위: category(백엔드 한국어/Kakao 원문) → category_key 한국어 매핑 → "—"
+ * - distance: 백엔드 distance_m (outdoor 카테고리에만 채워짐) 을 km/m 라벨로.
+ * - isOpen: 백엔드 is_open_now=true 일 때만 영업중. null/false 는 false.
  */
 private fun SearchResultItem.toResultRow(): ResultRow {
     val secondary = when {
         !category.isNullOrBlank() -> category
-        !category_key.isNullOrBlank() -> category_key
+        !category_key.isNullOrBlank() -> CATEGORY_KO[category_key] ?: category_key
         else -> "—"
     }
     return ResultRow(
@@ -461,8 +493,7 @@ private fun SearchResultItem.toResultRow(): ResultRow {
             id = id,
             title = store_name,
             category = secondary,
-            distance = "",
-            // backend 의 is_open_now 가 null 이면 "정보 없음" 의미 — 화면에서 영업중 표시 자체를 안 그림.
+            distance = formatDistance(distance_m),
             isOpen = is_open_now == true,
         ),
         detailRoute = AppRoutes.placeDetailRoute(category_key ?: "", id),
