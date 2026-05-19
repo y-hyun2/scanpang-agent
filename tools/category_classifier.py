@@ -114,6 +114,7 @@ _STRONG_NAME_RULES: list[tuple[str, str]] = [
     ("메가박스",      "cultural"),
     # 편의점 체인 — Kakao 매칭 실패 시 다른 분류로 빠지면 곤란
     ("CU ",           "convenience_store"),
+    ("씨유",          "convenience_store"),  # 한글 — '씨유용인외대' 케이스
     ("GS25",          "convenience_store"),
     ("세븐일레븐",    "convenience_store"),
     ("이마트24",      "convenience_store"),
@@ -155,6 +156,14 @@ def classify_category(category_name: str, store_name: str = "") -> str:
     if category_name:
         for keyword, key in _CATEGORY_RULES:
             if keyword in category_name:
+                return key
+
+    # 4차: 매장명에 _CATEGORY_RULES 키워드 — 정부 LocalData 업태 분류('기타 간이/
+    # 비알코올/종합 소매') 처럼 룰에 없는 category_name 이 들어왔을 때 매장명에서
+    # 신호 찾는다. 예: '비에치씨치킨' 매장명 → '치킨' → restaurant.
+    if store_name:
+        for keyword, key in _CATEGORY_RULES:
+            if keyword in store_name:
                 return key
 
     return "other"
