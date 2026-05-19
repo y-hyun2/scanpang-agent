@@ -248,22 +248,35 @@ async def place_search(req: SearchRequest):
         return await _outdoor_search(category_key, req)
 
     pool = await get_pool()
+    # 사용자 위치 — 없으면 명동 fallback. 거리 정렬 위해 필수.
+    user_lat = req.lat if req.lat is not None else 37.5636
+    user_lng = req.lng if req.lng is not None else 126.9822
     async with pool.acquire() as conn:
         # store_details: 매장명 ILIKE OR 분류된 category_key 매칭.
-        # 예) "카페" 검색 → ILIKE %카페% 는 거의 0건이지만 category_key='cafe' row 가 다 잡힘.
+        # ORDER BY 거리(사용자 좌표 기준) — '식당' 칩이 용인 위치에서 외대 까르보네를
+        # 명동 멜팅소울보다 먼저 보여주는 게 자연스러움. 좌표 없는 row 는 last_updated fallback.
         rows = await conn.fetch(
             """
             SELECT id, store_name, category, category_key, addr, phone,
-                   place_id, lat, lng, floor, image_urls, open_hours, details
+                   place_id, lat, lng, floor, image_urls, open_hours, details,
+                   CASE
+                     WHEN lat IS NOT NULL AND lng IS NOT NULL THEN
+                       ST_Distance(
+                         ST_SetSRID(ST_MakePoint(lng, lat), 4326)::geography,
+                         ST_SetSRID(ST_MakePoint($4::float, $5::float), 4326)::geography
+                       )
+                     ELSE NULL
+                   END AS dist_m
             FROM store_details
             WHERE store_name ILIKE $1
                OR ($3 != 'other' AND category_key = $3)
-            ORDER BY last_updated DESC NULLS LAST
+            ORDER BY dist_m NULLS LAST, last_updated DESC NULLS LAST
             LIMIT $2
             """,
             f"%{q}%",
             req.limit,
             category_key,
+            user_lng, user_lat,
         )
 
     results: list[SearchResultItem] = []
@@ -302,6 +315,7 @@ async def place_search(req: SearchRequest):
                 lng=r["lng"],
                 floor=r["floor"],
                 image_url=first_img,
+                distance_m=round(r["dist_m"], 1) if r["dist_m"] is not None else None,
                 is_open_now=_is_open_now_combined(r["open_hours"], schedule),
             )
         )
