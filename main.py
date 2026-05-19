@@ -173,10 +173,21 @@ async def _outdoor_search(category_key: str, req: SearchRequest) -> SearchRespon
         rows = []
 
     rows_sorted = sorted(rows, key=lambda r: r.get("distance_m", 0))[:req.limit]
+    # id 패턴: {category_key}__{원천 PK}
+    # restroom = mng_no, 그 외는 이름 fallback (detail 조회 시 분기 처리)
+    def _outdoor_id(category: str, r: dict) -> str:
+        if category == "restroom" and r.get("mng_no"):
+            return f"restroom__{r['mng_no']}"
+        return f"__outdoor__{category}__{r.get('name','')}"
+
+    # 화면 표시용 한국어 카테고리 라벨
+    LABEL = {"restroom": "화장실", "subway": "지하철역", "locker": "물품보관함", "prayer_room": "기도실"}
+
     results = [
         SearchResultItem(
-            id=f"__outdoor__{category_key}__{r.get('name','')}",
+            id=_outdoor_id(category_key, r),
             store_name=r.get("name", ""),
+            category=LABEL.get(category_key, category_key),
             category_key=category_key,
             addr=r.get("address", ""),
             phone=r.get("phone", ""),
@@ -271,12 +282,78 @@ async def place_search(req: SearchRequest):
     return SearchResponse(query=req.query, count=len(results), results=results)
 
 
+async def _restroom_detail(mng_no: str) -> PlaceDetailResponse:
+    """public_restrooms 테이블 1건 → PlaceDetailResponse.
+    details 키는 store_details schema 와 동일 — male_toilt_cnt, has_disabled 등."""
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        row = await conn.fetchrow(
+            "SELECT mng_no, name, type, addr_road, addr_lot, phone, open_hours, "
+            "       lat, lng, raw "
+            "FROM public_restrooms WHERE mng_no = $1",
+            mng_no,
+        )
+    if row is None:
+        raise HTTPException(status_code=404, detail=f"화장실 '{mng_no}' 없음")
+    raw = row["raw"]
+    if isinstance(raw, str):
+        try: raw = _json.loads(raw)
+        except Exception: raw = {}
+    if not isinstance(raw, dict):
+        raw = {}
+
+    def yn(v): return (str(v) or "").upper() == "Y"
+    def pos_int(v):
+        try: return int(v or 0) > 0
+        except (ValueError, TypeError): return False
+
+    details = {
+        "name":              raw.get("RSTRM_NM") or row["name"] or "",
+        "type":              raw.get("SE_NM") or row["type"] or "",
+        "mng_inst":          raw.get("MNG_INST_NM") or "",
+        "male_toilt_cnt":    raw.get("MALE_TOILT_CNT") or "",
+        "female_toilt_cnt":  raw.get("FEMALE_TOILT_CNT") or "",
+        "has_disabled":      pos_int(raw.get("MALE_FRDBL_TOILT_CNT")) or pos_int(raw.get("FEMALE_FRDBL_TOILT_CNT")),
+        "has_child":         pos_int(raw.get("MALE_CHLD_TOILT_CNT")) or pos_int(raw.get("FEMALE_CHLD_TOILT_CNT")),
+        "has_diaper_table":  yn(raw.get("DIAP_EXCHCON_EN")),
+        "has_emergency_bell":yn(raw.get("EMRGNCBLL_INSTL_YN")),
+        "has_cctv":          yn(raw.get("RSTRM_ENTRAN_CCTV_INSTL_EN")),
+        "waste_method":      raw.get("WSTE_PRCS_MTH_NM") or "",
+    }
+    open_hours = row["open_hours"] or ""
+    return PlaceDetailResponse(
+        id=f"restroom__{row['mng_no']}",
+        store_name=row["name"] or "",
+        place_id=None,
+        lat=row["lat"], lng=row["lng"],
+        category=details["type"],
+        category_key="restroom",
+        addr=row["addr_road"] or row["addr_lot"] or "",
+        phone=row["phone"] or "",
+        floor=None,
+        homepage=None,
+        place_url=None,
+        open_hours=open_hours,
+        closed_days=None,
+        is_open_now=_is_open_now_combined(open_hours, None),
+        image_urls=[],
+        details=details,
+        source="public_restroom",
+        last_updated=None,
+    )
+
+
 @app.post("/place/detail", response_model=PlaceDetailResponse)
 async def place_detail(req: PlaceDetailRequest):
     """
-    PlaceDetailScreen 진입 시 호출 — store_details row 하나를 전부 펼쳐서 반환.
-    검색 결과(SearchResultItem.id)를 그대로 넘기면 됨.
+    PlaceDetailScreen 진입 시 호출. id prefix 로 출처 분기:
+    - `restroom__{mng_no}` → public_restrooms 테이블
+    - 그 외 → store_details 테이블 (건물 내 매장 캐시)
     """
+    # outdoor 라우팅
+    if req.id.startswith("restroom__"):
+        return await _restroom_detail(req.id[len("restroom__"):])
+
     pool = await get_pool()
     async with pool.acquire() as conn:
         row = await conn.fetchrow(

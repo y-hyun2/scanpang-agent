@@ -199,6 +199,7 @@ async def public_restroom_search(lat: float, lng: float, radius: int) -> list[di
     results = []
     for r in rows:
         results.append({
+            "mng_no":     r.get("MNG_NO") or "",   # public_restrooms PK → detail 조회 키
             "name":       r.get("RSTRM_NM") or "공중화장실",
             "distance_m": r.get("_distance_m") or 0.0,
             "lat":        float(r.get("WGS84_LAT") or lat),
