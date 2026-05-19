@@ -171,7 +171,7 @@ async def _outdoor_search(category_key: str, req: SearchRequest) -> SearchRespon
     elif category_key == "locker":
         rows = await seoul_locker_search(lat, lng, radius=1500)
     elif category_key == "prayer_room":
-        rows = prayer_room_search(lat, lng, radius=2000)
+        rows = await prayer_room_search(lat, lng, radius=2000)
     elif category_key == "halal_restaurant":
         # halal_tools 는 name_ko / address / opening_hours 키를 쓰므로 표준 키로 변환
         raw = await halal_restaurant_search(lat, lng, radius=0)
@@ -200,6 +200,8 @@ async def _outdoor_search(category_key: str, req: SearchRequest) -> SearchRespon
             return f"restroom__{r['mng_no']}"
         if category == "halal_restaurant" and r.get("halal_id"):
             return f"halal__{r['halal_id']}"
+        if category == "prayer_room" and r.get("room_id"):
+            return f"prayer__{r['room_id']}"
         return f"__outdoor__{category}__{r.get('name','')}"
 
     # 화면 표시용 한국어 카테고리 라벨
@@ -437,12 +439,71 @@ async def _halal_detail(restaurant_id: str) -> PlaceDetailResponse:
     )
 
 
+async def _prayer_detail(room_id: str) -> PlaceDetailResponse:
+    """prayer_rooms 테이블 1건 → PlaceDetailResponse."""
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        row = await conn.fetchrow(
+            """
+            SELECT room_id, name, name_en, address, phone, open_hours,
+                   floor, lat, lng,
+                   facilities::text AS facilities,
+                   availability_status, capacity, notes,
+                   image_urls::text AS image_urls
+            FROM prayer_rooms WHERE room_id = $1
+            """,
+            room_id,
+        )
+    if row is None:
+        raise HTTPException(status_code=404, detail=f"기도실 '{room_id}' 없음")
+
+    def _j(s):
+        if not s: return None
+        try: return _json.loads(s)
+        except Exception: return None
+
+    facilities = _j(row["facilities"]) or {}
+    details = {
+        "name_en":              row["name_en"] or "",
+        "facilities":           facilities,
+        "wudu":                 bool(facilities.get("wudu")),
+        "gender_separation":    bool(facilities.get("gender_separation")),
+        "prayer_mat":           bool(facilities.get("prayer_mat")),
+        "quran_available":      bool(facilities.get("quran_available")),
+        "availability_status":  row["availability_status"] or "",
+        "capacity":             row["capacity"] or "",
+        "notes":                row["notes"] or "",
+    }
+    return PlaceDetailResponse(
+        id=f"prayer__{row['room_id']}",
+        store_name=row["name"] or "",
+        place_id=None,
+        lat=float(row["lat"]) if row["lat"] is not None else None,
+        lng=float(row["lng"]) if row["lng"] is not None else None,
+        category="기도실",
+        category_key="prayer_room",
+        addr=row["address"] or "",
+        phone=row["phone"] or "",
+        floor=row["floor"] or None,
+        homepage=None,
+        place_url=None,
+        open_hours=row["open_hours"] or "",
+        closed_days=None,
+        is_open_now=_is_open_now_combined(row["open_hours"] or "", None),
+        image_urls=(_j(row["image_urls"]) or []),
+        details=details,
+        source="prayer_rooms",
+        last_updated=None,
+    )
+
+
 @app.post("/place/detail", response_model=PlaceDetailResponse)
 async def place_detail(req: PlaceDetailRequest):
     """
     PlaceDetailScreen 진입 시 호출. id prefix 로 출처 분기:
     - `restroom__{mng_no}` → public_restrooms 테이블
     - `halal__{restaurant_id}` → halal_restaurants 테이블
+    - `prayer__{room_id}` → prayer_rooms 테이블
     - 그 외 → store_details 테이블 (건물 내 매장 캐시)
     """
     # outdoor 라우팅
@@ -450,6 +511,8 @@ async def place_detail(req: PlaceDetailRequest):
         return await _restroom_detail(req.id[len("restroom__"):])
     if req.id.startswith("halal__"):
         return await _halal_detail(req.id[len("halal__"):])
+    if req.id.startswith("prayer__"):
+        return await _prayer_detail(req.id[len("prayer__"):])
 
     pool = await get_pool()
     async with pool.acquire() as conn:

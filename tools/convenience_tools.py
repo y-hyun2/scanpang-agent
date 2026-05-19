@@ -282,32 +282,32 @@ async def seoul_locker_search(lat: float, lng: float, radius: int) -> list[dict]
     return sorted(results, key=lambda x: x["distance_m"])
 
 
-def prayer_room_search(lat: float, lng: float, radius: int) -> list[dict]:
-    """수동 JSON 기반 기도실 검색"""
-    try:
-        with open(PRAYER_ROOMS_PATH, encoding="utf-8") as f:
-            rooms = json.load(f)
-    except (FileNotFoundError, json.JSONDecodeError):
-        return []
-
-    results = []
-    for room in rooms:
-        try:
-            r_lat = float(room.get("lat", 0))
-            r_lng = float(room.get("lng", 0))
-        except (ValueError, TypeError):
-            continue
-        dist = haversine_m(lat, lng, r_lat, r_lng)
-        if dist <= radius:
-            results.append({
-                "name": room.get("name", "기도실"),
-                "distance_m": round(dist, 1),
-                "lat": r_lat,
-                "lng": r_lng,
-                "address": room.get("address", ""),
-                "phone": room.get("phone", ""),
-                "open_hours": room.get("open_hours", ""),
-                "extra": {},
-            })
-
-    return sorted(results, key=lambda x: x["distance_m"])
+async def prayer_room_search(lat: float, lng: float, radius: int) -> list[dict]:
+    """PostGIS prayer_rooms 테이블 거리 검색 (ST_DWithin + ST_Distance 정렬)."""
+    from core.db import get_pool
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        rows = await conn.fetch(
+            """
+            SELECT room_id, name, address, phone, open_hours, lat, lng,
+                   ST_Distance(geom, ST_SetSRID(ST_MakePoint($2, $1), 4326)::geography) AS dist
+            FROM prayer_rooms
+            WHERE ST_DWithin(geom, ST_SetSRID(ST_MakePoint($2, $1), 4326)::geography, $3)
+            ORDER BY dist
+            """,
+            float(lat), float(lng), float(radius),
+        )
+    return [
+        {
+            "name":         r["name"] or "기도실",
+            "room_id":      r["room_id"],
+            "distance_m":   round(r["dist"], 1),
+            "lat":          float(r["lat"]) if r["lat"] is not None else None,
+            "lng":          float(r["lng"]) if r["lng"] is not None else None,
+            "address":      r["address"] or "",
+            "phone":        r["phone"] or "",
+            "open_hours":   r["open_hours"] or "",
+            "extra":        {},
+        }
+        for r in rows
+    ]
