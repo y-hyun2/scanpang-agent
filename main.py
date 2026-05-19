@@ -147,29 +147,96 @@ async def restaurant_detail(req: RestaurantDetailRequest):
     return result
 
 
+_OUTDOOR_CATEGORIES = {"restroom", "subway", "locker", "prayer_room"}
+
+
+async def _outdoor_search(category_key: str, req: SearchRequest) -> SearchResponse:
+    """건물 외 카테고리(화장실/지하철/물품보관/기도실)는 store_details 가 아닌
+    각자 출처 테이블에서 거리 정렬로 반환.
+    lat/lng 없으면 default(명동) 좌표 fallback."""
+    from tools.convenience_tools import (
+        public_restroom_search, seoul_locker_search, kakao_category_search,
+        prayer_room_search,
+    )
+    lat = req.lat or 37.5636
+    lng = req.lng or 126.9822
+
+    if category_key == "restroom":
+        rows = await public_restroom_search(lat, lng, radius=2000)
+    elif category_key == "subway":
+        rows = await kakao_category_search("subway", lat, lng, radius=1500)
+    elif category_key == "locker":
+        rows = await seoul_locker_search(lat, lng, radius=1500)
+    elif category_key == "prayer_room":
+        rows = prayer_room_search(lat, lng, radius=2000)
+    else:
+        rows = []
+
+    rows_sorted = sorted(rows, key=lambda r: r.get("distance_m", 0))[:req.limit]
+    # id 패턴: {category_key}__{원천 PK}
+    # restroom = mng_no, 그 외는 이름 fallback (detail 조회 시 분기 처리)
+    def _outdoor_id(category: str, r: dict) -> str:
+        if category == "restroom" and r.get("mng_no"):
+            return f"restroom__{r['mng_no']}"
+        return f"__outdoor__{category}__{r.get('name','')}"
+
+    # 화면 표시용 한국어 카테고리 라벨
+    LABEL = {"restroom": "화장실", "subway": "지하철역", "locker": "물품보관함", "prayer_room": "기도실"}
+
+    results = [
+        SearchResultItem(
+            id=_outdoor_id(category_key, r),
+            store_name=r.get("name", ""),
+            category=LABEL.get(category_key, category_key),
+            category_key=category_key,
+            addr=r.get("address", ""),
+            phone=r.get("phone", ""),
+            lat=r.get("lat"),
+            lng=r.get("lng"),
+            distance_m=r.get("distance_m"),
+            is_open_now=_is_open_now_combined(r.get("open_hours") or "", None),
+        )
+        for r in rows_sorted
+    ]
+    return SearchResponse(query=req.query, count=len(results), results=results)
+
+
 @app.post("/place/search", response_model=SearchResponse)
 async def place_search(req: SearchRequest):
     """
-    store_details 통합 검색 — store_name ILIKE 매칭.
-    SearchDefaultScreen에서 사용자가 입력한 키워드로 호출.
+    통합 검색 — 쿼리 분류 후 카테고리별 출처로 자동 라우팅:
+      - 건물 외 카테고리(화장실/지하철역/물품보관함/기도실): 각자 출처 테이블 거리 검색
+      - 건물 내 매장(카페/식당/...): store_details ILIKE 매칭
+
+    SearchDefaultScreen 호출 시 lat/lng 같이 보내야 outdoor 거리 정렬 가능.
     """
     q = (req.query or "").strip()
     if not q:
         return SearchResponse(query=req.query, count=0, results=[])
 
+    # 쿼리 → category_key. 한국어 카테고리명("카페"/"화장실") 우선, 그 외엔 매장명 분류 fallback.
+    from tools.category_classifier import classify_query
+    category_key = classify_query(q)
+    if category_key in _OUTDOOR_CATEGORIES:
+        return await _outdoor_search(category_key, req)
+
     pool = await get_pool()
     async with pool.acquire() as conn:
+        # store_details: 매장명 ILIKE OR 분류된 category_key 매칭.
+        # 예) "카페" 검색 → ILIKE %카페% 는 거의 0건이지만 category_key='cafe' row 가 다 잡힘.
         rows = await conn.fetch(
             """
             SELECT id, store_name, category, category_key, addr, phone,
                    place_id, lat, lng, floor, image_urls, open_hours, details
             FROM store_details
             WHERE store_name ILIKE $1
+               OR ($3 != 'other' AND category_key = $3)
             ORDER BY last_updated DESC NULLS LAST
             LIMIT $2
             """,
             f"%{q}%",
             req.limit,
+            category_key,
         )
 
     results: list[SearchResultItem] = []
@@ -215,12 +282,78 @@ async def place_search(req: SearchRequest):
     return SearchResponse(query=req.query, count=len(results), results=results)
 
 
+async def _restroom_detail(mng_no: str) -> PlaceDetailResponse:
+    """public_restrooms 테이블 1건 → PlaceDetailResponse.
+    details 키는 store_details schema 와 동일 — male_toilt_cnt, has_disabled 등."""
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        row = await conn.fetchrow(
+            "SELECT mng_no, name, type, addr_road, addr_lot, phone, open_hours, "
+            "       lat, lng, raw "
+            "FROM public_restrooms WHERE mng_no = $1",
+            mng_no,
+        )
+    if row is None:
+        raise HTTPException(status_code=404, detail=f"화장실 '{mng_no}' 없음")
+    raw = row["raw"]
+    if isinstance(raw, str):
+        try: raw = _json.loads(raw)
+        except Exception: raw = {}
+    if not isinstance(raw, dict):
+        raw = {}
+
+    def yn(v): return (str(v) or "").upper() == "Y"
+    def pos_int(v):
+        try: return int(v or 0) > 0
+        except (ValueError, TypeError): return False
+
+    details = {
+        "name":              raw.get("RSTRM_NM") or row["name"] or "",
+        "type":              raw.get("SE_NM") or row["type"] or "",
+        "mng_inst":          raw.get("MNG_INST_NM") or "",
+        "male_toilt_cnt":    raw.get("MALE_TOILT_CNT") or "",
+        "female_toilt_cnt":  raw.get("FEMALE_TOILT_CNT") or "",
+        "has_disabled":      pos_int(raw.get("MALE_FRDBL_TOILT_CNT")) or pos_int(raw.get("FEMALE_FRDBL_TOILT_CNT")),
+        "has_child":         pos_int(raw.get("MALE_CHLD_TOILT_CNT")) or pos_int(raw.get("FEMALE_CHLD_TOILT_CNT")),
+        "has_diaper_table":  yn(raw.get("DIAP_EXCHCON_EN")),
+        "has_emergency_bell":yn(raw.get("EMRGNCBLL_INSTL_YN")),
+        "has_cctv":          yn(raw.get("RSTRM_ENTRAN_CCTV_INSTL_EN")),
+        "waste_method":      raw.get("WSTE_PRCS_MTH_NM") or "",
+    }
+    open_hours = row["open_hours"] or ""
+    return PlaceDetailResponse(
+        id=f"restroom__{row['mng_no']}",
+        store_name=row["name"] or "",
+        place_id=None,
+        lat=row["lat"], lng=row["lng"],
+        category=details["type"],
+        category_key="restroom",
+        addr=row["addr_road"] or row["addr_lot"] or "",
+        phone=row["phone"] or "",
+        floor=None,
+        homepage=None,
+        place_url=None,
+        open_hours=open_hours,
+        closed_days=None,
+        is_open_now=_is_open_now_combined(open_hours, None),
+        image_urls=[],
+        details=details,
+        source="public_restroom",
+        last_updated=None,
+    )
+
+
 @app.post("/place/detail", response_model=PlaceDetailResponse)
 async def place_detail(req: PlaceDetailRequest):
     """
-    PlaceDetailScreen 진입 시 호출 — store_details row 하나를 전부 펼쳐서 반환.
-    검색 결과(SearchResultItem.id)를 그대로 넘기면 됨.
+    PlaceDetailScreen 진입 시 호출. id prefix 로 출처 분기:
+    - `restroom__{mng_no}` → public_restrooms 테이블
+    - 그 외 → store_details 테이블 (건물 내 매장 캐시)
     """
+    # outdoor 라우팅
+    if req.id.startswith("restroom__"):
+        return await _restroom_detail(req.id[len("restroom__"):])
+
     pool = await get_pool()
     async with pool.acquire() as conn:
         row = await conn.fetchrow(

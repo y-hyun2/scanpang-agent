@@ -21,7 +21,7 @@ async def find_nearest(lat: float, lng: float, radius_m: int = 1000) -> list[dic
     async with pool.acquire() as conn:
         rows = await conn.fetch(
             """
-            SELECT raw,
+            SELECT raw, lat AS db_lat, lng AS db_lng,
                    ROUND(ST_Distance(
                        geom,
                        ST_SetSRID(ST_MakePoint($2, $1), 4326)::geography
@@ -50,6 +50,11 @@ async def find_nearest(lat: float, lng: float, radius_m: int = 1000) -> list[dic
                 continue
         if not isinstance(raw, dict):
             continue
+        # raw 의 WGS84_LAT/LOT 가 비어있는 row(geocoding 으로 채운 row)는 DB 컬럼이 정답.
+        # caller(public_restroom_search) 가 WGS84_LAT 을 보니까 거기에도 채워둠.
+        if r["db_lat"] is not None and r["db_lng"] is not None:
+            raw["WGS84_LAT"] = str(r["db_lat"])
+            raw["WGS84_LOT"] = str(r["db_lng"])
         raw["_distance_m"] = float(r["dist_m"])
         out.append(raw)
     return out

@@ -292,6 +292,11 @@ private fun PlaceDetailContent(
     exchangeRates: List<ExchangeRate>,
     subwayDetail: SubwayDetail? = null,
 ) {
+    val isSubway = subwayDetail != null
+    // 화장실 — public_restrooms DB 에 description/intro 필드 없음. DummyData fallback
+    // 의 소개 텍스트가 새어 나오면 안 되니까 화장실 카테고리는 소개·웹사이트·매장 층수 숨김.
+    val isRestroom = place.categoryKey in setOf("restroom", "public_restroom")
+
     if (menuItems.isNotEmpty()) {
         DetailSection(title = "대표 메뉴") {
             Column(verticalArrangement = Arrangement.spacedBy(ScanPangSpacing.sm)) {
@@ -301,7 +306,7 @@ private fun PlaceDetailContent(
         DetailScreenDivider()
     }
 
-    if (place.description.isNotBlank()) {
+    if (!isRestroom && place.description.isNotBlank()) {
         DetailSection(title = "소개") {
             DetailIntroBody(text = place.description)
         }
@@ -311,21 +316,25 @@ private fun PlaceDetailContent(
     // 상세 정보(공통) — 지하철 섹션 위로. 피그마 시안 순서.
     // 지하철은 영업시간을 별도 '열차 시간표' 섹션으로 표시하므로 여기선 숨김.
     // Kakao place.map URL(homepage)은 공식 웹사이트가 아니라 카카오 자체 페이지라 지하철엔 숨김.
-    val isSubway = subwayDetail != null
     DetailSection(title = "상세 정보") {
         Column(verticalArrangement = Arrangement.spacedBy(INFO_ROW_SPACING)) {
             if (!isSubway && place.openHours.isNotBlank())
                 DetailInfoLine(Icons.Rounded.AccessTime, "영업시간", place.openHours)
             if (place.address.isNotBlank()) DetailInfoLine(Icons.Rounded.Place, "주소", place.address)
             if (place.phone.isNotBlank()) DetailInfoLine(Icons.Rounded.Phone, "전화", place.phone)
-            if (place.floor.isNotBlank()) DetailInfoLine(Icons.Rounded.Store, "매장 층수", place.floor)
+            if (!isRestroom && place.floor.isNotBlank())
+                DetailInfoLine(Icons.Rounded.Store, "매장 층수", place.floor)
             if (place.parking.isNotBlank()) DetailInfoLine(Icons.Rounded.LocalParking, "주차 가능 여부", place.parking)
-            if (!isSubway && place.website.isNotBlank())
+            if (!isSubway && !isRestroom && place.website.isNotBlank())
                 DetailInfoLine(Icons.Rounded.Language, "웹사이트", place.website)
             // 화장실 카테고리 — 칸 수 / 편의시설 / 안전시설 (피그마 상세-매장(화장실))
+            // DB에 0/공란/문자 인 row 도 있어서 "남성 0칸" 같이 무의미한 표시 회피.
+            // 숫자 파싱해서 양수만 노출, 둘 다 0/없으면 칸 수 행 자체 숨김.
+            val maleCnt   = place.toiletMale.toIntOrNull() ?: 0
+            val femaleCnt = place.toiletFemale.toIntOrNull() ?: 0
             val toiletStr = buildList {
-                if (place.toiletMale.isNotBlank())   add("남성 ${place.toiletMale}칸")
-                if (place.toiletFemale.isNotBlank()) add("여성 ${place.toiletFemale}칸")
+                if (maleCnt > 0)   add("남성 ${maleCnt}칸")
+                if (femaleCnt > 0) add("여성 ${femaleCnt}칸")
             }.joinToString(", ")
             if (toiletStr.isNotBlank())
                 DetailInfoLine(Icons.Rounded.Wc, "칸 수", toiletStr)

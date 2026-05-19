@@ -368,6 +368,10 @@ data class GeneralRestaurantDetail(
 data class SearchRequest(
     val query: String,
     val limit: Int = 50,
+    // outdoor 카테고리(화장실/지하철역/물품보관함/기도실) 자동 라우팅 시 거리 정렬용.
+    // 빈 값이면 백엔드가 명동 기본 좌표로 fallback.
+    val lat: Double? = null,
+    val lng: Double? = null,
 )
 
 data class SearchResultItem(
@@ -383,6 +387,7 @@ data class SearchResultItem(
     val floor: String? = null,
     val image_url: String? = null,
     val is_open_now: Boolean? = null,
+    val distance_m: Double? = null,  // outdoor 카테고리 검색 시 거리(m). 그 외 null
 )
 
 data class SearchResponse(

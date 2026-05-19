@@ -62,13 +62,20 @@ async def get_store_detail(
     cache_id = f"{place_id}__{store_name}"
     pool     = await get_pool()
 
-    # ── ① 캐시 조회 ─────────────────────────────────────────────────────────
-    async with pool.acquire() as conn:
-        row = await conn.fetchrow(
-            "SELECT * FROM store_details WHERE id = $1", cache_id
-        )
-    if row:
-        return _row_to_dict(row)
+    # outdoor 카테고리 — store_details 캐시 / INSERT 모두 우회.
+    # 화장실·지하철·물품보관·기도실은 정부 raw 테이블이 단일 출처라 매장 캐시 X.
+    _OUTDOOR = {"restroom", "subway", "subway_station", "locker", "prayer_room"}
+    pre_category = classify_category(category_name="", store_name=store_name)
+    is_outdoor = pre_category in _OUTDOOR
+
+    # ── ① 캐시 조회 — outdoor 가 아닐 때만 ──────────────────────────────────
+    if not is_outdoor:
+        async with pool.acquire() as conn:
+            row = await conn.fetchrow(
+                "SELECT * FROM store_details WHERE id = $1", cache_id
+            )
+        if row:
+            return _row_to_dict(row)
 
     # ── ② 좌표 결정 ─────────────────────────────────────────────────────────
     # lat/lng가 인자로 들어오면 그대로 사용 (마커/GPS 진입).
@@ -125,6 +132,28 @@ async def get_store_detail(
         schedule = await normalize_open_hours(open_hours)
         if schedule:
             details["schedule"] = schedule
+
+    # outdoor: store_details INSERT 우회. fetcher 결과를 그대로 응답으로 사용.
+    if is_outdoor:
+        return {
+            "id":            cache_id,
+            "place_id":      place_id,
+            "store_name":    store_name,
+            "category":      category_name,
+            "category_key":  category_key,
+            "addr":          addr,
+            "phone":         phone,
+            "lat":           lat,
+            "lng":           lng,
+            "place_url":     kakao.get("place_url", ""),
+            "details":       details,
+            "open_hours":    open_hours,
+            "closed_days":   closed_days,
+            "homepage":      homepage,
+            "image_urls":    image_urls,
+            "floor":         floor,
+            "source":        source,
+        }
 
     # ── ⑤ store_details UPSERT ──────────────────────────────────────────────
     async with pool.acquire() as conn:

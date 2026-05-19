@@ -37,10 +37,25 @@ object RetrofitClient {
         }
     }
 
+    /**
+     * ngrok 무료 플랜은 첫 요청에 HTML 경고 페이지를 띄움 → JSON 파싱 실패.
+     * `ngrok-skip-browser-warning` 헤더로 우회.
+     */
+    private class NgrokSkipWarningInterceptor : Interceptor {
+        override fun intercept(chain: Interceptor.Chain): Response {
+            val request = chain.request().newBuilder()
+                .header("ngrok-skip-browser-warning", "true")
+                .header("User-Agent", "ScanPangAndroid/1.0")
+                .build()
+            return chain.proceed(request)
+        }
+    }
+
     private val client = OkHttpClient.Builder()
         .connectTimeout(15, TimeUnit.SECONDS)
         .readTimeout(30, TimeUnit.SECONDS)
         .writeTimeout(30, TimeUnit.SECONDS)
+        .addInterceptor(NgrokSkipWarningInterceptor())
         .addInterceptor(SupabaseAuthInterceptor())
         .addInterceptor(
             HttpLoggingInterceptor { message ->

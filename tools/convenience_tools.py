@@ -43,7 +43,7 @@ CATEGORY_CONFIG = {
 
 DEFAULT_RADIUS = {
     "exchange":    500,
-    "restroom":    300,
+    "restroom":    1500,   # 300→1500: 외대·시골 지역 화장실 데이터 밀도 낮아 1.5km 까지 확장
     "locker":      1000,
     "prayer_room": 1000,
 }
@@ -198,8 +198,20 @@ async def public_restroom_search(lat: float, lng: float, radius: int) -> list[di
     rows = await find_nearest(lat, lng, radius_m=radius)
     results = []
     for r in rows:
+        # RSTRM_NM 은 사실 그 화장실이 있는 '건물명/위치명' (예: '소공지하상가C')
+        # SE_NM 은 '공중화장실' / '개방화장실'. 둘을 합쳐서 명확한 화장실 이름으로.
+        # 이미 '화장실'이 RSTRM_NM 에 포함된 경우(예: '을지로입구역(2) 화장실') 는 중복 회피.
+        base = (r.get("RSTRM_NM") or "").strip()
+        se   = (r.get("SE_NM")    or "").strip()
+        if not base:
+            display_name = se or "공중화장실"
+        elif "화장실" in base:
+            display_name = base
+        else:
+            display_name = f"{base} {se}".strip() if se else base
         results.append({
-            "name":       r.get("RSTRM_NM") or "공중화장실",
+            "mng_no":     r.get("MNG_NO") or "",   # public_restrooms PK → detail 조회 키
+            "name":       display_name,
             "distance_m": r.get("_distance_m") or 0.0,
             "lat":        float(r.get("WGS84_LAT") or lat),
             "lng":        float(r.get("WGS84_LOT") or lng),
@@ -221,7 +233,9 @@ async def public_restroom_search(lat: float, lng: float, radius: int) -> list[di
                 "waste_method":       r.get("WSTE_PRCS_MTH_NM") or "",
             },
         })
-    return results[:5]
+    # find_nearest 가 이미 LIMIT 100 으로 가져오니 여기선 잘라내지 않음.
+    # caller(/convenience/query 마커, /place/search 검색)가 limit 결정.
+    return results
 
 
 async def seoul_locker_search(lat: float, lng: float, radius: int) -> list[dict]:

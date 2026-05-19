@@ -166,6 +166,34 @@ fun SearchDefaultScreen(
     var query by rememberSaveable { mutableStateOf("") }
     var recent by remember { mutableStateOf(historyPrefs.getRecent()) }
     val backendResults by viewModel.searchResults.collectAsState()
+    // NavHost destination 마다 viewModel() 이 다른 인스턴스를 주므로 HomeScreen 의
+    // setUserLocation 이 SearchDefaultScreen 에 안 닿음. SearchDefaultScreen 도 자체적으로
+    // GPS 받아서 outdoor 카테고리 검색 시 거리 정렬용으로 사용.
+    var userLat by remember { mutableStateOf<Double?>(null) }
+    var userLng by remember { mutableStateOf<Double?>(null) }
+    LaunchedEffect(Unit) {
+        val hasPermission =
+            android.content.pm.PackageManager.PERMISSION_GRANTED ==
+                androidx.core.content.ContextCompat.checkSelfPermission(
+                    context, android.Manifest.permission.ACCESS_FINE_LOCATION
+                ) ||
+            android.content.pm.PackageManager.PERMISSION_GRANTED ==
+                androidx.core.content.ContextCompat.checkSelfPermission(
+                    context, android.Manifest.permission.ACCESS_COARSE_LOCATION
+                )
+        if (!hasPermission) return@LaunchedEffect
+        com.google.android.gms.location.LocationServices
+            .getFusedLocationProviderClient(context)
+            .lastLocation
+            .addOnSuccessListener { loc ->
+                if (loc != null) {
+                    userLat = loc.latitude
+                    userLng = loc.longitude
+                    // ViewModel 에도 같이 저장 — 향후 다른 화면이 같은 인스턴스를 만나면 재사용.
+                    viewModel.setUserLocation(loc.latitude, loc.longitude)
+                }
+            }
+    }
 
     // Home quick action 등 외부에서 사전입력 query 를 흘려보내면 진입 시 한 번 반영.
     LaunchedEffect(Unit) {
@@ -178,7 +206,7 @@ fun SearchDefaultScreen(
                     query = pending
                     historyPrefs.add(pending)
                     recent = historyPrefs.getRecent()
-                    viewModel.searchPlaces(pending)
+                    viewModel.searchPlaces(pending, lat = userLat, lng = userLng)
                     entry.savedStateHandle[AppRoutes.SearchSavedStatePendingQueryKey] = null
                 }
             }
@@ -192,6 +220,41 @@ fun SearchDefaultScreen(
         pinned + randomFill
     }
 
+    // 검색 트리거 시점에 매번 lastLocation 받아서 콜백 안에서 검색 호출.
+    // LaunchedEffect 의 비동기 GPS 콜백이 아직 안 도착해서 userLat/Lng 가 null 인 경우 방어.
+    fun searchWithFreshLocation(q: String) {
+        val hasPermission =
+            android.content.pm.PackageManager.PERMISSION_GRANTED ==
+                androidx.core.content.ContextCompat.checkSelfPermission(
+                    context, android.Manifest.permission.ACCESS_FINE_LOCATION
+                ) ||
+            android.content.pm.PackageManager.PERMISSION_GRANTED ==
+                androidx.core.content.ContextCompat.checkSelfPermission(
+                    context, android.Manifest.permission.ACCESS_COARSE_LOCATION
+                )
+        if (!hasPermission) {
+            viewModel.searchPlaces(q, lat = userLat, lng = userLng)
+            return
+        }
+        com.google.android.gms.location.LocationServices
+            .getFusedLocationProviderClient(context)
+            .lastLocation
+            .addOnSuccessListener { loc ->
+                val finalLat = loc?.latitude ?: userLat
+                val finalLng = loc?.longitude ?: userLng
+                if (loc != null) {
+                    userLat = loc.latitude
+                    userLng = loc.longitude
+                    viewModel.setUserLocation(loc.latitude, loc.longitude)
+                }
+                android.util.Log.d("SearchScreen", "search q=$q lat=$finalLat lng=$finalLng (loc=$loc)")
+                viewModel.searchPlaces(q, lat = finalLat, lng = finalLng)
+            }
+            .addOnFailureListener {
+                viewModel.searchPlaces(q, lat = userLat, lng = userLng)
+            }
+    }
+
     fun submitSearch(raw: String) {
         val q = raw.trim()
         if (q.isEmpty()) return
@@ -200,7 +263,7 @@ fun SearchDefaultScreen(
         recent = historyPrefs.getRecent()
         // 별도 navigation 없이 query 상태만 갱신 → 같은 화면에서 결과 모드로 전환.
         query = q
-        viewModel.searchPlaces(q)
+        searchWithFreshLocation(q)
     }
 
     val trimmedQuery = query.trim()
@@ -440,16 +503,48 @@ private data class ResultRow(
     val detailRoute: String,
 )
 
+// category_key (영어) → 화면 표시용 한국어 라벨. 백엔드가 한국어 category 를 같이 보내주면
+// 그걸 우선 쓰고, 비었을 때 이 맵으로 fallback.
+private val CATEGORY_KO = mapOf(
+    "cafe" to "카페",
+    "restaurant" to "식당",
+    "shopping" to "쇼핑",
+    "convenience_store" to "편의점",
+    "pharmacy" to "약국",
+    "hospital" to "병원",
+    "bank" to "은행",
+    "atm" to "ATM",
+    "exchange" to "환전소",
+    "subway" to "지하철역",
+    "subway_station" to "지하철역",
+    "restroom" to "화장실",
+    "public_restroom" to "화장실",
+    "locker" to "물품보관함",
+    "lockers" to "물품보관함",
+    "prayer_room" to "기도실",
+    "accommodation" to "호텔",
+    "cultural" to "문화시설",
+    "tourist" to "관광지",
+    "tourist_spot" to "관광지",
+    "halal_restaurant" to "할랄 식당",
+)
+
+private fun formatDistance(m: Double?): String = when {
+    m == null            -> ""
+    m < 1000             -> "${m.toInt()}m"
+    else                 -> "%.1fkm".format(m / 1000.0)
+}
+
 /**
- * 백엔드 store_details 검색 결과 → 화면 표시용 [ResultRow] 로 변환.
- * - category 우선순위: category(Kakao 원문) → category_key(분류기 키) → "—"
- * - 거리: 백엔드 응답에 없으니 placeholder. 추후 클라이언트에서 lat/lng 로 계산.
- * - isOpen: 백엔드에 open_hours 만 있고 즉시 판정 비용이 커서 false 기본.
+ * 백엔드 검색 결과 → 화면 표시용 [ResultRow] 로 변환.
+ * - category 우선순위: category(백엔드 한국어/Kakao 원문) → category_key 한국어 매핑 → "—"
+ * - distance: 백엔드 distance_m (outdoor 카테고리에만 채워짐) 을 km/m 라벨로.
+ * - isOpen: 백엔드 is_open_now=true 일 때만 영업중. null/false 는 false.
  */
 private fun SearchResultItem.toResultRow(): ResultRow {
     val secondary = when {
         !category.isNullOrBlank() -> category
-        !category_key.isNullOrBlank() -> category_key
+        !category_key.isNullOrBlank() -> CATEGORY_KO[category_key] ?: category_key
         else -> "—"
     }
     return ResultRow(
@@ -458,8 +553,7 @@ private fun SearchResultItem.toResultRow(): ResultRow {
             id = id,
             title = store_name,
             category = secondary,
-            distance = "",
-            // backend 의 is_open_now 가 null 이면 "정보 없음" 의미 — 화면에서 영업중 표시 자체를 안 그림.
+            distance = formatDistance(distance_m),
             isOpen = is_open_now == true,
         ),
         detailRoute = AppRoutes.placeDetailRoute(category_key ?: "", id),

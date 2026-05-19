@@ -21,6 +21,18 @@ class ScanPangViewModel : ViewModel() {
     private val _loading = MutableStateFlow(false)
     val loading: StateFlow<Boolean> = _loading
 
+    // ── 사용자 현재 위치 — HomeScreen 이 GPS 받으면 setUserLocation() 으로 갱신.
+    // SearchDefaultScreen 등 다른 화면이 outdoor 카테고리 거리 검색 시 참조.
+    private val _userLat = MutableStateFlow<Double?>(null)
+    val userLat: StateFlow<Double?> = _userLat
+    private val _userLng = MutableStateFlow<Double?>(null)
+    val userLng: StateFlow<Double?> = _userLng
+
+    fun setUserLocation(lat: Double, lng: Double) {
+        _userLat.value = lat
+        _userLng.value = lng
+    }
+
     // ── Halal ──
     private val _prayerTimes = MutableStateFlow<PrayerTimeData?>(null)
     val prayerTimes: StateFlow<PrayerTimeData?> = _prayerTimes
@@ -229,7 +241,16 @@ class ScanPangViewModel : ViewModel() {
 
     // ── Search API ──
 
-    fun searchPlaces(query: String, limit: Int = 50) {
+    /**
+     * @param lat,lng outdoor 카테고리(화장실/지하철역/물품보관함/기도실) 검색 시 거리 정렬에 사용.
+     *               null 이면 백엔드가 명동 기본 좌표로 fallback.
+     */
+    fun searchPlaces(
+        query: String,
+        lat: Double? = null,
+        lng: Double? = null,
+        limit: Int = 50,
+    ) {
         _searchQuery.value = query
         val trimmed = query.trim()
         if (trimmed.isEmpty()) {
@@ -238,9 +259,9 @@ class ScanPangViewModel : ViewModel() {
         }
         viewModelScope.launch {
             _loading.value = true
-            Log.d("ScanPangVM", "searchPlaces START (q=$trimmed)")
+            Log.d("ScanPangVM", "searchPlaces START (q=$trimmed, lat=$lat, lng=$lng)")
             try {
-                val response = api.searchPlaces(SearchRequest(query = trimmed, limit = limit))
+                val response = api.searchPlaces(SearchRequest(query = trimmed, limit = limit, lat = lat, lng = lng))
                 Log.d("ScanPangVM", "searchPlaces OK: ${response.count} results")
                 _searchResults.value = response.results
             } catch (e: Exception) {
