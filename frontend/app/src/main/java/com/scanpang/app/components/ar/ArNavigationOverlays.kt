@@ -83,6 +83,7 @@ import com.scanpang.app.ui.theme.ScanPangType
 fun ArNavTopHud(
     modifier: Modifier = Modifier,
     onCameraClick: () -> Unit,
+    isCameraFrozen: Boolean = false,
     onSearchClick: () -> Unit,
     destinationPill: @Composable () -> Unit,
 ) {
@@ -104,25 +105,28 @@ fun ArNavTopHud(
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .heightIn(min = ScanPangDimens.arStatusPillHeight),
-            contentAlignment = Alignment.Center,
-        ) {
-            destinationPill()
-        }
-        Spacer(modifier = Modifier.height(8.dp))
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
+                .heightIn(
+                    min = maxOf(
+                        ScanPangDimens.arNavTopFab40,
+                        ScanPangDimens.arStatusPillHeight,
+                    ),
+                ),
         ) {
             ArNavWhiteFab(
                 icon = Icons.Rounded.CameraAlt,
                 contentDescription = "화면 캡처",
                 onClick = onCameraClick,
+                isActive = isCameraFrozen,
+                modifier = Modifier.align(Alignment.CenterStart),
             )
+            Box(Modifier.align(Alignment.Center)) {
+                destinationPill()
+            }
             ArNavWhiteFab(
                 icon = Icons.Rounded.Search,
                 contentDescription = "검색",
                 onClick = onSearchClick,
+                modifier = Modifier.align(Alignment.CenterEnd),
             )
         }
     }
@@ -134,6 +138,7 @@ fun ArNavWhiteFab(
     contentDescription: String,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
+    isActive: Boolean = false,
 ) {
     Surface(
         modifier = modifier
@@ -141,7 +146,7 @@ fun ArNavWhiteFab(
             .clip(CircleShape)
             .clickable(onClick = onClick),
         shape = CircleShape,
-        color = ScanPangColors.ArOverlayWhite80,
+        color = if (isActive) ScanPangColors.ArPrimaryTranslucent else ScanPangColors.ArOverlayWhite80,
         shadowElevation = ScanPangDimens.arPoiCardShadowElevation,
     ) {
         Box(contentAlignment = Alignment.Center) {
@@ -149,7 +154,7 @@ fun ArNavWhiteFab(
                 imageVector = icon,
                 contentDescription = contentDescription,
                 modifier = Modifier.size(ScanPangDimens.arNavTopFabIcon),
-                tint = ScanPangColors.OnSurfaceStrong,
+                tint = if (isActive) Color.White else ScanPangColors.OnSurfaceStrong,
             )
         }
     }
