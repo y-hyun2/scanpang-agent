@@ -382,6 +382,7 @@ async def _halal_detail(restaurant_id: str) -> PlaceDetailResponse:
                    opening_hours::text AS opening_hours,
                    break_time::text AS break_time,
                    last_order::text AS last_order,
+                   image_urls::text AS image_urls,
                    lat, lng
             FROM halal_restaurants WHERE restaurant_id = $1
             """,
@@ -429,7 +430,7 @@ async def _halal_detail(restaurant_id: str) -> PlaceDetailResponse:
         open_hours=open_hours_str,
         closed_days=None,
         is_open_now=_is_open_now_combined(open_hours_str, None),
-        image_urls=[],
+        image_urls=(_j(row["image_urls"]) or []),
         details=details,
         source="halal_restaurants",
         last_updated=None,
