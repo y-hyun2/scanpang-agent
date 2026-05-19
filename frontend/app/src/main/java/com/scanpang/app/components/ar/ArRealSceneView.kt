@@ -117,6 +117,7 @@ fun ArRealSceneView(
     onRouteAvailable: (routePoints: List<Pair<Double, Double>>, destinationLat: Double, destinationLng: Double) -> Unit = { _, _, _ -> },
     voiceOn: Boolean = true,
     buildingsCache: Map<String, Building> = emptyMap(),
+    onBuildingPinClick: (pinName: String) -> Unit = {},
 ) {
     val context = LocalContext.current
     val engine = rememberEngine()
@@ -722,6 +723,7 @@ fun ArRealSceneView(
                     title = pin.name,
                     subtitle = "건물",
                     modifier = Modifier.offset(x = xDp - 60.dp, y = yDp - 32.dp),
+                    onClick = { onBuildingPinClick(pin.name) },
                 )
             }
         }
