@@ -148,17 +148,18 @@ async def restaurant_detail(req: RestaurantDetailRequest):
     return result
 
 
-_OUTDOOR_CATEGORIES = {"restroom", "subway", "locker", "prayer_room"}
+_OUTDOOR_CATEGORIES = {"restroom", "subway", "locker", "prayer_room", "halal_restaurant"}
 
 
 async def _outdoor_search(category_key: str, req: SearchRequest) -> SearchResponse:
-    """건물 외 카테고리(화장실/지하철/물품보관/기도실)는 store_details 가 아닌
-    각자 출처 테이블에서 거리 정렬로 반환.
+    """건물 외 카테고리(화장실/지하철/물품보관/기도실/할랄식당)는 store_details 가 아닌
+    각자 출처 테이블·JSON 에서 거리 정렬로 반환.
     lat/lng 없으면 default(명동) 좌표 fallback."""
     from tools.convenience_tools import (
         public_restroom_search, seoul_locker_search, kakao_category_search,
         prayer_room_search,
     )
+    from tools.halal_tools import halal_restaurant_search
     lat = req.lat or 37.5636
     lng = req.lng or 126.9822
 
@@ -170,19 +171,41 @@ async def _outdoor_search(category_key: str, req: SearchRequest) -> SearchRespon
         rows = await seoul_locker_search(lat, lng, radius=1500)
     elif category_key == "prayer_room":
         rows = prayer_room_search(lat, lng, radius=2000)
+    elif category_key == "halal_restaurant":
+        # halal_tools 는 name_ko / address / opening_hours 키를 쓰므로 표준 키로 변환
+        raw = await halal_restaurant_search(lat, lng, radius=0)
+        rows = [
+            {
+                "name":         r.get("name_ko") or r.get("name_en") or "",
+                "address":      r.get("address", ""),
+                "phone":        r.get("phone", ""),
+                "lat":          r.get("lat"),
+                "lng":          r.get("lng"),
+                "distance_m":   r.get("distance_m", 0),
+                "open_hours":   r.get("opening_hours") or "",
+                "halal_id":     r.get("restaurant_id", ""),
+                "halal_type":   r.get("halal_type", ""),
+            }
+            for r in raw
+        ]
     else:
         rows = []
 
     rows_sorted = sorted(rows, key=lambda r: r.get("distance_m", 0))[:req.limit]
     # id 패턴: {category_key}__{원천 PK}
-    # restroom = mng_no, 그 외는 이름 fallback (detail 조회 시 분기 처리)
+    # restroom = mng_no, halal_restaurant = restaurant_id, 그 외는 이름 fallback
     def _outdoor_id(category: str, r: dict) -> str:
         if category == "restroom" and r.get("mng_no"):
             return f"restroom__{r['mng_no']}"
+        if category == "halal_restaurant" and r.get("halal_id"):
+            return f"halal__{r['halal_id']}"
         return f"__outdoor__{category}__{r.get('name','')}"
 
     # 화면 표시용 한국어 카테고리 라벨
-    LABEL = {"restroom": "화장실", "subway": "지하철역", "locker": "물품보관함", "prayer_room": "기도실"}
+    LABEL = {
+        "restroom": "화장실", "subway": "지하철역", "locker": "물품보관함",
+        "prayer_room": "기도실", "halal_restaurant": "할랄 식당",
+    }
 
     results = [
         SearchResultItem(
