@@ -20,6 +20,7 @@ from schemas.search import SearchRequest, SearchResponse, SearchResultItem
 from schemas.place_detail import PlaceDetailRequest, PlaceDetailResponse
 from tools.open_hours_parser import is_open_now_combined as _is_open_now_combined
 import json as _json
+from datetime import datetime, timedelta, timezone
 from rag.automation.worker import start_worker, stop_worker
 from core.db import get_pool, get_building_pool, close_pool
 from api.h3_buildings import router as h3_buildings_router
@@ -148,17 +149,18 @@ async def restaurant_detail(req: RestaurantDetailRequest):
     return result
 
 
-_OUTDOOR_CATEGORIES = {"restroom", "subway", "locker", "prayer_room"}
+_OUTDOOR_CATEGORIES = {"restroom", "subway", "locker", "prayer_room", "halal_restaurant"}
 
 
 async def _outdoor_search(category_key: str, req: SearchRequest) -> SearchResponse:
-    """건물 외 카테고리(화장실/지하철/물품보관/기도실)는 store_details 가 아닌
-    각자 출처 테이블에서 거리 정렬로 반환.
+    """건물 외 카테고리(화장실/지하철/물품보관/기도실/할랄식당)는 store_details 가 아닌
+    각자 출처 테이블·JSON 에서 거리 정렬로 반환.
     lat/lng 없으면 default(명동) 좌표 fallback."""
     from tools.convenience_tools import (
         public_restroom_search, seoul_locker_search, kakao_category_search,
         prayer_room_search,
     )
+    from tools.halal_tools import halal_restaurant_search
     lat = req.lat or 37.5636
     lng = req.lng or 126.9822
 
@@ -170,19 +172,41 @@ async def _outdoor_search(category_key: str, req: SearchRequest) -> SearchRespon
         rows = await seoul_locker_search(lat, lng, radius=1500)
     elif category_key == "prayer_room":
         rows = prayer_room_search(lat, lng, radius=2000)
+    elif category_key == "halal_restaurant":
+        # halal_tools 는 name_ko / address / opening_hours 키를 쓰므로 표준 키로 변환
+        raw = await halal_restaurant_search(lat, lng, radius=0)
+        rows = [
+            {
+                "name":         r.get("name_ko") or r.get("name_en") or "",
+                "address":      r.get("address", ""),
+                "phone":        r.get("phone", ""),
+                "lat":          r.get("lat"),
+                "lng":          r.get("lng"),
+                "distance_m":   r.get("distance_m", 0),
+                "open_hours":   r.get("opening_hours") or "",
+                "halal_id":     r.get("restaurant_id", ""),
+                "halal_type":   r.get("halal_type", ""),
+            }
+            for r in raw
+        ]
     else:
         rows = []
 
     rows_sorted = sorted(rows, key=lambda r: r.get("distance_m", 0))[:req.limit]
     # id 패턴: {category_key}__{원천 PK}
-    # restroom = mng_no, 그 외는 이름 fallback (detail 조회 시 분기 처리)
+    # restroom = mng_no, halal_restaurant = restaurant_id, 그 외는 이름 fallback
     def _outdoor_id(category: str, r: dict) -> str:
         if category == "restroom" and r.get("mng_no"):
             return f"restroom__{r['mng_no']}"
+        if category == "halal_restaurant" and r.get("halal_id"):
+            return f"halal__{r['halal_id']}"
         return f"__outdoor__{category}__{r.get('name','')}"
 
     # 화면 표시용 한국어 카테고리 라벨
-    LABEL = {"restroom": "화장실", "subway": "지하철역", "locker": "물품보관함", "prayer_room": "기도실"}
+    LABEL = {
+        "restroom": "화장실", "subway": "지하철역", "locker": "물품보관함",
+        "prayer_room": "기도실", "halal_restaurant": "할랄 식당",
+    }
 
     results = [
         SearchResultItem(
@@ -344,16 +368,87 @@ async def _restroom_detail(mng_no: str) -> PlaceDetailResponse:
     )
 
 
+async def _halal_detail(restaurant_id: str) -> PlaceDetailResponse:
+    """halal_restaurants 테이블 1건 → PlaceDetailResponse."""
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        row = await conn.fetchrow(
+            """
+            SELECT restaurant_id, name_ko, name_en, halal_type,
+                   muslim_cooks_available, no_alcohol_sales,
+                   cuisine_type::text AS cuisine_type,
+                   menu_examples::text AS menu_examples,
+                   short_description_ko, address, phone,
+                   opening_hours::text AS opening_hours,
+                   break_time::text AS break_time,
+                   last_order::text AS last_order,
+                   lat, lng
+            FROM halal_restaurants WHERE restaurant_id = $1
+            """,
+            restaurant_id,
+        )
+    if row is None:
+        raise HTTPException(status_code=404, detail=f"할랄 식당 '{restaurant_id}' 없음")
+
+    def _j(s):
+        if not s: return None
+        try: return _json.loads(s)
+        except Exception: return None
+
+    oh_raw = _j(row["opening_hours"]) or {}
+    kst = timezone(timedelta(hours=9))
+    days = ["mon","tue","wed","thu","fri","sat","sun"]
+    today_idx = datetime.now(kst).weekday()
+    oh_today = oh_raw.get(days[today_idx], "") if isinstance(oh_raw, dict) else ""
+    open_hours_str = oh_today or (str(oh_raw) if not isinstance(oh_raw, dict) else "")
+
+    details = {
+        "halal_type":             row["halal_type"] or "",
+        "muslim_cooks_available": row["muslim_cooks_available"],
+        "no_alcohol_sales":       row["no_alcohol_sales"],
+        "cuisine_type":           _j(row["cuisine_type"]) or [],
+        "menu_examples":          _j(row["menu_examples"]) or [],
+        "short_description_ko":   row["short_description_ko"] or "",
+        "break_time":             _j(row["break_time"]) or {},
+        "last_order":             _j(row["last_order"]) or {},
+        "weekly_open_hours":      oh_raw if isinstance(oh_raw, dict) else {},
+    }
+    return PlaceDetailResponse(
+        id=f"halal__{row['restaurant_id']}",
+        store_name=row["name_ko"] or row["name_en"] or "",
+        place_id=None,
+        lat=float(row["lat"]) if row["lat"] is not None else None,
+        lng=float(row["lng"]) if row["lng"] is not None else None,
+        category="할랄 식당",
+        category_key="halal_restaurant",
+        addr=row["address"] or "",
+        phone=row["phone"] or "",
+        floor=None,
+        homepage=None,
+        place_url=None,
+        open_hours=open_hours_str,
+        closed_days=None,
+        is_open_now=_is_open_now_combined(open_hours_str, None),
+        image_urls=[],
+        details=details,
+        source="halal_restaurants",
+        last_updated=None,
+    )
+
+
 @app.post("/place/detail", response_model=PlaceDetailResponse)
 async def place_detail(req: PlaceDetailRequest):
     """
     PlaceDetailScreen 진입 시 호출. id prefix 로 출처 분기:
     - `restroom__{mng_no}` → public_restrooms 테이블
+    - `halal__{restaurant_id}` → halal_restaurants 테이블
     - 그 외 → store_details 테이블 (건물 내 매장 캐시)
     """
     # outdoor 라우팅
     if req.id.startswith("restroom__"):
         return await _restroom_detail(req.id[len("restroom__"):])
+    if req.id.startswith("halal__"):
+        return await _halal_detail(req.id[len("halal__"):])
 
     pool = await get_pool()
     async with pool.acquire() as conn:

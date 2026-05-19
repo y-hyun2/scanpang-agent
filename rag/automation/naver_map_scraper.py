@@ -317,7 +317,9 @@ async def fetch_place_detail(
                 #   카페 변형:     pcmap.place.naver.com/cafe/{id}/home
                 #   숙박:         pcmap.place.naver.com/accommodation/{id}/home
                 #   편의점:        pcmap.place.naver.com/cvs/{id}/home
-                m = re.search(r"/(?:place|restaurant|cafe|accommodation|attraction|cvs)/(\d+)", entry_frame.url)
+                #   병원:          pcmap.place.naver.com/hospital/{id}/home
+                #   약국:          pcmap.place.naver.com/pharmacy/{id}/home
+                m = re.search(r"/(?:place|restaurant|cafe|accommodation|attraction|cvs|hospital|pharmacy)/(\d+)", entry_frame.url)
                 place_id = m.group(1) if m else None
                 if not place_id:
                     print(f"[naver_map_scraper] place_id 추출 실패 ({query!r}, url={entry_frame.url!r})")
@@ -532,19 +534,29 @@ async def fetch_place_detail(
                         }
                         if (menuItems.length > 0) r.menu = menuItems;
 
-                        // ── 이미지 URL ──
-                        // Naver 매장 이미지는 pstatic.net CDN. 작은 아이콘·아바타 제외하기
-                        // 위해 src에 'restaurant'/'place'/'photo' 포함 또는 width 충분한 것만.
+                        // ── 이미지 URL — '업체' 등록 사진만 ──
+                        // Naver 사진 탭 카테고리별 CDN 도메인이 다름:
+                        //   업체 사진 : ldb-phinf.pstatic.net
+                        //   클립     : clip-service-phinf.pstatic.net
+                        //   방문자/리뷰: pup-review-phinf.pstatic.net
+                        // search.pstatic.net/common/?src=... 로 wrap 된 경우도 원본 도메인을
+                        // src 쿼리 파라미터에서 추출해 검사.
+                        const isBizPhoto = (src) => {
+                            if (!src) return false;
+                            try {
+                                const u = new URL(src, location.origin);
+                                const wrapped = u.searchParams.get('src') || '';
+                                if (wrapped.includes('ldb-phinf')) return true;
+                            } catch (e) {}
+                            return src.includes('ldb-phinf');
+                        };
                         const imgs = Array.from(document.querySelectorAll('img'));
                         const imgUrls = [];
                         const seenImg = new Set();
                         for (const img of imgs) {
                             const src = img.src || img.dataset?.src || '';
                             if (!src || seenImg.has(src)) continue;
-                            // 외부 CDN이거나 Naver pstatic 매장 이미지만
-                            if (!/pstatic\.net|naver\.net/.test(src)) continue;
-                            // 작은 아이콘 제외 (icon, sprite, blank 키워드)
-                            if (/icon|sprite|blank|spacer|profile/i.test(src)) continue;
+                            if (!isBizPhoto(src)) continue;
                             seenImg.add(src);
                             imgUrls.push(src);
                             if (imgUrls.length >= 6) break;
@@ -567,6 +579,56 @@ async def fetch_place_detail(
                     }
                 """)
                 result.update({k: v for k, v in (dom or {}).items() if v})
+
+                # ── 업체 사진 보강 — photo 탭 navigate ──
+                # 메인 home 페이지엔 carousel 미리보기(1-2장)만 노출되므로
+                # /photo 경로로 navigate 해 ldb-phinf 도메인 사진을 더 모은다.
+                try:
+                    photo_url = re.sub(
+                        r"/(home|info|location|menu|review)(\?|$)",
+                        "/photo\\2",
+                        entry_frame.url,
+                    )
+                    if "/photo" not in photo_url:
+                        photo_url = entry_frame.url.split("?")[0].rstrip("/") + "/photo"
+                    await page.goto(photo_url, timeout=15_000, wait_until="domcontentloaded")
+                    await page.wait_for_timeout(2_500)
+                    extra_imgs = await page.evaluate(r"""
+                        () => {
+                            const isBiz = (src) => {
+                                if (!src) return false;
+                                try {
+                                    const u = new URL(src, location.origin);
+                                    if ((u.searchParams.get('src')||'').includes('ldb-phinf')) return true;
+                                } catch (e) {}
+                                return src.includes('ldb-phinf');
+                            };
+                            const out = [];
+                            const seen = new Set();
+                            for (const img of document.querySelectorAll('img')) {
+                                const src = img.src || img.dataset?.src;
+                                if (!src || seen.has(src)) continue;
+                                if (!isBiz(src)) continue;
+                                seen.add(src);
+                                out.push(src);
+                                if (out.length >= 12) break;
+                            }
+                            return out;
+                        }
+                    """)
+                    if extra_imgs:
+                        existing = list(result.get("image_urls", []) or [])
+                        seen = set(existing)
+                        for u in extra_imgs:
+                            if u in seen:
+                                continue
+                            seen.add(u)
+                            existing.append(u)
+                            if len(existing) >= 6:
+                                break
+                        result["image_urls"] = existing
+                except Exception as e:
+                    print(f"[naver_map_scraper] photo 탭 추가 진입 실패: {e}")
             finally:
                 await browser.close()
     except Exception as e:
