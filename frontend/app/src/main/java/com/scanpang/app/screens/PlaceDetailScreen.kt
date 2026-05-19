@@ -111,10 +111,15 @@ fun PlaceDetailScreen(
     // 2) DummyData fallback — backend 가 비어있어도(또는 도착 전) 화면이 비지 않게.
     val dummyPlace = remember(categoryKey, placeId) { DummyData.findPlaceById(categoryKey, placeId) }
 
-    // 3) 머지 — 백엔드 필드를 우선, 비면 DummyData. 둘 다 없으면 pop back.
+    // 3) 머지 — 백엔드 필드를 우선, 비면 DummyData.
     val place = remember(backend, dummyPlace) { backend?.mergeOnto(dummyPlace, categoryKey) ?: dummyPlace }
     if (place == null) {
-        LaunchedEffect(Unit) { navController.popBackStack() }
+        // backend 응답 도착 후에도 매칭 실패면 진짜 없음 → popBack.
+        // backend == null 인 동안(요청 in-flight)은 popBack 하지 않고 대기 —
+        // 그렇지 않으면 카드 탭 직후 dummyPlace 도 null 이라 즉시 뒤로 튕김.
+        if (backend != null) {
+            LaunchedEffect(Unit) { navController.popBackStack() }
+        }
         return
     }
 
