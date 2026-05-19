@@ -25,12 +25,15 @@ from tools.open_hours_normalizer import normalize_open_hours
 _DEFAULT_LAT = 37.5636
 _DEFAULT_LNG = 126.9822
 
-# 공식 홈페이지로 인정 안 하는 소셜·블로그 도메인
+# 공식 홈페이지로 인정 안 하는 소셜·블로그·플랫폼 자체 페이지 도메인.
+# place.map.kakao.com / map.naver.com 같은 지도 플랫폼 매장 상세는 그 자체가
+# 공식 홈페이지가 아니라 매장 정보 페이지이므로 homepage 로 잡혀선 안 됨.
 _SOCIAL_URL_PATTERNS = (
     "instagram.com", "facebook.com", "twitter.com", "x.com",
     "youtube.com", "youtu.be",
     "blog.naver.com", "cafe.naver.com", "post.naver.com",
     "tiktok.com", "pf.kakao.com", "kakao.com/o/", "linktr.ee",
+    "place.map.kakao.com", "map.naver.com", "m.place.naver.com",
 )
 
 
@@ -194,10 +197,27 @@ async def get_store_detail(
         if schedule:
             details["schedule"] = schedule
 
-    # 표시용 store_name — 'KB국민은행 ATM' 처럼 지점명 부재한 generic 매장명에
-    # addr 의 도로명/동/구 suffix 를 자동 부착해 사용자가 어디 지점인지 식별 가능.
+    # 표시용 store_name 정규화 — 2 단계.
+    # ① 사용자 입력 매장명이 Kakao 실 매장명과 너무 다르면 (partial_ratio < 70)
+    #    Kakao 정답을 채택. 예: 사용자가 '을지병원 명동' 으로 등록했으나 실제 그
+    #    좌표에는 '을지연세치과의원' 만 존재하는 케이스 — 잘못된 입력 교정.
+    # ② 그 결과에 _enrich_store_name 으로 도로명/동/구 suffix 부착해 generic
+    #    매장명 식별 보강.
     # cache_id 는 원본(파라미터) store_name 으로 유지해 캐시 lookup 일관성 보존.
-    display_name = _enrich_store_name(store_name, addr)
+    matched_name = (details.get("matched_name") if isinstance(details, dict) else "") or ""
+    base_name = store_name
+    if matched_name and matched_name != store_name:
+        try:
+            from rapidfuzz import fuzz as _fuzz
+            score = _fuzz.partial_ratio(
+                store_name.replace(" ", ""), matched_name.replace(" ", "")
+            )
+            if score < 70:
+                print(f"[store_tools] 매장명 교정: {store_name!r} → {matched_name!r} (fuzz={score})")
+                base_name = matched_name
+        except ImportError:
+            pass
+    display_name = _enrich_store_name(base_name, addr)
 
     # outdoor: store_details INSERT 우회. raw 테이블에서 가져온 풀필드 그대로 응답.
     if is_outdoor:
