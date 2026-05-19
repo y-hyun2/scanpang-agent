@@ -104,27 +104,25 @@ fun ArNavTopHud(
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .heightIn(
-                    min = maxOf(
-                        ScanPangDimens.arNavTopFab40,
-                        ScanPangDimens.arStatusPillHeight,
-                    ),
-                ),
+                .heightIn(min = ScanPangDimens.arStatusPillHeight),
+            contentAlignment = Alignment.Center,
+        ) {
+            destinationPill()
+        }
+        Spacer(modifier = Modifier.height(8.dp))
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
         ) {
             ArNavWhiteFab(
                 icon = Icons.Rounded.CameraAlt,
                 contentDescription = "화면 캡처",
                 onClick = onCameraClick,
-                modifier = Modifier.align(Alignment.CenterStart),
             )
-            Box(Modifier.align(Alignment.Center)) {
-                destinationPill()
-            }
             ArNavWhiteFab(
                 icon = Icons.Rounded.Search,
                 contentDescription = "검색",
                 onClick = onSearchClick,
-                modifier = Modifier.align(Alignment.CenterEnd),
             )
         }
     }
