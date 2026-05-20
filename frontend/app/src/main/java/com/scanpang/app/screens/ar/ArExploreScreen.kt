@@ -542,9 +542,9 @@ fun ArExploreScreen(
                                     val markerPos = computePolygonCentroid(cand.visiblePolygon)
                                         ?: Pair(cand.centerLat, cand.centerLng)
 
-                                    // 땅 높이 ≈ 사용자 위치 - 키(1.5m 가정)
-                                    val groundAltitude = currentAltitude - 1.5
-                                    val labelAltitude = groundAltitude + (cand.b.render_height / 2.0)
+                                    // 마커를 사용자 눈높이와 동일한 고도에 배치
+                                    // (render_height를 더하면 가까운 건물에서 마커가 하늘로 올라가는 문제 발생)
+                                    val labelAltitude = currentAltitude
 
                                     if (id !in existingIds) {
                                         // 새 건물 — 필터 미적용: 건물 마커, 필터 적용: 매칭 매장 마커
