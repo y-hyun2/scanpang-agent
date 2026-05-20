@@ -431,7 +431,7 @@ fun ArExploreScreen(
                         viewModel.updateLocationForChunk(currentLat, currentLng)
 
                         val now2 = System.currentTimeMillis()
-                        if (now2 - lastVisibilityCalcTime > 300) {
+                        if (now2 - lastVisibilityCalcTime > 150) {
                             lastVisibilityCalcTime = now2
 
                             val cache = viewModel.buildingsCache.value
@@ -474,6 +474,17 @@ fun ArExploreScreen(
                                     val candMarkerPos = computeFrontEdgeMidpoint(
                                         cand.visiblePolygon, currentLat, currentLng
                                     ) ?: Pair(cand.centerLat, cand.centerLng)
+
+                                    // 중심점이 10m 이내인 마커가 이미 있으면 같은 건물 중복 레코드로 간주
+                                    val isDuplicate = visibleCandidates.any { other ->
+                                        val r = FloatArray(1)
+                                        Location.distanceBetween(
+                                            other.centerLat, other.centerLng,
+                                            cand.centerLat, cand.centerLng, r,
+                                        )
+                                        r[0] < 10f
+                                    }
+                                    if (isDuplicate) continue
 
                                     val isOccluded = visibleCandidates.any { occluder ->
                                         // 거리 차 5m 미만이면 옆에 나란히 있는 거 — 가린다고 판단 안 함
@@ -580,7 +591,7 @@ fun ArExploreScreen(
                                             existingPoi.latitude, existingPoi.longitude,
                                             markerPos.first, markerPos.second, r,
                                         )
-                                        if (r[0] > 3f) {
+                                        if (r[0] > 1f) {
                                             try {
                                                 val newAnchor = earth.createAnchor(
                                                     markerPos.first, markerPos.second, labelAltitude,
@@ -599,7 +610,7 @@ fun ArExploreScreen(
                                                 Log.e("ArExplore", "앵커 갱신 실패 ${cand.b.bld_nm}: ${e.message}")
                                             }
                                         }
-                                        // 3m 이내 변화면 anchor 그대로 — ARCore가 자동으로 부드럽게 추적
+                                        // 1m 이내 변화면 anchor 그대로 — ARCore가 자동으로 부드럽게 추적
                                     }
                                 }
 
