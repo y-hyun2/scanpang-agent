@@ -35,8 +35,12 @@ import androidx.compose.material.icons.rounded.Star
 import androidx.compose.material.icons.rounded.Store
 import androidx.compose.material.icons.rounded.Verified
 import androidx.compose.material.icons.rounded.Wc
+import androidx.compose.material.icons.rounded.KeyboardArrowDown
+import androidx.compose.material.icons.rounded.KeyboardArrowUp
+import androidx.compose.material3.Icon
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -111,10 +115,15 @@ fun PlaceDetailScreen(
     // 2) DummyData fallback — backend 가 비어있어도(또는 도착 전) 화면이 비지 않게.
     val dummyPlace = remember(categoryKey, placeId) { DummyData.findPlaceById(categoryKey, placeId) }
 
-    // 3) 머지 — 백엔드 필드를 우선, 비면 DummyData. 둘 다 없으면 pop back.
+    // 3) 머지 — 백엔드 필드를 우선, 비면 DummyData.
     val place = remember(backend, dummyPlace) { backend?.mergeOnto(dummyPlace, categoryKey) ?: dummyPlace }
     if (place == null) {
-        LaunchedEffect(Unit) { navController.popBackStack() }
+        // backend 응답 도착 후에도 매칭 실패면 진짜 없음 → popBack.
+        // backend == null 인 동안(요청 in-flight)은 popBack 하지 않고 대기 —
+        // 그렇지 않으면 카드 탭 직후 dummyPlace 도 null 이라 즉시 뒤로 튕김.
+        if (backend != null) {
+            LaunchedEffect(Unit) { navController.popBackStack() }
+        }
         return
     }
 
@@ -302,9 +311,27 @@ private fun PlaceDetailContent(
     val isRestroom = place.categoryKey in setOf("restroom", "public_restroom")
 
     if (menuItems.isNotEmpty()) {
+        var isMenuExpanded by remember { mutableStateOf(false) }
+        val visibleMenus = if (isMenuExpanded) menuItems else menuItems.take(5)
         DetailSection(title = "대표 메뉴") {
             Column(verticalArrangement = Arrangement.spacedBy(ScanPangSpacing.sm)) {
-                menuItems.forEach { m -> DetailMenuPriceRow(name = m.name, price = m.price) }
+                visibleMenus.forEach { m -> DetailMenuPriceRow(name = m.name, price = m.price) }
+                if (menuItems.size > 5) {
+                    TextButton(
+                        onClick = { isMenuExpanded = !isMenuExpanded },
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Icon(
+                            imageVector = if (isMenuExpanded) Icons.Rounded.KeyboardArrowUp else Icons.Rounded.KeyboardArrowDown,
+                            contentDescription = null,
+                            modifier = Modifier.size(ScanPangDimens.icon16),
+                        )
+                        Text(
+                            text = if (isMenuExpanded) "접기" else "더보기 (${menuItems.size - 5}개)",
+                            style = ScanPangType.caption12Medium,
+                        )
+                    }
+                }
             }
         }
         DetailScreenDivider()
@@ -587,15 +614,21 @@ private fun PlaceDetailResponse.mergeOnto(fallback: Place?, categoryKey: String)
         if (details["has_disabled"]     as? Boolean == true) add("장애인 화장실")
         if (details["has_child"]        as? Boolean == true) add("유아 화장실")
         if (details["has_diaper_table"] as? Boolean == true) add("기저귀 교환대")
+        // 기도실 카테고리 — facilities 객체 평탄화
+        if (details["wudu"]              as? Boolean == true) add("우두 시설")
+        if (details["gender_separation"] as? Boolean == true) add("남녀 분리")
+        if (details["prayer_mat"]        as? Boolean == true) add("기도 매트")
+        if (details["quran_available"]   as? Boolean == true) add("꾸란 비치")
     }
     val safetyList = buildList {
         if (details["has_cctv"]           as? Boolean == true) add("CCTV")
         if (details["has_emergency_bell"] as? Boolean == true) add("비상벨")
     }
 
-    // 소개 — 할랄 식당은 details.short_description_ko, 그 외는 details.intro (naver scraper) 사용.
+    // 소개 — 할랄 식당: short_description_ko / naver scraper: intro / 기도실: notes.
     val backendDesc = (details["short_description_ko"] as? String)?.trim().orEmpty()
         .ifBlank { (details["intro"] as? String)?.trim().orEmpty() }
+        .ifBlank { (details["notes"] as? String)?.trim().orEmpty() }
 
     return base.copy(
         id = id.ifBlank { base.id },

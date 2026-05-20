@@ -11,8 +11,6 @@ from datetime import datetime, timezone, timedelta
 
 import httpx
 
-from tools.convenience_tools import haversine_m
-
 # ── 경로 ─────────────────────────────────────────────────────────────────────
 
 _DATA_DIR = os.path.join(os.path.dirname(__file__), "..", "rag", "data")
@@ -21,9 +19,13 @@ PRAYER_ROOMS_PATH = os.path.join(_DATA_DIR, "prayer_rooms.json")
 
 # ── 기본 반경 ────────────────────────────────────────────────────────────────
 
+# 할랄 매장은 전국적으로 명동 등 일부 지역에만 19건 등록돼 있어, radius 1km 면
+# 외대 같은 명동 밖 사용자에겐 무조건 0건 — '조건에 맞는 장소 없음' 이 떠버림.
+# 거리 정렬은 ST_Distance 로 정확히 되므로 radius 를 크게 두고 사용자가 거리
+# 보고 판단하게 한다. 50km 면 서울+경기 전역 커버.
 DEFAULT_RADIUS = {
-    "restaurant": 1000,
-    "prayer_room": 2000,
+    "restaurant": 50_000,
+    "prayer_room": 50_000,
 }
 
 # ── 기도 시간 캐시 (같은 날짜+위치면 변하지 않음) ─────────────────────────────
@@ -122,13 +124,12 @@ async def halal_restaurant_search(
     lat: float, lng: float, radius: int = 0, halal_type: str = ""
 ) -> list:
     """
-    halal_restaurants 테이블(PostGIS) 거리 검색.
+    halal_restaurants 테이블(PostGIS) 거리 정렬 검색.
     halal_type: "HALAL_MEAT" / "SEAFOOD" / "VEGGIE" / "" (전체)
-    Returns: 거리순 상위 20개 list[dict]
+    radius 인자는 호환성 위해 받지만 사용하지 않음 — 다른 카테고리와 일관되게
+    거리 정렬 + LIMIT 만 적용. 사용자가 카드에 표시된 거리 보고 판단.
     """
     from core.db import get_pool
-    if radius <= 0:
-        radius = DEFAULT_RADIUS["restaurant"]
     type_filter = halal_type.replace("_", " ").upper() if halal_type else ""
 
     pool = await get_pool()
@@ -146,12 +147,11 @@ async def halal_restaurant_search(
                    lat, lng,
                    ST_Distance(geom, ST_SetSRID(ST_MakePoint($2, $1), 4326)::geography) AS dist
             FROM halal_restaurants
-            WHERE ST_DWithin(geom, ST_SetSRID(ST_MakePoint($2, $1), 4326)::geography, $3)
-              AND ($4 = '' OR UPPER(halal_type) LIKE '%' || $4 || '%')
+            WHERE ($3 = '' OR UPPER(halal_type) LIKE '%' || $3 || '%')
             ORDER BY dist
-            LIMIT 20
+            LIMIT 50
             """,
-            float(lat), float(lng), float(radius), type_filter,
+            float(lat), float(lng), type_filter,
         )
 
     results = []
@@ -222,39 +222,44 @@ def _load_prayer_rooms() -> list:
     return _prayer_rooms_cache
 
 
-def halal_prayer_room_search(lat: float, lng: float, radius: int = 0) -> list:
+async def halal_prayer_room_search(lat: float, lng: float, radius: int = 0) -> list:
     """
-    JSON에서 기도실 검색.
-    Returns: 거리순 상위 5개 list[dict]
+    PostGIS prayer_rooms 테이블 거리 검색 (ST_DWithin + ST_Distance 정렬).
+    Returns: 거리순 list[dict] — schemas.halal.PrayerRoomItem 형식.
     """
+    from core.db import get_pool
     if radius <= 0:
         radius = DEFAULT_RADIUS["prayer_room"]
 
-    rooms = _load_prayer_rooms()
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        rows = await conn.fetch(
+            """
+            SELECT name, name_en, address, floor, open_hours,
+                   facilities::text AS facilities,
+                   availability_status, lat, lng,
+                   ST_Distance(geom, ST_SetSRID(ST_MakePoint($2, $1), 4326)::geography) AS dist
+            FROM prayer_rooms
+            WHERE ST_DWithin(geom, ST_SetSRID(ST_MakePoint($2, $1), 4326)::geography, $3)
+            ORDER BY dist
+            """,
+            float(lat), float(lng), float(radius),
+        )
+
     results = []
-
-    for r in rooms:
-        r_lat = r.get("lat")
-        r_lng = r.get("lng")
-        if r_lat is None or r_lng is None:
-            continue
-
-        dist = haversine_m(lat, lng, r_lat, r_lng)
-        if dist > radius:
-            continue
-
+    for r in rows:
+        try: fac = json.loads(r["facilities"]) if r["facilities"] else {}
+        except Exception: fac = {}
         results.append({
-            "name": r.get("name", ""),
-            "name_en": r.get("name_en", ""),
-            "distance_m": round(dist, 1),
-            "lat": r_lat,
-            "lng": r_lng,
-            "address": r.get("address", ""),
-            "floor": r.get("floor", ""),
-            "open_hours": r.get("open_hours", ""),
-            "facilities": r.get("facilities", {}),
-            "availability_status": r.get("availability_status", "unknown"),
+            "name":               r["name"] or "",
+            "name_en":            r["name_en"] or "",
+            "distance_m":         round(r["dist"], 1),
+            "lat":                float(r["lat"]) if r["lat"] is not None else None,
+            "lng":                float(r["lng"]) if r["lng"] is not None else None,
+            "address":            r["address"] or "",
+            "floor":              r["floor"] or "",
+            "open_hours":         r["open_hours"] or "",
+            "facilities":         fac,
+            "availability_status": r["availability_status"] or "unknown",
         })
-
-    results.sort(key=lambda x: x["distance_m"])
     return results[:5]

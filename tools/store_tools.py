@@ -119,13 +119,22 @@ async def get_store_detail(
     is_outdoor = pre_category in _OUTDOOR
 
     # ── ① 캐시 조회 — outdoor 가 아닐 때만 ──────────────────────────────────
+    # floor_info_seed row 의 addr 는 building 주소 — 나중 fetcher 결과가 이와
+    # 시·구 단위로 다르면(예: '경기 용인시 처인구' vs '경기 고양시 덕양구')
+    # 다른 지역 동명 매장이 잘못 매칭된 케이스라 거절해야 함. 그 검증용 변수.
+    expected_addr_seed = ""
     if not is_outdoor:
         async with pool.acquire() as conn:
             row = await conn.fetchrow(
                 "SELECT * FROM store_details WHERE id = $1", cache_id
             )
-        if row:
+        # floor_info_seed 는 검색 카드용 lightweight row — open_hours/details/
+        # image_urls 비어있음. 사용자가 카드 탭한 지금이 풀필드 fetch 타이밍이라
+        # cache miss 로 취급해 아래 fetcher 디스패치 단계로 흘려보낸다.
+        if row and row["source"] != "floor_info_seed":
             return _row_to_dict(row)
+        if row and row["source"] == "floor_info_seed":
+            expected_addr_seed = row["addr"] or ""
 
     # ── ② 좌표 결정 ─────────────────────────────────────────────────────────
     # lat/lng가 인자로 들어오면 그대로 사용 (마커/GPS 진입).
@@ -168,6 +177,21 @@ async def get_store_detail(
         building_ufid  = place_id,
         category_name  = category_name,
     )
+
+    # 시·구 검증 — floor_info_seed row 의 building addr 와 fetched addr 가 시·구
+    # 단위로 다르면 다른 지역 동명 매장이 잘못 잡힌 케이스('수다방' 외대 →
+    # naver_place 가 고양시 수다방으로 fallback) 라 fetched 거절. floor_info_seed
+    # row 는 그대로 유지.
+    def _district(a: str) -> str:
+        if not a: return ""
+        parts = a.split()
+        return " ".join(parts[1:3]) if len(parts) >= 3 else ""
+    if expected_addr_seed and fetched.get("addr"):
+        exp_d = _district(expected_addr_seed)
+        got_d = _district(fetched.get("addr", ""))
+        if exp_d and got_d and exp_d != got_d:
+            print(f"[store_tools] 시·구 불일치 거절: expected={exp_d!r} got={got_d!r} — floor_info_seed 유지")
+            return _row_to_dict(row)
 
     # fetcher 결과가 비어있으면 Kakao 1차 메타로 fallback
     phone      = fetched.get("phone")      or kakao.get("phone", "")

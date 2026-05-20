@@ -195,33 +195,9 @@ fun SearchDefaultScreen(
             }
     }
 
-    // Home quick action 등 외부에서 사전입력 query 를 흘려보내면 진입 시 한 번 반영.
-    LaunchedEffect(Unit) {
-        val entry = runCatching { navController.getBackStackEntry(AppRoutes.Search) }.getOrNull()
-            ?: return@LaunchedEffect
-        entry.savedStateHandle
-            .getStateFlow<String?>(AppRoutes.SearchSavedStatePendingQueryKey, null)
-            .collect { pending ->
-                if (!pending.isNullOrEmpty()) {
-                    query = pending
-                    historyPrefs.add(pending)
-                    recent = historyPrefs.getRecent()
-                    viewModel.searchPlaces(pending, lat = userLat, lng = userLng)
-                    entry.savedStateHandle[AppRoutes.SearchSavedStatePendingQueryKey] = null
-                }
-            }
-    }
-
-    // 추천 카테고리 — 검색 탭 진입 시점에 한 번 섞고 동일 셔플 유지.
-    val recommendCategories = remember(valueAdded) {
-        val pinned = pinnedRecommendsFor(valueAdded)
-        val fillCount = (SEARCH_RECOMMEND_COUNT - pinned.size).coerceAtLeast(0)
-        val randomFill = commonRecommendPool().shuffled().take(fillCount)
-        pinned + randomFill
-    }
-
     // 검색 트리거 시점에 매번 lastLocation 받아서 콜백 안에서 검색 호출.
     // LaunchedEffect 의 비동기 GPS 콜백이 아직 안 도착해서 userLat/Lng 가 null 인 경우 방어.
+    // (LaunchedEffect 등 위쪽에서 호출하므로 정의가 먼저 와야 — local function 은 hoisting 안 됨.)
     fun searchWithFreshLocation(q: String) {
         val hasPermission =
             android.content.pm.PackageManager.PERMISSION_GRANTED ==
@@ -253,6 +229,33 @@ fun SearchDefaultScreen(
             .addOnFailureListener {
                 viewModel.searchPlaces(q, lat = userLat, lng = userLng)
             }
+    }
+
+    // Home quick action 등 외부에서 사전입력 query 를 흘려보내면 진입 시 한 번 반영.
+    LaunchedEffect(Unit) {
+        val entry = runCatching { navController.getBackStackEntry(AppRoutes.Search) }.getOrNull()
+            ?: return@LaunchedEffect
+        entry.savedStateHandle
+            .getStateFlow<String?>(AppRoutes.SearchSavedStatePendingQueryKey, null)
+            .collect { pending ->
+                if (!pending.isNullOrEmpty()) {
+                    query = pending
+                    historyPrefs.add(pending)
+                    recent = historyPrefs.getRecent()
+                    // GPS 비동기 콜백이 아직 안 도착해 userLat/Lng 가 null 일 수 있음.
+                    // searchWithFreshLocation 으로 위치 받은 직후 검색.
+                    searchWithFreshLocation(pending)
+                    entry.savedStateHandle[AppRoutes.SearchSavedStatePendingQueryKey] = null
+                }
+            }
+    }
+
+    // 추천 카테고리 — 검색 탭 진입 시점에 한 번 섞고 동일 셔플 유지.
+    val recommendCategories = remember(valueAdded) {
+        val pinned = pinnedRecommendsFor(valueAdded)
+        val fillCount = (SEARCH_RECOMMEND_COUNT - pinned.size).coerceAtLeast(0)
+        val randomFill = commonRecommendPool().shuffled().take(fillCount)
+        pinned + randomFill
     }
 
     fun submitSearch(raw: String) {

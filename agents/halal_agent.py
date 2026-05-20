@@ -193,11 +193,11 @@ async def run_halal_agent(req: HalalRequest) -> dict:
         qibla = QiblaData(**data)
 
     elif category == "restaurant":
-        data = halal_restaurant_search(req.lat, req.lng, radius, halal_type)
+        data = await halal_restaurant_search(req.lat, req.lng, radius, halal_type)
         restaurants = [HalalRestaurant(**r) for r in data]
 
     elif category == "prayer_room":
-        data = halal_prayer_room_search(req.lat, req.lng, radius)
+        data = await halal_prayer_room_search(req.lat, req.lng, radius)
         prayer_rooms = [PrayerRoomDetail(**r) for r in data]
 
     else:

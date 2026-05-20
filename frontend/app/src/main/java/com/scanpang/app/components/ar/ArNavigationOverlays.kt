@@ -83,6 +83,7 @@ import com.scanpang.app.ui.theme.ScanPangType
 fun ArNavTopHud(
     modifier: Modifier = Modifier,
     onCameraClick: () -> Unit,
+    isCameraFrozen: Boolean = false,
     onSearchClick: () -> Unit,
     destinationPill: @Composable () -> Unit,
 ) {
@@ -115,6 +116,7 @@ fun ArNavTopHud(
                 icon = Icons.Rounded.CameraAlt,
                 contentDescription = "화면 캡처",
                 onClick = onCameraClick,
+                isActive = isCameraFrozen,
                 modifier = Modifier.align(Alignment.CenterStart),
             )
             Box(Modifier.align(Alignment.Center)) {
@@ -136,6 +138,7 @@ fun ArNavWhiteFab(
     contentDescription: String,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
+    isActive: Boolean = false,
 ) {
     Surface(
         modifier = modifier
@@ -143,7 +146,7 @@ fun ArNavWhiteFab(
             .clip(CircleShape)
             .clickable(onClick = onClick),
         shape = CircleShape,
-        color = ScanPangColors.ArOverlayWhite80,
+        color = if (isActive) ScanPangColors.ArPrimaryTranslucent else ScanPangColors.ArOverlayWhite80,
         shadowElevation = ScanPangDimens.arPoiCardShadowElevation,
     ) {
         Box(contentAlignment = Alignment.Center) {
@@ -151,7 +154,7 @@ fun ArNavWhiteFab(
                 imageVector = icon,
                 contentDescription = contentDescription,
                 modifier = Modifier.size(ScanPangDimens.arNavTopFabIcon),
-                tint = ScanPangColors.OnSurfaceStrong,
+                tint = if (isActive) Color.White else ScanPangColors.OnSurfaceStrong,
             )
         }
     }

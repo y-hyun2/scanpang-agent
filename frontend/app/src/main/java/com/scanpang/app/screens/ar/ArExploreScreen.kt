@@ -6,6 +6,7 @@ import android.location.Location
 import android.opengl.Matrix
 import android.speech.SpeechRecognizer
 import android.util.Log
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
@@ -18,7 +19,6 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -29,14 +29,19 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.CameraAlt
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.CropFree
 import androidx.compose.material.icons.rounded.FilterList
 import androidx.compose.material.icons.rounded.Home
 import androidx.compose.material.icons.rounded.History
 import androidx.compose.material.icons.rounded.KeyboardArrowDown
+import androidx.compose.material.icons.rounded.Pause
 import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -144,6 +149,7 @@ private data class DynamicPoi(
     val isPending: Boolean = false,
     val storeCount: Int = 0,
     val matchingStores: List<SearchResultItem> = emptyList(),
+    val bdMgtSn: String? = null,
 )
 
 private data class BuildingCandidate(
@@ -183,10 +189,6 @@ fun ArExploreScreen(
                     text = "안녕하세요! 스캔팡입니다. 주변 장소를 AR로 안내해 드릴게요.",
                     isUser = false,
                 ),
-                ArAgentChatMessage(
-                    text = "아미나님, 오늘은 어떤 할랄 맛집을 찾으세요?",
-                    isUser = true,
-                ),
             ),
         )
     }
@@ -202,7 +204,15 @@ fun ArExploreScreen(
     var filterStores by remember { mutableStateOf<List<SearchResultItem>>(emptyList()) }
     var isSearchOpen by remember { mutableStateOf(false) }
     var showArSearchResults by remember { mutableStateOf(false) }
+    var arSearchQuery by remember { mutableStateOf("") }
 
+    BackHandler(enabled = isSearchOpen) {
+        arSearchQuery = ""
+        showArSearchResults = false
+        isSearchOpen = false
+    }
+
+    var isFrozen by remember { mutableStateOf(false) }
     var isTtsOn by remember { mutableStateOf(true) }
 
     var isSttListening by remember { mutableStateOf(false) }
@@ -546,6 +556,7 @@ fun ArExploreScreen(
                                                 distance = cand.dist,
                                                 latitude = markerPos.first,
                                                 longitude = markerPos.second,
+                                                bdMgtSn = cand.b.bd_mgt_sn,
                                             )
                                         } else {
                                             val nearby = filterStores.filter { store ->
@@ -696,17 +707,18 @@ fun ArExploreScreen(
                         .fillMaxWidth()
                         .height(
                             maxOf(
-                                ScanPangDimens.arCircleBtn36,
+                                ScanPangDimens.arSideFab44,
                                 ScanPangDimens.arStatusPillHeight,
                             ),
                         ),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     ArCircleIconButton(
-                        icon = Icons.Rounded.Home,
-                        contentDescription = "홈",
-                        onClick = { navController.popBackStack() },
-                        modifier = Modifier,
+                        icon = Icons.Rounded.CameraAlt,
+                        contentDescription = "화면 고정",
+                        onClick = { isFrozen = !isFrozen },
+                        surfaceColor = if (isFrozen) ScanPangColors.ArPrimaryTranslucent else ScanPangColors.ArOverlayWhite80,
+                        iconTint = if (isFrozen) Color.White else ScanPangColors.OnSurfaceStrong,
                     )
                     Box(
                         modifier = Modifier
@@ -715,16 +727,19 @@ fun ArExploreScreen(
                         contentAlignment = Alignment.Center,
                     ) {
                         ArExploreStatusPill(
+                            isFrozen = isFrozen,
                             selectedFilters = categorySelection,
                             hasHighAccuracy = hasAchievedHighAccuracy,
-                            onClick = { isFilterOpen = true },
+                            onClick = {
+                                if (isFrozen) isFrozen = false
+                                else isFilterOpen = true
+                            },
                         )
                     }
                     ArCircleIconButton(
                         icon = Icons.Rounded.Search,
                         contentDescription = "검색",
                         onClick = { isSearchOpen = true },
-                        modifier = Modifier,
                     )
                 }
             }
@@ -743,6 +758,14 @@ fun ArExploreScreen(
                             selectedPoiOverlay = poi.arOverlay
                             selectedPoiDocent = null
                             activeDetailTab = ArPoiTabBuilding
+                            if (poi.bdMgtSn != null) {
+                                viewModel.queryPlace(
+                                    heading = currentHeading,
+                                    lat = currentLat,
+                                    lng = currentLng,
+                                    bdMgtSn = poi.bdMgtSn,
+                                )
+                            }
                         }
                     },
                 )
@@ -758,11 +781,25 @@ fun ArExploreScreen(
                 )
             }
 
+            // 하단 그라데이션 — transparent → white 50%
+            Box(
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .fillMaxWidth()
+                    .height(300.dp)
+                    .background(
+                        Brush.verticalGradient(
+                            colors = listOf(Color.Transparent, Color.White.copy(alpha = 0.5f)),
+                        ),
+                    ),
+            )
+
             // ── 하단 채팅 섹션 ──
             Column(
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
                     .fillMaxWidth()
+                    .padding(bottom = ScanPangDimens.mainTabContentBottomInset)
                     .navigationBarsPadding(),
             ) {
                 ArExploreInteractiveChatSection(
@@ -819,13 +856,13 @@ fun ArExploreScreen(
             // ── 필터 패널 ──
             AnimatedVisibility(
                 visible = isFilterOpen,
-                enter = slideInVertically { it },
-                exit = slideOutVertically { it },
+                enter = slideInVertically { -it },
+                exit = slideOutVertically { -it },
             ) {
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
-                        .background(ScanPangColors.ArOverlayScrimDark)
+                        .background(Color.Transparent)
                         .clickable { isFilterOpen = false },
                 ) {
                     Surface(
@@ -833,10 +870,10 @@ fun ArExploreScreen(
                             .align(Alignment.TopCenter)
                             .fillMaxWidth()
                             .padding(horizontal = ScanPangDimens.arFilterPanelHorizontal)
-                            .padding(top = ScanPangSpacing.lg)
+                            .padding(top = ScanPangDimens.arFilterPanelTopOffset)
                             .clickable(enabled = false) { },
-                        shape = ScanPangShapes.arFilterPanelTop,
-                        color = ScanPangColors.Surface,
+                        shape = RoundedCornerShape(16.dp),
+                        color = ScanPangColors.ArOverlayWhite93,
                         shadowElevation = ScanPangDimens.arPoiCardShadowElevation,
                     ) {
                         Column(
@@ -863,13 +900,13 @@ fun ArExploreScreen(
             // ── 검색 패널 ──
             AnimatedVisibility(
                 visible = isSearchOpen,
-                enter = slideInVertically { it },
-                exit = slideOutVertically { it },
+                enter = slideInVertically { -it },
+                exit = slideOutVertically { -it },
             ) {
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
-                        .background(ScanPangColors.ArOverlayScrimDark)
+                        .background(Color.Transparent)
                         .clickable { isSearchOpen = false; showArSearchResults = false },
                 ) {
                     Surface(
@@ -880,7 +917,7 @@ fun ArExploreScreen(
                             .padding(top = ScanPangSpacing.lg)
                             .clickable(enabled = false) { },
                         shape = ScanPangShapes.arSearchPanel,
-                        color = ScanPangColors.Surface,
+                        color = ScanPangColors.ArOverlayWhite93,
                         shadowElevation = ScanPangDimens.arPoiCardShadowElevation,
                     ) {
                         Column(
@@ -905,14 +942,28 @@ fun ArExploreScreen(
                                         tint = ScanPangColors.OnSurfaceMuted,
                                         modifier = Modifier.size(ScanPangDimens.icon20),
                                     )
-                                    Text(
-                                        text = "장소·메뉴 검색",
-                                        style = ScanPangType.searchPlaceholderRegular,
-                                        color = ScanPangColors.OnSurfacePlaceholder,
+                                    BasicTextField(
+                                        value = arSearchQuery,
+                                        onValueChange = { arSearchQuery = it; if (it.isNotEmpty()) showArSearchResults = true },
+                                        modifier = Modifier.weight(1f),
+                                        textStyle = ScanPangType.body14Regular.copy(color = ScanPangColors.OnSurfaceStrong),
+                                        cursorBrush = SolidColor(ScanPangColors.Primary),
+                                        singleLine = true,
+                                        decorationBox = { inner ->
+                                            if (arSearchQuery.isEmpty()) {
+                                                Text(
+                                                    text = "장소·메뉴 검색",
+                                                    style = ScanPangType.searchPlaceholderRegular,
+                                                    color = ScanPangColors.OnSurfacePlaceholder,
+                                                )
+                                            }
+                                            inner()
+                                        },
                                     )
                                 }
                                 IconButton(
                                     onClick = {
+                                        arSearchQuery = ""
                                         isSearchOpen = false
                                         showArSearchResults = false
                                     },
@@ -1217,11 +1268,48 @@ private fun ArFilteredStoreListOverlay(
 
 @Composable
 private fun ArExploreStatusPill(
+    isFrozen: Boolean,
     selectedFilters: Set<String>,
     hasHighAccuracy: Boolean = true,
     onClick: () -> Unit,
 ) {
     when {
+        isFrozen -> {
+            Surface(
+                modifier = Modifier
+                    .height(ScanPangDimens.arStatusPillHeight)
+                    .clip(CircleShape)
+                    .clickable(onClick = onClick),
+                shape = CircleShape,
+                color = ScanPangColors.Primary,
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = ScanPangDimens.arStatusPillHorizontalPad),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(ScanPangSpacing.xs),
+                ) {
+                    Icon(
+                        imageVector = Icons.Rounded.Pause,
+                        contentDescription = null,
+                        modifier = Modifier.size(ScanPangDimens.icon18),
+                        tint = Color.White,
+                    )
+                    Text(
+                        text = "화면 고정 중",
+                        style = ScanPangType.arStatusPill15,
+                        color = Color.White,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    Icon(
+                        imageVector = Icons.Rounded.KeyboardArrowDown,
+                        contentDescription = null,
+                        modifier = Modifier.size(ScanPangDimens.arNavDestinationChevron),
+                        tint = Color.White,
+                    )
+                }
+            }
+        }
         !hasHighAccuracy -> {
             Surface(
                 modifier = Modifier

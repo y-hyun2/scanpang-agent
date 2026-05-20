@@ -425,55 +425,57 @@ private fun ArPoiBuildingTabBody(arOverlay: ArOverlay? = null) {
     }
 
     Column(modifier = Modifier.fillMaxWidth()) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(6.dp),
-            verticalAlignment = Alignment.Top,
-        ) {
-            Icon(
-                imageVector = Icons.Rounded.Info,
-                contentDescription = null,
-                tint = ScanPangColors.Primary,
-                modifier = Modifier.size(18.dp),
-            )
-            Text(
-                text = arOverlay?.let { "${it.name} · ${it.category}" }
-                    ?: "명동 중심 대형 복합 쇼핑몰. 지하2층~지상8층, 패션·뷰티·F&B 입점.",
-                style = ScanPangType.body14Regular,
-                color = ScanPangColors.OnSurfaceStrong,
-                modifier = Modifier.weight(1f),
-            )
-        }
-        Spacer(modifier = Modifier.height(ScanPangSpacing.md))
-        val gridItems = listOf(
-            Triple(Icons.Rounded.AccessTime, arOverlay?.open_hours?.ifEmpty { null } ?: "10:00–22:00", false),
-            Triple(Icons.Rounded.Stairs, "B2~8F", false),
-            Triple(Icons.Rounded.Place, "명동 중앙로 26", false),
-            Triple(Icons.Rounded.LocalPhone, "02-778-1234", false),
-            Triple(Icons.Rounded.LocalParking, arOverlay?.parking_info?.ifEmpty { null } ?: "주차 가능", false),
-            Triple(Icons.Rounded.ConfirmationNumber, arOverlay?.admission_fee?.ifEmpty { null } ?: "무료 입장", false),
-            Triple(Icons.Rounded.Language, "홈페이지", true),
-            Triple(Icons.Rounded.Restaurant, arOverlay?.halal_info?.ifEmpty { null } ?: "할랄 식당 有", false),
-        )
-        gridItems.chunked(2).forEach { row ->
+        val descText = arOverlay?.let {
+            listOfNotNull(it.name.ifEmpty { null }, it.category.ifEmpty { null }).joinToString(" · ")
+        }.orEmpty()
+        if (descText.isNotEmpty()) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                verticalAlignment = Alignment.Top,
             ) {
-                row.forEach { (icon, label, isLink) ->
-                    ArPoiInfoChip(
-                        icon = icon,
-                        text = label,
-                        modifier = Modifier.weight(1f),
-                        textColor = if (isLink) ScanPangColors.Primary else ScanPangColors.OnSurfaceStrong,
-                        iconTint = if (isLink) ScanPangColors.Primary else ScanPangColors.OnSurfaceMuted,
-                        background = if (label.contains("할랄")) DetailHalalChipBg else DetailChipBg,
-                        strongText = label.contains("할랄"),
-                    )
-                }
-                if (row.size == 1) Spacer(modifier = Modifier.weight(1f))
+                Icon(
+                    imageVector = Icons.Rounded.Info,
+                    contentDescription = null,
+                    tint = ScanPangColors.Primary,
+                    modifier = Modifier.size(18.dp),
+                )
+                Text(
+                    text = descText,
+                    style = ScanPangType.body14Regular,
+                    color = ScanPangColors.OnSurfaceStrong,
+                    modifier = Modifier.weight(1f),
+                )
             }
-            Spacer(modifier = Modifier.height(8.dp))
+        }
+        val gridItems = listOfNotNull(
+            arOverlay?.open_hours?.ifEmpty { null }?.let { Triple(Icons.Rounded.AccessTime, it, false) },
+            arOverlay?.parking_info?.ifEmpty { null }?.let { Triple(Icons.Rounded.LocalParking, it, false) },
+            arOverlay?.admission_fee?.ifEmpty { null }?.let { Triple(Icons.Rounded.ConfirmationNumber, it, false) },
+            arOverlay?.halal_info?.ifEmpty { null }?.let { Triple(Icons.Rounded.Restaurant, it, false) },
+        )
+        if (gridItems.isNotEmpty()) {
+            Spacer(modifier = Modifier.height(ScanPangSpacing.md))
+            gridItems.chunked(2).forEach { row ->
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    row.forEach { (icon, label, isLink) ->
+                        ArPoiInfoChip(
+                            icon = icon,
+                            text = label,
+                            modifier = Modifier.weight(1f),
+                            textColor = if (isLink) ScanPangColors.Primary else ScanPangColors.OnSurfaceStrong,
+                            iconTint = if (isLink) ScanPangColors.Primary else ScanPangColors.OnSurfaceMuted,
+                            background = if (label.contains("할랄")) DetailHalalChipBg else DetailChipBg,
+                            strongText = label.contains("할랄"),
+                        )
+                    }
+                    if (row.size == 1) Spacer(modifier = Modifier.weight(1f))
+                }
+                Spacer(modifier = Modifier.height(8.dp))
+            }
         }
 
         Spacer(modifier = Modifier.height(ScanPangSpacing.md))

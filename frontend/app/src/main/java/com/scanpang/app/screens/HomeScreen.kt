@@ -113,14 +113,18 @@ fun HomeScreen(
     val showQiblaCard = valueAdded == ValueAdded.HALAL
 
     // ── 우리 백엔드 통합 ─────────────────────────────────────────────────────
-    // 기도시간·키블라는 API에서 실시간 fetch (DummyData 사용 안 함).
-    LaunchedEffect(Unit) {
-        viewModel.loadPrayerTimesAndQibla()
+    // 기도시간·키블라는 할랄 모드 사용자에게만 노출되므로 그 때만 /halal/query 호출.
+    // 비건/기본 모드에서는 카드가 안 보이는데 API 만 매번 호출되던 불필요 트래픽 제거.
+    LaunchedEffect(showQiblaCard) {
+        if (showQiblaCard) viewModel.loadPrayerTimesAndQibla()
     }
     val prayerTimes by viewModel.prayerTimes.collectAsState()
     val qibla by viewModel.qibla.collectAsState()
     val qiblaText = qibla?.let { "키블라 방향: ${it.direction.toInt()}°" } ?: "키블라 방향: 292°"
-    val nextPrayerText = prayerTimes?.let { "다음 기도: ${it.next_prayer} ${it.next_prayer_time}" } ?: "다음 기도: Dhuhr 12:15"
+    val nextPrayerText = prayerTimes
+        ?.takeIf { it.next_prayer.isNotBlank() }
+        ?.let { "다음 기도: ${it.next_prayer} ${it.next_prayer_time}" }
+        ?: "기도 시간을 불러올 수 없습니다. 잠시 후 다시 시도해 주세요"
 
     // 현재 위치 — GPS + 역지오코딩 (권한 없거나 실패 시 fallback 문구).
     var locationText by remember { mutableStateOf("현재 위치를 가져오는 중...") }

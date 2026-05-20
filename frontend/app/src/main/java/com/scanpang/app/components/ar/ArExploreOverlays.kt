@@ -32,6 +32,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
@@ -39,15 +40,12 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowRight
 import androidx.compose.material.icons.automirrored.rounded.Send
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.TextField
-import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.material.icons.rounded.AccountBalance
 import androidx.compose.material.icons.rounded.CameraAlt
 import androidx.compose.material.icons.rounded.Check
@@ -70,14 +68,15 @@ import androidx.compose.material.icons.rounded.Store
 import androidx.compose.material.icons.rounded.Wc
 import androidx.compose.material.icons.rounded.Mic
 import androidx.compose.material.icons.rounded.Headset
+import androidx.compose.material.icons.rounded.HeadsetOff
 import androidx.compose.material.icons.rounded.Pause
 import androidx.compose.material.icons.rounded.Place
 import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material.icons.automirrored.rounded.VolumeUp
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -89,8 +88,10 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.scanpang.app.ui.theme.ScanPangColors
@@ -521,7 +522,6 @@ fun ArExploreInteractiveChatSection(
     Column(
         modifier = modifier
             .fillMaxWidth()
-            .background(ScanPangColors.ArBottomChatScrim)
             .padding(horizontal = ScanPangDimens.arTopBarHorizontal)
             .padding(bottom = ScanPangDimens.arChatAreaBottomPad),
         verticalArrangement = Arrangement.spacedBy(ScanPangDimens.arChatBubbleGap),
@@ -530,7 +530,7 @@ fun ArExploreInteractiveChatSection(
             state = listState,
             modifier = Modifier
                 .fillMaxWidth()
-                .heightIn(max = 220.dp),
+                .heightIn(max = 172.dp),
             verticalArrangement = Arrangement.spacedBy(ScanPangDimens.arChatBubbleGap),
         ) {
             itemsIndexed(messages, key = { index, msg -> "$index-${msg.isUser}-${msg.text}" }) { _, msg ->
@@ -539,6 +539,7 @@ fun ArExploreInteractiveChatSection(
                     horizontalArrangement = if (msg.isUser) Arrangement.End else Arrangement.Start,
                 ) {
                     Surface(
+                        modifier = Modifier.widthIn(max = 300.dp),
                         shape = if (msg.isUser) ScanPangShapes.arBubbleUser else ScanPangShapes.arBubbleAgent,
                         color = if (msg.isUser) ArAgentUserBubbleBlue else Color.White,
                         shadowElevation = if (msg.isUser) 0.dp else 2.dp,
@@ -556,13 +557,10 @@ fun ArExploreInteractiveChatSection(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .heightIn(min = ScanPangDimens.arInputBarMinHeight)
+                .heightIn(min = ScanPangDimens.arInputBarMinHeight, max = 120.dp)
                 .clip(ScanPangShapes.arInputPill)
                 .background(ScanPangColors.ArOverlayWhite93)
-                .padding(
-                    horizontal = ScanPangDimens.arInputInnerPadH,
-                    vertical = ScanPangDimens.arInputInnerPadV,
-                ),
+                .padding(horizontal = 6.dp, vertical = 6.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(ScanPangSpacing.sm),
         ) {
@@ -570,34 +568,35 @@ fun ArExploreInteractiveChatSection(
                 isListening = isSttListening,
                 onClick = onMicClick,
             )
-            TextField(
+            BasicTextField(
                 value = inputText,
                 onValueChange = onInputChange,
                 modifier = Modifier.weight(1f),
-                placeholder = {
-                    Text(
-                        text = "무엇이든 물어보세요",
-                        style = ScanPangType.searchPlaceholderRegular,
-                        color = ScanPangColors.OnSurfacePlaceholder,
-                    )
-                },
+                singleLine = false,
+                maxLines = 4,
                 textStyle = ScanPangType.body15Medium.copy(color = ScanPangColors.OnSurfaceStrong),
-                singleLine = true,
-                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
-                keyboardActions = KeyboardActions(onSend = { onSend() }),
-                colors = TextFieldDefaults.colors(
-                    focusedContainerColor = Color.Transparent,
-                    unfocusedContainerColor = Color.Transparent,
-                    disabledContainerColor = Color.Transparent,
-                    focusedIndicatorColor = Color.Transparent,
-                    unfocusedIndicatorColor = Color.Transparent,
-                    disabledIndicatorColor = Color.Transparent,
-                    cursorColor = ScanPangColors.Primary,
-                ),
+                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Default),
+                cursorBrush = SolidColor(ScanPangColors.Primary),
+                decorationBox = { innerTextField ->
+                    Box(contentAlignment = Alignment.CenterStart) {
+                        if (inputText.isEmpty()) {
+                            Text(
+                                text = "무엇이든 물어보세요",
+                                style = ScanPangType.searchPlaceholderRegular,
+                                color = ScanPangColors.OnSurfacePlaceholder,
+                            )
+                        }
+                        innerTextField()
+                    }
+                },
             )
-            IconButton(
-                onClick = onSend,
-                enabled = inputText.isNotBlank(),
+            Box(
+                modifier = Modifier
+                    .size(36.dp)
+                    .clip(RoundedCornerShape(16.dp))
+                    .background(Color(0xFF6B7280).copy(alpha = 0.1f))
+                    .clickable(enabled = inputText.isNotBlank()) { onSend() },
+                contentAlignment = Alignment.Center,
             ) {
                 Icon(
                     imageVector = Icons.AutoMirrored.Rounded.Send,
@@ -992,29 +991,13 @@ fun ArFilterChipRowMulti(
     }
 }
 
-data class ArExploreCategoryChipSpec(
-    val label: String,
-    val icon: ImageVector,
-    val iconTintUnselected: Color,
-)
+data class ArExploreCategoryChipSpec(val label: String)
 
-/**
- * AR 탐색 필터 패널 — Figma(아이콘+텍스트 칩, 상단 필터/초기화, 하단 필터 적용).
- */
 fun arExploreCategoryChipSpecs(): List<ArExploreCategoryChipSpec> = listOf(
-    ArExploreCategoryChipSpec("쇼핑", Icons.Rounded.LocalMall, ScanPangColors.CategoryMall),
-    ArExploreCategoryChipSpec("편의점", Icons.Rounded.Store, ScanPangColors.CategoryMall),
-    ArExploreCategoryChipSpec("식당", Icons.Rounded.Restaurant, ScanPangColors.CategoryRestaurant),
-    ArExploreCategoryChipSpec("카페", Icons.Rounded.Coffee, ScanPangColors.CategoryCafe),
-    ArExploreCategoryChipSpec("환전소", Icons.Rounded.CurrencyExchange, ScanPangColors.CategoryExchange),
-    ArExploreCategoryChipSpec("은행", Icons.Rounded.AccountBalance, ScanPangColors.CategoryExchange),
-    ArExploreCategoryChipSpec("ATM", Icons.Rounded.LocalAtm, ScanPangColors.CategoryExchange),
-    ArExploreCategoryChipSpec("병원", Icons.Rounded.LocalHospital, ScanPangColors.CategoryMedical),
-    ArExploreCategoryChipSpec("지하철역", Icons.Rounded.DirectionsTransit, ScanPangColors.Success),
-    ArExploreCategoryChipSpec("화장실", Icons.Rounded.Wc, Color(0xFF0D9488)),
-    ArExploreCategoryChipSpec("물품보관함", Icons.Rounded.Luggage, Color(0xFF0D9488)),
-    ArExploreCategoryChipSpec("약국", Icons.Rounded.Medication, ScanPangColors.CategoryMedical),
-)
+    "쇼핑", "편의점", "식당", "카페",
+    "환전소", "은행", "ATM", "병원",
+    "지하철역", "화장실", "물품보관함", "약국",
+).map { ArExploreCategoryChipSpec(it) }
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
@@ -1067,39 +1050,39 @@ fun ArExploreFilterPanelFigma(
                 Spacer(modifier = Modifier.width(ScanPangSpacing.xs))
                 Text(
                     text = "초기화",
-                    style = ScanPangType.body14Regular,
+                    style = ScanPangType.chip13Medium,
                     color = ScanPangColors.OnSurfaceMuted,
                 )
             }
         }
         FlowRow(
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(ScanPangSpacing.sm),
-            verticalArrangement = Arrangement.spacedBy(ScanPangSpacing.sm),
+            horizontalArrangement = Arrangement.spacedBy(5.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
             categorySpecs.forEach { spec ->
                 val selected = spec.label in categorySelection
                 Surface(
                     modifier = Modifier
-                        .clip(ScanPangShapes.pill36)
+                        .clip(ScanPangShapes.radius12)
                         .clickable { onCategoryToggle(spec.label) },
-                    shape = ScanPangShapes.pill36,
+                    shape = ScanPangShapes.radius12,
                     color = if (selected) ScanPangColors.Primary else ScanPangColors.Surface,
                     shadowElevation = if (selected) 0.dp else 2.dp,
                 ) {
                     Row(
                         modifier = Modifier.padding(
-                            horizontal = ScanPangSpacing.md,
-                            vertical = ScanPangDimens.chipPadVertical + 2.dp,
+                            horizontal = 14.dp,
+                            vertical = 5.dp,
                         ),
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(ScanPangSpacing.xs),
                     ) {
                         Icon(
-                            imageVector = spec.icon,
+                            imageVector = categoryIcon(spec.label),
                             contentDescription = null,
-                            modifier = Modifier.size(18.dp),
-                            tint = if (selected) Color.White else spec.iconTintUnselected,
+                            modifier = Modifier.size(ScanPangDimens.icon16),
+                            tint = if (selected) Color.White else categoryIconTint(spec.label),
                         )
                         Text(
                             text = spec.label,
@@ -1117,21 +1100,15 @@ fun ArExploreFilterPanelFigma(
             modifier = Modifier
                 .fillMaxWidth()
                 .height(ScanPangDimens.searchBarHeightDefault),
-            shape = ScanPangShapes.radius12,
+            shape = ScanPangShapes.radius14,
             colors = ButtonDefaults.buttonColors(
                 containerColor = ScanPangColors.Primary,
                 contentColor = Color.White,
             ),
         ) {
-            Icon(
-                imageVector = Icons.Rounded.Check,
-                contentDescription = null,
-                modifier = Modifier.size(ScanPangDimens.icon20),
-            )
-            Spacer(modifier = Modifier.width(ScanPangSpacing.sm))
             Text(
                 text = "필터 적용",
-                style = ScanPangType.body15Medium,
+                style = ScanPangType.body15Medium.copy(fontWeight = FontWeight.Bold),
             )
         }
         Spacer(modifier = Modifier.height(ScanPangDimens.arFilterApplyBottom))
@@ -1144,26 +1121,20 @@ fun BoxScope.ArExploreSideColumn(
     isTtsOn: Boolean,
     isTtsPlaying: Boolean = false,
 ) {
-    Column(
+    ArExploreRoundSideButton(
+        icon = if (isTtsOn) Icons.Rounded.Headset else Icons.Rounded.HeadsetOff,
+        contentDescription = "음성 안내",
+        onClick = onTtsClick,
+        surfaceColor = ScanPangColors.ArOverlayWhite85,
+        iconTint = if (isTtsOn) ScanPangColors.OnSurfaceStrong else ScanPangColors.ArTtsOffIconTint,
         modifier = Modifier
             .align(Alignment.TopEnd)
             .padding(
                 end = ScanPangDimens.arSideColumnEnd,
                 top = ScanPangDimens.arSideColumnTop,
             )
-            .width(ScanPangDimens.arSideColumnWidth),
-        verticalArrangement = Arrangement.spacedBy(ScanPangDimens.arSideIconGap),
-        horizontalAlignment = Alignment.CenterHorizontally,
-    ) {
-        ArExploreRoundSideButton(
-            icon = Icons.Rounded.Headset,
-            contentDescription = "음성 안내",
-            onClick = onTtsClick,
-            surfaceColor = ScanPangColors.ArOverlayWhite85,
-            iconTint = if (isTtsOn) ScanPangColors.OnSurfaceStrong else ScanPangColors.ArTtsOffIconTint,
-            modifier = Modifier.headsetPulseIfTtsPlaying(isTtsPlaying && isTtsOn),
-        )
-    }
+            .headsetPulseIfTtsPlaying(isTtsPlaying && isTtsOn),
+    )
 }
 
 @Composable
@@ -1220,145 +1191,145 @@ fun ArExploreSearchPanelContent(
     modifier: Modifier = Modifier,
 ) {
     Column(
-        modifier = modifier.verticalScroll(rememberScrollState()),
-        verticalArrangement = Arrangement.spacedBy(ScanPangSpacing.md),
+        modifier = modifier,
+        verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        ArExploreSearchEditableBar(
-            query = query,
-            onQueryChange = onQueryChange,
-            placeholder = "장소, 건물, 매장 검색",
-            onSearchIme = onSubmitSearch,
-        )
-        if (!showResultList && recentQueries.isNotEmpty()) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Text(
-                    text = "최근 검색",
-                    style = ScanPangType.sectionTitle16,
-                    color = ScanPangColors.OnSurfaceStrong,
-                )
-                TextButton(
-                    onClick = onRecentClearAll,
-                    contentPadding = PaddingValues(horizontal = ScanPangSpacing.sm, vertical = ScanPangSpacing.xs),
-                ) {
-                    Text(
-                        text = "전체 삭제",
-                        style = ScanPangType.caption12Medium,
-                        color = ScanPangColors.OnSurfaceMuted,
-                    )
-                }
-            }
-            recentQueries.forEach { q ->
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clickable { onRecentQueryClick(q) }
-                        .padding(vertical = ScanPangSpacing.sm),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(ScanPangSpacing.sm),
-                ) {
-                    Icon(
-                        imageVector = Icons.Rounded.History,
-                        contentDescription = null,
-                        tint = ScanPangColors.OnSurfaceMuted,
-                        modifier = Modifier.size(ScanPangDimens.icon18),
-                    )
-                    Text(
-                        text = q,
-                        style = ScanPangType.body14Regular,
-                        color = ScanPangColors.OnSurfaceStrong,
-                        modifier = Modifier.weight(1f),
-                    )
-                    IconButton(
-                        onClick = { onRecentQueryRemove(q) },
-                        modifier = Modifier.size(36.dp),
-                    ) {
-                        Icon(
-                            imageVector = Icons.Rounded.Close,
-                            contentDescription = "삭제",
-                            tint = ScanPangColors.OnSurfaceMuted,
-                            modifier = Modifier.size(ScanPangDimens.icon18),
-                        )
-                    }
-                }
-            }
-        }
-        if (showResultList) {
-            HorizontalDivider(color = ScanPangColors.OutlineSubtle)
-            Text(
-                text = "정확도 · 거리순",
-                style = ScanPangType.meta11SemiBold,
-                color = ScanPangColors.OnSurfaceMuted,
-            )
-            searchHits.forEach { hit ->
-                ArExploreSearchResultCard(
-                    hit = hit,
-                    onViewInfo = { onHitViewInfo(hit) },
-                    onStartNav = { onHitStartNav(hit) },
-                    modifier = Modifier.padding(bottom = ScanPangSpacing.sm),
-                )
-            }
-        }
-    }
-}
-
-@Composable
-private fun ArExploreSearchEditableBar(
-    query: String,
-    onQueryChange: (String) -> Unit,
-    placeholder: String,
-    onSearchIme: () -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    Row(
-        modifier = modifier
-            .fillMaxWidth()
-            .height(ScanPangDimens.searchBarHeightActive)
-            .clip(ScanPangShapes.radius14)
-            .background(ScanPangColors.Background)
-            .padding(horizontal = ScanPangDimens.searchBarInnerHorizontal),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(ScanPangSpacing.sm),
-    ) {
-        Icon(
-            imageVector = Icons.Rounded.Search,
-            contentDescription = null,
-            tint = ScanPangColors.OnSurfaceMuted,
-            modifier = Modifier.size(ScanPangDimens.icon20),
-        )
-        BasicTextField(
-            value = query,
-            onValueChange = onQueryChange,
-            singleLine = true,
-            textStyle = ScanPangType.body15Medium.copy(color = ScanPangColors.OnSurfaceStrong),
-            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
-            keyboardActions = KeyboardActions(onSearch = { onSearchIme() }),
-            modifier = Modifier.weight(1f),
-            decorationBox = { innerTextField ->
-                Box {
-                    if (query.isEmpty()) {
-                        Text(
-                            text = placeholder,
-                            style = ScanPangType.searchPlaceholderRegular,
-                            color = ScanPangColors.OnSurfacePlaceholder,
-                        )
-                    }
-                    innerTextField()
-                }
-            },
-        )
-        if (query.isNotEmpty()) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(44.dp)
+                .clip(CircleShape)
+                .background(ScanPangColors.ArOverlayWhite93)
+                .border(ScanPangDimens.borderHairline, ScanPangColors.OutlineSubtle, CircleShape)
+                .padding(start = 14.dp, end = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
             Icon(
-                imageVector = Icons.Rounded.Close,
-                contentDescription = "지우기",
-                modifier = Modifier
-                    .size(ScanPangDimens.icon18)
-                    .clickable { onQueryChange("") },
-                tint = ScanPangColors.OnSurfacePlaceholder,
+                imageVector = Icons.Rounded.Search,
+                contentDescription = null,
+                modifier = Modifier.size(ScanPangDimens.icon20),
+                tint = ScanPangColors.OnSurfaceMuted,
             )
+            BasicTextField(
+                value = query,
+                onValueChange = onQueryChange,
+                modifier = Modifier.weight(1f),
+                singleLine = true,
+                textStyle = ScanPangType.body14Regular.copy(color = ScanPangColors.OnSurfaceStrong),
+                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+                keyboardActions = KeyboardActions(onSearch = { onSubmitSearch() }),
+                cursorBrush = SolidColor(ScanPangColors.Primary),
+                decorationBox = { inner ->
+                    Box {
+                        if (query.isEmpty()) {
+                            Text(
+                                text = "장소, 건물, 매장 검색",
+                                style = ScanPangType.body14Regular,
+                                color = ScanPangColors.OnSurfacePlaceholder,
+                            )
+                        }
+                        inner()
+                    }
+                },
+            )
+            if (query.isNotEmpty()) {
+                Icon(
+                    imageVector = Icons.Rounded.Close,
+                    contentDescription = "지우기",
+                    modifier = Modifier
+                        .size(ScanPangDimens.icon20)
+                        .clickable { onQueryChange("") },
+                    tint = ScanPangColors.OnSurfaceMuted,
+                )
+            }
+        }
+
+        if (!showResultList) {
+            if (recentQueries.isNotEmpty()) {
+                Surface(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(16.dp),
+                    color = ScanPangColors.ArOverlayWhite93,
+                    border = BorderStroke(ScanPangDimens.borderHairline, ScanPangColors.OutlineSubtle),
+                ) {
+                    Column(modifier = Modifier.padding(vertical = 14.dp)) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 14.dp)
+                                .padding(bottom = 8.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Text(
+                                text = "최근 검색",
+                                style = ScanPangType.caption12Medium,
+                                color = ScanPangColors.OnSurfaceMuted,
+                            )
+                            Text(
+                                text = "전체 삭제",
+                                modifier = Modifier.clickable { onRecentClearAll() },
+                                style = ScanPangType.meta11Medium,
+                                color = ScanPangColors.OnSurfaceMuted,
+                            )
+                        }
+                        Column(
+                            modifier = Modifier
+                                .heightIn(max = 270.dp)
+                                .verticalScroll(rememberScrollState()),
+                        ) {
+                        recentQueries.take(30).forEach { q ->
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable { onRecentQueryClick(q) }
+                                    .padding(horizontal = 14.dp, vertical = 10.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Rounded.History,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(16.dp),
+                                    tint = ScanPangColors.OnSurfaceMuted,
+                                )
+                                Text(
+                                    text = q,
+                                    modifier = Modifier.weight(1f),
+                                    style = ScanPangType.chip13Medium,
+                                    color = ScanPangColors.OnSurfaceStrong,
+                                )
+                                Icon(
+                                    imageVector = Icons.Rounded.Close,
+                                    contentDescription = "삭제",
+                                    modifier = Modifier
+                                        .size(16.dp)
+                                        .clickable { onRecentQueryRemove(q) },
+                                    tint = ScanPangColors.OnSurfaceMuted,
+                                )
+                            }
+                        }
+                        }
+                    }
+                }
+            }
+        } else {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(max = 270.dp)
+                    .verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                searchHits.forEach { hit ->
+                    ArExploreSearchResultCard(
+                        hit = hit,
+                        onViewInfo = { onHitViewInfo(hit) },
+                        onStartNav = { onHitStartNav(hit) },
+                    )
+                }
+            }
         }
     }
 }
@@ -1372,90 +1343,96 @@ private fun ArExploreSearchResultCard(
 ) {
     Surface(
         modifier = modifier.fillMaxWidth(),
-        shape = ScanPangShapes.radius14,
-        color = ScanPangColors.Surface,
+        shape = RoundedCornerShape(12.dp),
+        color = ScanPangColors.ArOverlayWhite93,
         border = BorderStroke(ScanPangDimens.borderHairline, ScanPangColors.OutlineSubtle),
-        shadowElevation = ScanPangDimens.arPoiCardShadowElevation,
     ) {
         Column(
-            modifier = Modifier.padding(ScanPangSpacing.md),
-            verticalArrangement = Arrangement.spacedBy(ScanPangSpacing.md),
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(ScanPangSpacing.md),
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
             ) {
                 Surface(
-                    shape = CircleShape,
-                    color = ScanPangColors.PrimarySoft,
-                    modifier = Modifier.size(40.dp),
+                    modifier = Modifier.size(30.dp),
+                    shape = RoundedCornerShape(10.dp),
+                    color = Color(0xFFD9D9D9).copy(alpha = 0.5f),
                 ) {
-                    Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
+                    Box(contentAlignment = Alignment.Center) {
                         Icon(
-                            imageVector = Icons.Rounded.Place,
+                            imageVector = categoryIcon(hit.category),
                             contentDescription = null,
-                            tint = ScanPangColors.Primary,
-                            modifier = Modifier.size(22.dp),
+                            modifier = Modifier.size(18.dp),
+                            tint = categoryIconTint(hit.category),
                         )
                     }
                 }
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = hit.title,
-                        style = ScanPangType.title16SemiBold,
-                        color = ScanPangColors.OnSurfaceStrong,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                    Text(
-                        text = "${hit.category} · ${hit.distance}",
-                        style = ScanPangType.caption12Medium,
-                        color = ScanPangColors.OnSurfaceMuted,
-                    )
-                    if (hit.badgeLabel != null) {
-                        Spacer(modifier = Modifier.height(ScanPangSpacing.xs))
-                        Surface(
-                            shape = ScanPangShapes.badge6,
-                            color = ArExploreHalalBadgeBg,
-                        ) {
-                            Text(
-                                text = hit.badgeLabel,
-                                modifier = Modifier.padding(
-                                    horizontal = ScanPangSpacing.sm,
-                                    vertical = ScanPangDimens.badgePadVertical,
-                                ),
-                                style = ScanPangType.tag11Medium,
-                                color = ArExploreHalalBadgeFg,
-                            )
+                Column(
+                    modifier = Modifier.weight(1f),
+                    verticalArrangement = Arrangement.spacedBy(1.dp),
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    ) {
+                        Text(
+                            text = hit.title,
+                            style = ScanPangType.chip13SemiBold,
+                            color = ScanPangColors.OnSurfaceStrong,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.weight(1f, fill = false),
+                        )
+                        if (hit.badgeLabel != null) {
+                            Surface(
+                                shape = ScanPangShapes.badge6,
+                                color = ArExploreHalalBadgeBg,
+                            ) {
+                                Text(
+                                    text = hit.badgeLabel,
+                                    modifier = Modifier.padding(horizontal = 5.dp, vertical = 2.dp),
+                                    style = ScanPangType.tag11Medium,
+                                    color = ArExploreHalalBadgeFg,
+                                )
+                            }
                         }
                     }
+                    Text(
+                        text = "${hit.category} · ${hit.distance}",
+                        style = ScanPangType.meta11Medium,
+                        color = ScanPangColors.OnSurfaceMuted,
+                    )
                 }
-                Icon(
-                    imageVector = Icons.AutoMirrored.Rounded.KeyboardArrowRight,
-                    contentDescription = null,
-                    tint = ScanPangColors.OnSurfaceMuted,
-                    modifier = Modifier.size(ScanPangDimens.icon20),
-                )
             }
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(ScanPangSpacing.sm, Alignment.End),
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
             ) {
                 OutlinedButton(
                     onClick = onViewInfo,
-                    shape = ScanPangShapes.radius14,
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(28.dp),
+                    shape = RoundedCornerShape(10.dp),
+                    contentPadding = PaddingValues(0.dp),
                     border = BorderStroke(ScanPangDimens.borderHairline, ScanPangColors.OutlineSubtle),
                     colors = ButtonDefaults.outlinedButtonColors(contentColor = ScanPangColors.OnSurfaceStrong),
                 ) {
-                    Text("정보 보기", style = ScanPangType.body15Medium)
+                    Text("정보 보기", style = ScanPangType.meta11Medium)
                 }
                 Button(
                     onClick = onStartNav,
-                    shape = ScanPangShapes.radius14,
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(28.dp),
+                    shape = RoundedCornerShape(10.dp),
+                    contentPadding = PaddingValues(0.dp),
                     colors = ButtonDefaults.buttonColors(containerColor = ScanPangColors.Primary),
                 ) {
-                    Text("길안내", style = ScanPangType.body15Medium, color = Color.White)
+                    Text("길안내", style = ScanPangType.meta11Medium, color = Color.White)
                 }
             }
         }

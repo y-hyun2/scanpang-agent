@@ -713,12 +713,13 @@ fun DetailMenuPriceRow(
                 vertical = ScanPangSpacing.sm,
             ),
         horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically,
+        verticalAlignment = Alignment.Top,
     ) {
         Text(
             text = name,
             style = ScanPangType.caption12Medium,
             color = ScanPangColors.OnSurfaceStrong,
+            modifier = Modifier.weight(1f).padding(end = ScanPangSpacing.sm),
         )
         Text(
             text = price,
