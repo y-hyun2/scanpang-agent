@@ -128,6 +128,7 @@ import com.scanpang.app.components.ar.clipPolygon
 import com.scanpang.app.components.ar.computeCentroid
 import com.scanpang.app.components.ar.computeAngularFootprint
 import com.scanpang.app.components.ar.computeFrontEdgeMidpoint
+import com.scanpang.app.components.ar.computePolygonCentroid
 import com.scanpang.app.components.ar.isRayBlockedByPolygon
 import kotlin.math.abs
 
@@ -537,10 +538,9 @@ fun ArExploreScreen(
                                 visibleCandidates.forEach { cand ->
                                     val id = "building_${cand.b.ufid ?: cand.b.h3_index_10}_${cand.b.hashCode()}"
 
-                                    // 마커 위치 — visible polygon front edge 중점
-                                    val markerPos = computeFrontEdgeMidpoint(
-                                        cand.visiblePolygon, currentLat, currentLng
-                                    ) ?: Pair(cand.centerLat, cand.centerLng)
+                                    // 마커 위치 — visible polygon 무게중심
+                                    val markerPos = computePolygonCentroid(cand.visiblePolygon)
+                                        ?: Pair(cand.centerLat, cand.centerLng)
 
                                     // 땅 높이 ≈ 사용자 위치 - 키(1.5m 가정)
                                     val groundAltitude = currentAltitude - 1.5
@@ -594,8 +594,7 @@ fun ArExploreScreen(
                                             Log.e("ArExplore", "건물 앵커 실패 ${cand.b.bld_nm}: ${e.message}")
                                         }
                                     } else {
-                                        // 기존 건물 — markerPos 3m 이상 변할 때만 anchor 재생성
-                                        // (작은 변화는 ARCore 자동 추적이 더 부드럽게 처리)
+                                        // 기존 건물 — centroid 1m 이상 변할 때만 anchor 재생성
                                         val existingPoi = dynamicPois.firstOrNull { it.id == id } ?: return@forEach
                                         val r = FloatArray(1)
                                         Location.distanceBetween(
