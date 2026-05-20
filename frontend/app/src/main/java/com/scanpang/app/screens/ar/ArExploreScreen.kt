@@ -23,6 +23,7 @@ import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -407,7 +408,7 @@ fun ArExploreScreen(
                     val horiz = sqrt(fx * fx + fz * fz)
                     currentPitch = Math.toDegrees(atan2(-fy.toDouble(), horiz.toDouble()))
 
-                    if (pose.horizontalAccuracy < 1.5) hasAchievedHighAccuracy = true
+                    if (pose.horizontalAccuracy < 3.0) hasAchievedHighAccuracy = true
 
                     // 10초마다 상태 종합 로그
                     if (System.currentTimeMillis() % 10000 < 100) {

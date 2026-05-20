@@ -60,21 +60,59 @@ async def _fetch_place_info(ufid: str) -> dict:
 
 
 async def _fetch_building_meta_by_bd_mgt_sn(bd_mgt_sn: str) -> tuple[str, str]:
-    """buildings 테이블에서 bd_mgt_sn → (ufid, bld_nm) 조회.
-    vworld JSON 미스 시 폴백으로 사용.
+    """bd_mgt_sn → VWorld ufid (place_info와 동일 체계) 조회.
+
+    building pool(정부DB ufid)과 main pool(VWorld ufid)은 ufid 체계가 달라
+    직접 매칭 불가. 대신:
+      1) building pool: bd_mgt_sn → geom 중심 좌표
+      2) main pool buildings: 좌표 근접(≈50m) 검색 → VWorld ufid
     """
     try:
-        pool = await get_building_pool()
-        async with pool.acquire() as conn:
-            row = await conn.fetchrow(
-                "SELECT ufid, bld_nm FROM buildings WHERE bd_mgt_sn = $1 LIMIT 1",
+        # ── 1) building pool: bd_mgt_sn → 좌표 ──────────────────────────────
+        bld_pool = await get_building_pool()
+        async with bld_pool.acquire() as conn:
+            b_row = await conn.fetchrow(
+                """
+                SELECT bld_nm,
+                       ST_Y(ST_Centroid(geom)) AS lat,
+                       ST_X(ST_Centroid(geom)) AS lng
+                FROM buildings
+                WHERE bd_mgt_sn = $1 LIMIT 1
+                """,
                 bd_mgt_sn,
             )
-        if row:
-            return (row["ufid"] or ""), (row["bld_nm"] or "")
-        return "", ""
+        if not b_row:
+            print(f"[place_insight] bd_mgt_sn={bd_mgt_sn} building pool 미매칭")
+            return "", ""
+
+        bld_nm = b_row["bld_nm"] or ""
+        lat = float(b_row["lat"])
+        lng = float(b_row["lng"])
+
+        # ── 2) main pool buildings: 좌표 근접 → VWorld ufid ─────────────────
+        pool = await get_pool()
+        async with pool.acquire() as conn:
+            m_row = await conn.fetchrow(
+                """
+                SELECT ufid, bld_nm
+                FROM buildings
+                WHERE ABS(center_lat - $1) < 0.0005
+                  AND ABS(center_lng - $2) < 0.0005
+                ORDER BY (center_lat - $1)^2 + (center_lng - $2)^2
+                LIMIT 1
+                """,
+                lat, lng,
+            )
+        if m_row:
+            ufid = m_row["ufid"] or ""
+            name = m_row["bld_nm"] or bld_nm
+            print(f"[place_insight] bd_mgt_sn={bd_mgt_sn} → ufid={ufid} (좌표 근접 매칭)")
+            return ufid, name
+
+        print(f"[place_insight] bd_mgt_sn={bd_mgt_sn} main pool 근접 건물 없음 (lat={lat:.5f}, lng={lng:.5f})")
+        return "", bld_nm
     except Exception as e:
-        print(f"[place_insight] buildings 테이블 조회 실패: {e}")
+        print(f"[place_insight] buildings 조회 실패: {e}")
         return "", ""
 
 
