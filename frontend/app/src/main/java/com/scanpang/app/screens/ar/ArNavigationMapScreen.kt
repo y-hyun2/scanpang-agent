@@ -45,6 +45,7 @@ import com.scanpang.app.components.ar.ArNavStopConfirmDialog
 import com.scanpang.app.components.ar.ArPoiFloatingDetailOverlay
 import com.scanpang.app.components.ar.ArFloorStoreGuideOverlay
 import com.scanpang.app.components.ar.ArPoiTabBuilding
+import com.scanpang.app.data.remote.BuildingInfoDto
 import com.scanpang.app.components.ScanPangMainTab
 import com.scanpang.app.components.ScanPangTabBar
 import com.scanpang.app.navigation.AppRoutes
@@ -133,6 +134,7 @@ fun ArNavigationMapScreen(
     var activeDetailTab by remember { mutableStateOf(ArPoiTabBuilding) }
     var selectedStore by remember { mutableStateOf<String?>(null) }
     val placeResult by viewModel.placeResult.collectAsState()
+    val buildingInfo by viewModel.buildingInfo.collectAsState()
     val storeResult by viewModel.storeResult.collectAsState()
 
 
@@ -158,17 +160,13 @@ fun ArNavigationMapScreen(
             },
             voiceOn = isTtsOn,
             buildingsCache = buildingsCache,
-            onBuildingPinClick = { name, bdMgtSn ->
+            onBuildingPinClick = { name, bdMgtSn, ufid ->
                 selectedBuildingPoi = name
                 activeDetailTab = ArPoiTabBuilding
                 selectedStore = null
+                viewModel.clearBuildingInfo()
                 if (bdMgtSn != null) {
-                    viewModel.queryPlace(
-                        heading = userHeading,
-                        lat = userLat,
-                        lng = userLng,
-                        bdMgtSn = bdMgtSn,
-                    )
+                    viewModel.fetchBuildingInfoByBd(bdMgtSn)
                 }
             },
         )
@@ -309,8 +307,10 @@ fun ArNavigationMapScreen(
 
         // 건물 핀 클릭 → 건물 상세 오버레이 (탐색모드와 동일 로직)
         selectedBuildingPoi?.let { poi ->
+            val effectivePoiName = buildingInfo
+                ?.takeIf { it.found && it.name.isNotBlank() }?.name ?: poi
             ArPoiFloatingDetailOverlay(
-                poiName = poi,
+                poiName = effectivePoiName,
                 activeDetailTab = activeDetailTab,
                 onActiveDetailTabChange = { activeDetailTab = it },
                 onDismiss = {
@@ -321,7 +321,8 @@ fun ArNavigationMapScreen(
                 onFloorStoreClick = { selectedStore = it },
                 onSave = {},
                 modifier = Modifier.fillMaxSize(),
-                arOverlay = placeResult?.ar_overlay,
+                arOverlay = buildingInfo?.takeIf { it.found }?.toArOverlay()
+                    ?: placeResult?.ar_overlay,
                 docent = placeResult?.docent,
             )
         }

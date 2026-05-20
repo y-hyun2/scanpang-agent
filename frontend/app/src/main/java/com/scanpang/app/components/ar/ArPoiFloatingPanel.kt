@@ -25,6 +25,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.AccessTime
+import androidx.compose.material.icons.rounded.Bookmark
 import androidx.compose.material.icons.rounded.BookmarkBorder
 import androidx.compose.material.icons.rounded.CameraAlt
 import androidx.compose.material.icons.rounded.Close
@@ -57,6 +58,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import coil.compose.AsyncImage
+import coil.request.ImageRequest
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -126,6 +130,7 @@ fun ArPoiFloatingDetailOverlay(
     onDismiss: () -> Unit,
     onFloorStoreClick: (String) -> Unit,
     modifier: Modifier = Modifier,
+    isSaved: Boolean = false,
     onSave: () -> Unit = {},
     arOverlay: ArOverlay? = null,
     docent: Docent? = null,
@@ -137,7 +142,7 @@ fun ArPoiFloatingDetailOverlay(
                 ArFloorSectionUi(
                     label = fi.floor,
                     storeCount = fi.stores.size,
-                    categoryLabel = "",
+                    categoryLabel = fi.stores.map { it.category }.distinct().take(2).joinToString("·"),
                     stores = fi.stores.map { ArFloorStoreLine(it.name, it.category, false) },
                 )
             }
@@ -161,61 +166,65 @@ fun ArPoiFloatingDetailOverlay(
                 .height(ScanPangDimens.detailArPanelHeight)
                 .clickable(enabled = false) { },
             shape = ScanPangShapes.radius16,
-            color = Color.White,
+            color = Color.White.copy(alpha = 0.93f),
             shadowElevation = ScanPangDimens.arPoiCardShadowElevation,
         ) {
             Column(
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(horizontal = ScanPangSpacing.md, vertical = ScanPangSpacing.sm),
+                    .padding(horizontal = ScanPangSpacing.md)
+                    .padding(top = 12.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp),
             ) {
+                // Header: Close (left) · Name · Bookmark (right) — matches hufs-cdp
                 Row(
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 4.dp, vertical = 4.dp),
                     verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
                 ) {
+                    Icon(
+                        imageVector = Icons.Rounded.Close,
+                        contentDescription = "닫기",
+                        tint = ScanPangColors.OnSurfaceMuted,
+                        modifier = Modifier
+                            .size(20.dp)
+                            .clickable { onDismiss() },
+                    )
                     Text(
                         text = poiName,
-                        style = ScanPangType.title16SemiBold,
+                        style = ScanPangType.profileName18,
                         color = ScanPangColors.OnSurfaceStrong,
                         modifier = Modifier.weight(1f),
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                     )
-                    IconButton(
-                        onClick = onSave,
-                        modifier = Modifier.size(40.dp),
+                    Box(
+                        modifier = Modifier
+                            .size(28.dp)
+                            .clip(RoundedCornerShape(14.dp))
+                            .background(if (isSaved) ScanPangColors.PrimarySoft else DetailTabTrackGray)
+                            .clickable { onSave() },
+                        contentAlignment = Alignment.Center,
                     ) {
                         Icon(
-                            imageVector = Icons.Rounded.BookmarkBorder,
+                            imageVector = if (isSaved) Icons.Rounded.Bookmark else Icons.Rounded.BookmarkBorder,
                             contentDescription = "저장",
-                            tint = ScanPangColors.OnSurfaceStrong,
-                            modifier = Modifier.size(ScanPangDimens.icon20),
-                        )
-                    }
-                    IconButton(
-                        onClick = onDismiss,
-                        modifier = Modifier.size(40.dp),
-                    ) {
-                        Icon(
-                            imageVector = Icons.Rounded.Close,
-                            contentDescription = "닫기",
-                            tint = ScanPangColors.OnSurfaceStrong,
-                            modifier = Modifier.size(ScanPangDimens.icon20),
+                            tint = if (isSaved) ScanPangColors.Primary else ScanPangColors.OnSurfaceMuted,
+                            modifier = Modifier.size(20.dp),
                         )
                     }
                 }
-                Spacer(modifier = Modifier.height(6.dp))
                 ArPoiStatusMetaRow(
                     category = arOverlay?.category ?: "",
                     openHours = arOverlay?.open_hours ?: "",
                     isEstimated = arOverlay?.is_estimated ?: false,
                 )
-                Spacer(modifier = Modifier.height(ScanPangSpacing.sm))
                 ArPoiDetailSegmentedTabs(
                     active = activeDetailTab,
                     onSelect = onActiveDetailTabChange,
                 )
-                Spacer(modifier = Modifier.height(ScanPangSpacing.sm))
                 Column(
                     modifier = Modifier
                         .weight(1f)
@@ -247,35 +256,41 @@ private fun ArPoiStatusMetaRow(
     openHours: String = "",
     isEstimated: Boolean = false,
 ) {
-    Row(
+    Column(
         modifier = Modifier.fillMaxWidth(),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(ScanPangSpacing.sm),
+        verticalArrangement = Arrangement.spacedBy(4.dp),
     ) {
-        if (category.isNotBlank()) {
-            Surface(
-                shape = ScanPangShapes.badge6,
-                color = ScanPangColors.PrimarySoft,
+        if (category.isNotBlank() || isEstimated) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(ScanPangSpacing.sm),
             ) {
-                Text(
-                    text = category,
-                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
-                    style = ScanPangType.caption12Medium,
-                    color = ScanPangColors.Primary,
-                )
-            }
-        }
-        if (isEstimated) {
-            Surface(
-                shape = ScanPangShapes.badge6,
-                color = Color(0xFFFFF3E0),
-            ) {
-                Text(
-                    text = "AI 추정",
-                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
-                    style = ScanPangType.caption12Medium,
-                    color = Color(0xFFE65100),
-                )
+                if (category.isNotBlank()) {
+                    Surface(
+                        shape = ScanPangShapes.badge6,
+                        color = ScanPangColors.PrimarySoft,
+                    ) {
+                        Text(
+                            text = category,
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                            style = ScanPangType.caption12Medium,
+                            color = ScanPangColors.Primary,
+                        )
+                    }
+                }
+                if (isEstimated) {
+                    Surface(
+                        shape = ScanPangShapes.badge6,
+                        color = Color(0xFFFFF3E0),
+                    ) {
+                        Text(
+                            text = "AI 추정",
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                            style = ScanPangType.caption12Medium,
+                            color = Color(0xFFE65100),
+                        )
+                    }
+                }
             }
         }
         if (openHours.isNotBlank()) {
@@ -284,12 +299,10 @@ private fun ArPoiStatusMetaRow(
                 style = ScanPangType.body14Regular,
                 color = ScanPangColors.OnSurfaceMuted,
             )
-        }
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(4.dp),
-        ) {
-            if (openHours.isNotBlank()) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(4.dp),
+            ) {
                 Box(
                     modifier = Modifier
                         .size(6.dp)
@@ -357,13 +370,32 @@ private fun ArPoiDetailSegmentedTabs(
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun ArPoiBuildingTabBody(arOverlay: ArOverlay? = null) {
-    val buildingImageCount = 4
-    val buildingImageBg = listOf(
-        Color(0xFFE8E8E8),
-        Color(0xFFD8D8D8),
-        Color(0xFFC8C8C8),
-        Color(0xFFB8B8B8),
+    // 데이터가 아직 안 왔거나 place_info 에 없는 건물 — 빈 상태 표시
+    if (arOverlay == null) {
+        ArPoiEmptyState(message = "건물 정보를 불러오는 중이에요…")
+        return
+    }
+    val hasAnyInfo = listOf(
+        arOverlay.description,
+        arOverlay.open_hours,
+        arOverlay.address,
+        arOverlay.phone,
+        arOverlay.parking_info,
+        arOverlay.admission_fee,
+        arOverlay.homepage,
+        arOverlay.image_url,
+    ).any { it.isNotBlank() } || arOverlay.floor_info.isNotEmpty()
+    if (!hasAnyInfo) {
+        ArPoiEmptyState(message = "아직 등록된 건물 정보가 없어요.\n곧 업데이트될 예정입니다.")
+        return
+    }
+
+    val imageUrls = listOfNotNull(arOverlay.image_url.ifEmpty { null })
+    val placeholderColors = listOf(
+        Color(0xFFE8E8E8), Color(0xFFD8D8D8), Color(0xFFC8C8C8), Color(0xFFB8B8B8),
     )
+    val buildingImageCount = if (imageUrls.isNotEmpty()) imageUrls.size else placeholderColors.size
+    val buildingImageBg = placeholderColors
     val pagerState = rememberPagerState(pageCount = { buildingImageCount })
     var buildingGalleryFullscreen by remember { mutableStateOf(false) }
     val currentBuildingPage = pagerState.currentPage
@@ -386,11 +418,20 @@ private fun ArPoiBuildingTabBody(arOverlay: ArOverlay? = null) {
                         orientation = Orientation.Horizontal,
                     ),
                 ) { page ->
-                    Box(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .background(buildingImageBg[page]),
-                    )
+                    val url = imageUrls.getOrNull(page)
+                    if (url != null) {
+                        AsyncImage(
+                            model = url,
+                            contentDescription = "건물 이미지",
+                            modifier = Modifier.fillMaxSize(),
+                        )
+                    } else {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .background(buildingImageBg[page % buildingImageBg.size]),
+                        )
+                    }
                 }
                 Surface(
                     shape = RoundedCornerShape(6.dp),
@@ -424,57 +465,86 @@ private fun ArPoiBuildingTabBody(arOverlay: ArOverlay? = null) {
         }
     }
 
-    Column(modifier = Modifier.fillMaxWidth()) {
-        val descText = arOverlay?.let {
-            listOfNotNull(it.name.ifEmpty { null }, it.category.ifEmpty { null }).joinToString(" · ")
-        }.orEmpty()
-        if (descText.isNotEmpty()) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(top = 10.dp, bottom = 12.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        // Description card (like hufs-cdp)
+        val descText = arOverlay?.description?.ifEmpty { null }
+            ?: arOverlay?.let {
+                listOfNotNull(it.name.ifEmpty { null }, it.category.ifEmpty { null }).joinToString(" · ")
+            }
+        if (descText != null) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalAlignment = Alignment.Top,
             ) {
                 Icon(
                     imageVector = Icons.Rounded.Info,
                     contentDescription = null,
                     tint = ScanPangColors.Primary,
-                    modifier = Modifier.size(18.dp),
+                    modifier = Modifier.size(15.dp),
                 )
                 Text(
                     text = descText,
-                    style = ScanPangType.body14Regular,
+                    style = ScanPangType.caption12,
                     color = ScanPangColors.OnSurfaceStrong,
                     modifier = Modifier.weight(1f),
                 )
             }
         }
+
+        val floorRangeText = arOverlay.floor_info
+            .mapNotNull { it.floor.ifBlank { null } }
+            .takeIf { it.isNotEmpty() }
+            ?.let { labels -> "${labels.first()}~${labels.last()} (${labels.size}개층)" }
+        val hoursText = listOfNotNull(
+            arOverlay.open_hours.ifEmpty { null },
+            arOverlay.closed_days.ifEmpty { null }?.let { "휴무 $it" },
+        ).joinToString(" · ")
         val gridItems = listOfNotNull(
-            arOverlay?.open_hours?.ifEmpty { null }?.let { Triple(Icons.Rounded.AccessTime, it, false) },
-            arOverlay?.parking_info?.ifEmpty { null }?.let { Triple(Icons.Rounded.LocalParking, it, false) },
-            arOverlay?.admission_fee?.ifEmpty { null }?.let { Triple(Icons.Rounded.ConfirmationNumber, it, false) },
-            arOverlay?.halal_info?.ifEmpty { null }?.let { Triple(Icons.Rounded.Restaurant, it, false) },
+            hoursText.ifEmpty { null }?.let { Triple(Icons.Rounded.AccessTime, it, false) },
+            floorRangeText?.let { Triple(Icons.Rounded.Stairs, it, false) },
+            arOverlay.address.ifEmpty { null }?.let { Triple(Icons.Rounded.Place, it, false) },
+            arOverlay.phone.ifEmpty { null }?.let { Triple(Icons.Rounded.LocalPhone, it, false) },
+            arOverlay.parking_info.ifEmpty { null }?.let { Triple(Icons.Rounded.LocalParking, it, false) },
+            arOverlay.admission_fee.ifEmpty { null }?.let { Triple(Icons.Rounded.ConfirmationNumber, it, false) },
+            arOverlay.halal_info.ifEmpty { null }?.let { Triple(Icons.Rounded.Restaurant, it, false) },
         )
         if (gridItems.isNotEmpty()) {
-            Spacer(modifier = Modifier.height(ScanPangSpacing.md))
-            gridItems.chunked(2).forEach { row ->
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    row.forEach { (icon, label, isLink) ->
-                        ArPoiInfoChip(
-                            icon = icon,
-                            text = label,
-                            modifier = Modifier.weight(1f),
-                            textColor = if (isLink) ScanPangColors.Primary else ScanPangColors.OnSurfaceStrong,
-                            iconTint = if (isLink) ScanPangColors.Primary else ScanPangColors.OnSurfaceMuted,
-                            background = if (label.contains("할랄")) DetailHalalChipBg else DetailChipBg,
-                            strongText = label.contains("할랄"),
-                        )
+            Column(verticalArrangement = Arrangement.spacedBy(7.dp)) {
+                gridItems.chunked(2).forEach { row ->
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(7.dp),
+                    ) {
+                        row.forEach { (icon, label, isLink) ->
+                            ArPoiInfoChip(
+                                icon = icon,
+                                text = label,
+                                modifier = Modifier.weight(1f),
+                                textColor = if (isLink) ScanPangColors.Primary else ScanPangColors.OnSurfaceStrong,
+                                iconTint = if (isLink) ScanPangColors.Primary else ScanPangColors.OnSurfaceMuted,
+                                background = if (label.contains("할랄")) DetailHalalChipBg else DetailChipBg,
+                                strongText = label.contains("할랄"),
+                            )
+                        }
+                        if (row.size == 1) Spacer(modifier = Modifier.weight(1f))
                     }
-                    if (row.size == 1) Spacer(modifier = Modifier.weight(1f))
                 }
-                Spacer(modifier = Modifier.height(8.dp))
+                // Homepage — full width chip
+                arOverlay.homepage.ifEmpty { null }?.let {
+                    ArPoiInfoChip(
+                        icon = Icons.Rounded.Language,
+                        text = "홈페이지",
+                        modifier = Modifier.fillMaxWidth(),
+                        textColor = ScanPangColors.Primary,
+                        iconTint = ScanPangColors.Primary,
+                    )
+                }
             }
         }
 
@@ -493,11 +563,23 @@ private fun ArPoiBuildingTabBody(arOverlay: ArOverlay? = null) {
                     orientation = Orientation.Horizontal,
                 ),
             ) { page ->
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .background(buildingImageBg[page]),
-                )
+                val url = imageUrls.getOrNull(page)
+                if (url != null) {
+                    AsyncImage(
+                        model = ImageRequest.Builder(LocalContext.current)
+                            .data(url)
+                            .crossfade(true)
+                            .build(),
+                        contentDescription = "건물 이미지",
+                        modifier = Modifier.fillMaxSize(),
+                    )
+                } else {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .background(buildingImageBg[page % buildingImageBg.size]),
+                    )
+                }
             }
             Surface(
                 shape = RoundedCornerShape(6.dp),
@@ -597,12 +679,43 @@ private fun ArPoiInfoChip(
 }
 
 @Composable
+private fun ArPoiEmptyState(message: String) {
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 32.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Icon(
+                imageVector = Icons.Rounded.Info,
+                contentDescription = null,
+                tint = ScanPangColors.OnSurfaceMuted,
+                modifier = Modifier.size(18.dp),
+            )
+            Text(
+                text = message,
+                style = ScanPangType.caption12Medium,
+                color = ScanPangColors.OnSurfaceMuted,
+            )
+        }
+    }
+}
+
+@Composable
 private fun ArPoiFloorsTabBody(
     floors: List<ArFloorSectionUi>,
     expanded: Set<String>,
     onToggle: (String) -> Unit,
     onStoreClick: (String) -> Unit,
 ) {
+    if (floors.isEmpty()) {
+        ArPoiEmptyState(message = "층별 매장 정보가 아직 준비되지 않았어요.")
+        return
+    }
     floors.forEach { floor ->
         val isOpen = floor.label in expanded
         Surface(
@@ -701,37 +814,63 @@ private fun ArPoiFloorsTabBody(
 @Composable
 private fun ArPoiAiGuideTabBody(docent: Docent? = null) {
     val speechText = docent?.speech?.ifEmpty { null }
-        ?: "명동의 랜드마크 쇼핑몰이에요. 혼자 여행하기 좋고, B1층에 할랄 인증 식당이 있어 식사도 편리합니다."
-    val suggestions = docent?.follow_up_suggestions ?: listOf(
-        "B1 할랄 식당 정보",
-        "1F 외국인 할인 안내",
-        "8F 루프탑 전망",
-    )
+    val suggestions = docent?.follow_up_suggestions?.filter { it.isNotBlank() } ?: emptyList()
 
-    Surface(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(12.dp),
-        color = DetailAiSummaryBg,
-    ) {
-        Row(
-            modifier = Modifier.padding(12.dp),
-            horizontalArrangement = Arrangement.spacedBy(10.dp),
-            verticalAlignment = Alignment.Top,
+    if (speechText == null && suggestions.isEmpty()) {
+        // docent 없음 — AR 카메라 스캔 유도 안내
+        Surface(
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(12.dp),
+            color = DetailAiSummaryBg,
         ) {
-            Icon(
-                imageVector = Icons.Rounded.SmartToy,
-                contentDescription = null,
-                tint = ScanPangColors.Primary,
-                modifier = Modifier.size(22.dp),
-            )
-            Text(
-                text = speechText,
-                style = ScanPangType.body14Regular,
-                color = ScanPangColors.OnSurfaceStrong,
-            )
+            Row(
+                modifier = Modifier.padding(12.dp),
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                verticalAlignment = Alignment.Top,
+            ) {
+                Icon(
+                    imageVector = Icons.Rounded.SmartToy,
+                    contentDescription = null,
+                    tint = ScanPangColors.OnSurfaceMuted,
+                    modifier = Modifier.size(22.dp),
+                )
+                Text(
+                    text = "카메라로 건물을 스캔하면\nAI 가이드가 활성화됩니다.",
+                    style = ScanPangType.body14Regular,
+                    color = ScanPangColors.OnSurfaceMuted,
+                )
+            }
         }
+        return
     }
-    Spacer(modifier = Modifier.height(ScanPangSpacing.md))
+
+    if (speechText != null) {
+        Surface(
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(12.dp),
+            color = DetailAiSummaryBg,
+        ) {
+            Row(
+                modifier = Modifier.padding(12.dp),
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                verticalAlignment = Alignment.Top,
+            ) {
+                Icon(
+                    imageVector = Icons.Rounded.SmartToy,
+                    contentDescription = null,
+                    tint = ScanPangColors.Primary,
+                    modifier = Modifier.size(22.dp),
+                )
+                Text(
+                    text = speechText,
+                    style = ScanPangType.body14Regular,
+                    color = ScanPangColors.OnSurfaceStrong,
+                )
+            }
+        }
+        Spacer(modifier = Modifier.height(ScanPangSpacing.md))
+    }
+
     if (suggestions.isNotEmpty()) {
         Text(
             text = "추천 질문",
@@ -748,32 +887,8 @@ private fun ArPoiAiGuideTabBody(docent: Docent? = null) {
             ArPoiAiPointCard(icon = icon, title = suggestion, subtitle = "")
             Spacer(modifier = Modifier.height(8.dp))
         }
+        Spacer(modifier = Modifier.height(8.dp))
     }
-    Spacer(modifier = Modifier.height(ScanPangSpacing.md))
-    Surface(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(12.dp),
-        color = DetailAiTipBg,
-    ) {
-        Row(
-            modifier = Modifier.padding(12.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            verticalAlignment = Alignment.Top,
-        ) {
-            Icon(
-                imageVector = Icons.Rounded.Lightbulb,
-                contentDescription = null,
-                tint = Color(0xFFF59E0B),
-                modifier = Modifier.size(20.dp),
-            )
-            Text(
-                text = "혼자 여행 팁: 2F~3F 뷰티 매장은 평일 오전이 한적해요",
-                style = ScanPangType.caption12Medium,
-                color = DetailAiTipFg,
-            )
-        }
-    }
-    Spacer(modifier = Modifier.height(8.dp))
 }
 
 @Composable

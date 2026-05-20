@@ -89,12 +89,15 @@ import com.scanpang.app.ar.ArSpeechRecognizerHelper
 import com.scanpang.app.ar.ScanPangAgentService
 import com.scanpang.app.ar.sendVoiceMessage
 import com.scanpang.app.data.remote.ArOverlay
+import com.scanpang.app.data.remote.BuildingInfoDto
 import com.scanpang.app.data.remote.Docent
+import com.scanpang.app.data.remote.FloorInfo
 import com.scanpang.app.data.remote.PlaceQueryRequest
 import com.scanpang.app.data.remote.RetrofitClient
 import com.scanpang.app.data.remote.SearchRequest
 import com.scanpang.app.data.remote.SearchResultItem
 import com.scanpang.app.data.remote.ScanPangViewModel
+import com.scanpang.app.data.remote.StoreItem
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.compose.runtime.collectAsState
 import com.scanpang.app.components.ar.ArAgentChatMessage
@@ -152,6 +155,7 @@ private data class DynamicPoi(
     val storeCount: Int = 0,
     val matchingStores: List<SearchResultItem> = emptyList(),
     val bdMgtSn: String? = null,
+    val ufid: String? = null,
 )
 
 private data class BuildingCandidate(
@@ -175,6 +179,7 @@ fun ArExploreScreen(
     viewModel: ScanPangViewModel = viewModel(),
 ) {
     val placeResult by viewModel.placeResult.collectAsState()
+    val buildingInfo by viewModel.buildingInfo.collectAsState()
     // 마커 탭 시 /place/store 응답 — ArFloorStoreGuideOverlay 메타 라인의 category·영업중 표시 원천
     val storeResult by viewModel.storeResult.collectAsState()
     val context = LocalContext.current
@@ -323,6 +328,7 @@ fun ArExploreScreen(
     val geospatialAnchors = remember { mutableStateMapOf<String, Anchor>() }
     var anchorScreenPositions by remember { mutableStateOf<Map<String, Offset>>(emptyMap()) }
     val dynamicPois = remember { mutableStateListOf<DynamicPoi>() }
+
     var lastProcessedChunkCell by remember { mutableStateOf<String?>(null) }
     var lastVisibilityCalcTime by remember { mutableStateOf(0L) }
 
@@ -558,6 +564,7 @@ fun ArExploreScreen(
                                                 latitude = markerPos.first,
                                                 longitude = markerPos.second,
                                                 bdMgtSn = cand.b.bd_mgt_sn,
+                                                ufid = cand.b.ufid.ifEmpty { null },
                                             )
                                         } else {
                                             val nearby = filterStores.filter { store ->
@@ -761,13 +768,9 @@ fun ArExploreScreen(
                             selectedPoiOverlay = poi.arOverlay
                             selectedPoiDocent = null
                             activeDetailTab = ArPoiTabBuilding
+                            viewModel.clearBuildingInfo()
                             if (poi.bdMgtSn != null) {
-                                viewModel.queryPlace(
-                                    heading = currentHeading,
-                                    lat = currentLat,
-                                    lng = currentLng,
-                                    bdMgtSn = poi.bdMgtSn,
-                                )
+                                viewModel.fetchBuildingInfoByBd(poi.bdMgtSn)
                             }
                         }
                     },
@@ -1104,8 +1107,10 @@ fun ArExploreScreen(
 
             // ── POI 상세 패널 ──
             selectedPoi?.let { poi ->
+                val effectivePoiName = buildingInfo
+                    ?.takeIf { it.found && it.name.isNotBlank() }?.name ?: poi
                 ArPoiFloatingDetailOverlay(
-                    poiName = poi,
+                    poiName = effectivePoiName,
                     activeDetailTab = activeDetailTab,
                     onActiveDetailTabChange = { activeDetailTab = it },
                     onDismiss = {
@@ -1120,7 +1125,9 @@ fun ArExploreScreen(
                         scope.launch { snackbarHostState.showSnackbar("저장되었습니다") }
                     },
                     modifier = Modifier.fillMaxSize(),
-                    arOverlay = selectedPoiOverlay ?: placeResult?.ar_overlay,
+                    arOverlay = selectedPoiOverlay
+                        ?: buildingInfo?.takeIf { it.found }?.toArOverlay()
+                        ?: placeResult?.ar_overlay,
                     docent = selectedPoiDocent ?: placeResult?.docent,
                 )
             }
@@ -1433,6 +1440,26 @@ private fun buildFilterPillLabel(selected: Set<String>): String {
 // computeCentroid / computeAngularFootprint / buildFovPolygon / clipPolygon /
 // computeFrontEdgeMidpoint / isRayBlockedByPolygon 은 그 파일의 internal fun 을 사용.
 // ─────────────────────────────────────────────────────────────────────────────
+
+internal fun BuildingInfoDto.toArOverlay() = ArOverlay(
+    name = name,
+    category = category,
+    floor_info = floor_info.map { fi ->
+        FloorInfo(
+            floor = fi.floor,
+            stores = fi.stores.map { si -> StoreItem(name = si.name, category = si.category) },
+        )
+    },
+    image_url = image_url,
+    open_hours = open_hours,
+    closed_days = closed_days,
+    parking_info = parking_info,
+    admission_fee = admission_fee,
+    homepage = homepage,
+    description = description_ko,
+    address = address,
+    phone = phone,
+)
 
 
 
