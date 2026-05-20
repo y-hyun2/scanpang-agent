@@ -99,6 +99,7 @@ fun ArNavTopHud(
                 ),
             )
             .statusBarsPadding()
+            .padding(top = 8.dp)
             .padding(horizontal = ScanPangDimens.arTopBarHorizontal)
             .padding(bottom = ScanPangDimens.arTopBarBottomPadding),
     ) {
@@ -215,7 +216,7 @@ fun BoxScope.ArNavSideVolumeCamera(
             .align(Alignment.TopEnd)
             .padding(
                 end = ScanPangDimens.arSideColumnEnd,
-                top = ScanPangDimens.arSideColumnTop,
+                top = ScanPangDimens.arNavSideVolumeTop,
             ),
         verticalArrangement = Arrangement.spacedBy(ScanPangDimens.arSideIconGap),
         horizontalAlignment = Alignment.CenterHorizontally,
