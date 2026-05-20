@@ -59,7 +59,7 @@ import io.github.sceneview.rememberViewNodeManager
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
-private data class NavBuildingPin(val id: String, val name: String, val lat: Double, val lng: Double)
+private data class NavBuildingPin(val id: String, val name: String, val lat: Double, val lng: Double, val bdMgtSn: String?)
 
 private data class NavBuildingCandidate(
     val building: Building,
@@ -117,6 +117,7 @@ fun ArRealSceneView(
     onRouteAvailable: (routePoints: List<Pair<Double, Double>>, destinationLat: Double, destinationLng: Double) -> Unit = { _, _, _ -> },
     voiceOn: Boolean = true,
     buildingsCache: Map<String, Building> = emptyMap(),
+    onBuildingPinClick: (pinName: String, bdMgtSn: String?) -> Unit = { _, _ -> },
 ) {
     val context = LocalContext.current
     val engine = rememberEngine()
@@ -422,14 +423,13 @@ fun ArRealSceneView(
                 val existingIds = navBuildingPins.map { it.id }.toSet()
                 for (entry in visibleCandidates) {
                     val id = "navbld_${entry.b.ufid.ifEmpty { entry.b.h3_index_10 }}_${entry.b.hashCode()}"
-                    val groundAlt = cameraAlt - 1.5
-                    val labelAlt = groundAlt + (entry.b.render_height / 2.0)
+                    val labelAlt = cameraAlt
                     if (id !in existingIds) {
                         runCatching {
                             val anchor = earth.createAnchor(entry.markerPos.first, entry.markerPos.second, labelAlt, 0f, 0f, 0f, 1f)
                             if (anchor != null) {
                                 navBuildingAnchors[id] = anchor
-                                navBuildingPins.add(NavBuildingPin(id, entry.b.bld_nm ?: "건물", entry.markerPos.first, entry.markerPos.second))
+                                navBuildingPins.add(NavBuildingPin(id, entry.b.bld_nm ?: "건물", entry.markerPos.first, entry.markerPos.second, entry.b.bd_mgt_sn))
                             }
                         }
                     } else {
@@ -722,6 +722,7 @@ fun ArRealSceneView(
                     title = pin.name,
                     subtitle = "건물",
                     modifier = Modifier.offset(x = xDp - 60.dp, y = yDp - 32.dp),
+                    onClick = { onBuildingPinClick(pin.name, pin.bdMgtSn) },
                 )
             }
         }

@@ -283,7 +283,10 @@ async def seoul_locker_search(lat: float, lng: float, radius: int) -> list[dict]
 
 
 async def prayer_room_search(lat: float, lng: float, radius: int) -> list[dict]:
-    """PostGIS prayer_rooms 테이블 거리 검색 (ST_DWithin + ST_Distance 정렬)."""
+    """PostGIS prayer_rooms 테이블 거리 정렬 검색.
+    radius 인자는 호환성 위해 받지만 사용하지 않음 — 할랄식당과 마찬가지로
+    매장 수가 적어(10건 미만, 명동권 집중) radius 필터 시 외대 등 명동 밖
+    사용자에겐 0건이 되므로, 거리 정렬 + LIMIT 만 적용."""
     from core.db import get_pool
     pool = await get_pool()
     async with pool.acquire() as conn:
@@ -292,10 +295,10 @@ async def prayer_room_search(lat: float, lng: float, radius: int) -> list[dict]:
             SELECT room_id, name, address, phone, open_hours, lat, lng,
                    ST_Distance(geom, ST_SetSRID(ST_MakePoint($2, $1), 4326)::geography) AS dist
             FROM prayer_rooms
-            WHERE ST_DWithin(geom, ST_SetSRID(ST_MakePoint($2, $1), 4326)::geography, $3)
             ORDER BY dist
+            LIMIT 50
             """,
-            float(lat), float(lng), float(radius),
+            float(lat), float(lng),
         )
     return [
         {

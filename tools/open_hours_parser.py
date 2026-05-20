@@ -180,12 +180,13 @@ def is_open_now(open_hours: str, now: Optional[datetime] = None) -> Optional[boo
     # 1) 항상 열림 키워드
     if any(kw in text for kw in _ALWAYS_OPEN_KEYWORDS):
         # 단, 오늘 휴무 명시면 False 우선
-        today_line = _find_today_line(text.splitlines(), today_idx)
+        split_lines = [ln.strip() for ln in re.split(r'\n|\s*/\s*', text) if ln.strip()]
+        today_line = _find_today_line(split_lines, today_idx)
         if today_line and any(kw in today_line for kw in _CLOSED_KEYWORDS):
             return False
         return True
 
-    lines = [ln.strip() for ln in text.splitlines() if ln.strip()]
+    lines = [ln.strip() for ln in re.split(r'\n|\s*/\s*', text) if ln.strip()]
 
     # 2) 요일별 라인 형식 — 오늘 줄에서 판정
     today_line = _find_today_line(lines, today_idx) if len(lines) > 1 else None

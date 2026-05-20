@@ -843,9 +843,12 @@ fun DetailTodayVisitStatus(
     lastOrder: String = "",
     modifier: Modifier = Modifier,
 ) {
-    val statusColor = if (isOpen) ScanPangColors.StatusOpen else ScanPangColors.Error
-    val cardBg = if (isOpen) ScanPangColors.DetailVisitOpenSurface else ScanPangColors.DetailVisitClosedSurface
-    // 오늘 요일에 해당하는 시간만 추출 ("월-일 11:00-22:00" → "11:00-22:00")
+    // 로컬에서 현재 시각과 open_hours 를 직접 비교해 영업 상태를 판정.
+    // 파싱 불가(null)이면 서버에서 받은 isOpen 값을 fallback 으로 사용.
+    val localIsOpen = remember(openHours) { OpenHoursUtils.isOpenNow(openHours) }
+    val effectiveIsOpen = localIsOpen ?: isOpen
+    val statusColor = if (effectiveIsOpen) ScanPangColors.StatusOpen else ScanPangColors.Error
+    val cardBg = if (effectiveIsOpen) ScanPangColors.DetailVisitOpenSurface else ScanPangColors.DetailVisitClosedSurface
     val todayHours = remember(openHours) { OpenHoursUtils.todayHoursText(openHours) }
     Column(
         modifier = modifier.fillMaxWidth(),
@@ -872,7 +875,7 @@ fun DetailTodayVisitStatus(
                             .background(statusColor),
                     )
                     Text(
-                        text = if (isOpen) "지금 영업 중" else "지금 영업 종료",
+                        text = if (effectiveIsOpen) "지금 영업 중" else "지금 영업 종료",
                         style = ScanPangType.caption12Medium,
                         color = statusColor,
                     )

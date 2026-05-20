@@ -25,6 +25,9 @@ object AuthRepository {
     /** Retrofit Authorization 헤더에 부착할 access_token 동기 조회. 없으면 null. */
     fun currentAccessToken(): String? = auth.currentSessionOrNull()?.accessToken
 
+    /** 현재 로그인된 사용자의 Supabase auth.users.id. 미로그인이면 null. */
+    fun currentUserId(): String? = auth.currentSessionOrNull()?.user?.id
+
     /** Splash 등 단순 분기용. SDK 가 로컬 storage 에서 세션 복원하기 전에 호출하면 false 가 나올 수 있으므로,
      *  반응형 UI 는 [sessionStatus] 를 쓰는 게 정확하다. */
     fun isLoggedIn(): Boolean = auth.currentSessionOrNull() != null

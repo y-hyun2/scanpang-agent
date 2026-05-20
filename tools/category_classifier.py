@@ -114,6 +114,7 @@ _STRONG_NAME_RULES: list[tuple[str, str]] = [
     ("메가박스",      "cultural"),
     # 편의점 체인 — Kakao 매칭 실패 시 다른 분류로 빠지면 곤란
     ("CU ",           "convenience_store"),
+    ("씨유",          "convenience_store"),  # 한글 — '씨유용인외대' 케이스
     ("GS25",          "convenience_store"),
     ("세븐일레븐",    "convenience_store"),
     ("이마트24",      "convenience_store"),
@@ -155,6 +156,14 @@ def classify_category(category_name: str, store_name: str = "") -> str:
     if category_name:
         for keyword, key in _CATEGORY_RULES:
             if keyword in category_name:
+                return key
+
+    # 4차: 매장명에 _CATEGORY_RULES 키워드 — 정부 LocalData 업태 분류('기타 간이/
+    # 비알코올/종합 소매') 처럼 룰에 없는 category_name 이 들어왔을 때 매장명에서
+    # 신호 찾는다. 예: '비에치씨치킨' 매장명 → '치킨' → restaurant.
+    if store_name:
+        for keyword, key in _CATEGORY_RULES:
+            if keyword in store_name:
                 return key
 
     return "other"
@@ -209,6 +218,12 @@ _QUERY_KEYWORD_TO_CATEGORY: list[tuple[str, str]] = [
     ("할랄 식당",    "halal_restaurant"),
     ("할랄식당",     "halal_restaurant"),
     ("할랄",         "halal_restaurant"),
+    ("비건 식당",    "vegan_restaurant"),
+    ("비건식당",     "vegan_restaurant"),
+    ("비건",         "vegan_restaurant"),
+    ("채식 식당",    "vegan_restaurant"),
+    ("채식식당",     "vegan_restaurant"),
+    ("채식",         "vegan_restaurant"),
     ("지하철역",     "subway"),
     ("지하철",       "subway"),
     # 건물 내 매장
@@ -242,10 +257,15 @@ _QUERY_KEYWORD_TO_CATEGORY: list[tuple[str, str]] = [
 
 
 def classify_query(query: str) -> str:
-    """검색바 입력 → category_key. 매칭 X면 classify_category 매장명 fallback,
-    그것도 매칭 X면 'other'."""
+    """검색바 입력 → category_key.
+
+    키워드가 공백으로 분리된 독립 단어일 때만 카테고리 검색으로 분류한다.
+    '행복약국'처럼 매장명 안에 카테고리 단어가 붙어 있는 경우(독립 단어 아님)는
+    'other'를 반환해 이름 ILIKE 검색만 수행한다.
+    """
     q = (query or "").strip()
     for kw, key in _QUERY_KEYWORD_TO_CATEGORY:
-        if kw in q:
+        # 단어 경계 매칭 — 앞뒤가 공백(또는 문자열 시작/끝)일 때만 매칭.
+        if re.search(r"(?<!\S)" + re.escape(kw) + r"(?!\S)", q):
             return key
-    return classify_category(category_name="", store_name=q)
+    return "other"

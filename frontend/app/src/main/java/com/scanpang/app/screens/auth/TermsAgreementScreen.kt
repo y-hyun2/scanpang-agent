@@ -1,5 +1,8 @@
 package com.scanpang.app.screens.auth
 
+import android.Manifest
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -70,6 +73,10 @@ fun TermsAgreementScreen(
     val allChecked = checks.values.all { it }
     val requiredChecked = Terms.filter { it.required }.all { checks[it.id] == true }
 
+    val permissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestMultiplePermissions(),
+    ) { onAllAgreedAndContinue() }
+
     Scaffold(
         modifier = modifier.fillMaxSize(),
         containerColor = ScanPangColors.Surface,
@@ -120,7 +127,16 @@ fun TermsAgreementScreen(
                 Spacer(modifier = Modifier.weight(1f))
                 ContinueCta(
                     enabled = requiredChecked,
-                    onClick = onAllAgreedAndContinue,
+                    onClick = {
+                        permissionLauncher.launch(
+                            arrayOf(
+                                Manifest.permission.ACCESS_FINE_LOCATION,
+                                Manifest.permission.ACCESS_COARSE_LOCATION,
+                                Manifest.permission.CAMERA,
+                                Manifest.permission.RECORD_AUDIO,
+                            )
+                        )
+                    },
                 )
             }
         }

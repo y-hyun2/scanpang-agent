@@ -18,6 +18,7 @@ from schemas.restaurant import RestaurantDetailRequest
 from tools.restaurant_tools import get_restaurant_detail
 from schemas.search import SearchRequest, SearchResponse, SearchResultItem
 from schemas.place_detail import PlaceDetailRequest, PlaceDetailResponse
+from schemas.user import UserPreferencesUpsertRequest, UserPreferencesResponse
 from tools.open_hours_parser import is_open_now_combined as _is_open_now_combined
 import json as _json
 from datetime import datetime, timedelta, timezone
@@ -103,6 +104,68 @@ async def place_store(req: StoreRequest):
     return detail
 
 
+@app.post("/user/preferences", response_model=UserPreferencesResponse)
+async def user_preferences_upsert(req: UserPreferencesUpsertRequest):
+    """
+    온보딩 완료/프로필 수정 시 frontend 호출.
+    user_id 는 frontend 가 발급한 device UUID (장기적으론 Supabase Auth uid).
+    NULL/빈 필드는 기존 값 유지 — COALESCE 패턴.
+    """
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        row = await conn.fetchrow(
+            """
+            INSERT INTO user_preferences
+                (user_id, display_name, language, value_added, saved_places,
+                 search_history, created_at, updated_at)
+            VALUES ($1, $2, $3, $4, '[]'::jsonb, '[]'::jsonb, NOW(), NOW())
+            ON CONFLICT (user_id) DO UPDATE SET
+                display_name = COALESCE(EXCLUDED.display_name, user_preferences.display_name),
+                language     = COALESCE(EXCLUDED.language,     user_preferences.language),
+                value_added  = COALESCE(EXCLUDED.value_added,  user_preferences.value_added),
+                updated_at   = NOW()
+            RETURNING user_id, display_name, language, value_added,
+                      saved_places::text AS saved_places,
+                      search_history::text AS search_history
+            """,
+            req.user_id, req.display_name, req.language, req.value_added,
+        )
+    return UserPreferencesResponse(
+        user_id=row["user_id"],
+        display_name=row["display_name"],
+        language=row["language"],
+        value_added=row["value_added"],
+        saved_places=_json.loads(row["saved_places"] or "[]"),
+        search_history=_json.loads(row["search_history"] or "[]"),
+    )
+
+
+@app.get("/user/preferences/{user_id}", response_model=UserPreferencesResponse)
+async def user_preferences_get(user_id: str):
+    """user_id 로 user_preferences 조회 — 앱 실행 시 첫 sync 용."""
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        row = await conn.fetchrow(
+            """
+            SELECT user_id, display_name, language, value_added,
+                   saved_places::text AS saved_places,
+                   search_history::text AS search_history
+            FROM user_preferences WHERE user_id = $1
+            """,
+            user_id,
+        )
+    if row is None:
+        raise HTTPException(status_code=404, detail="user_preferences not found")
+    return UserPreferencesResponse(
+        user_id=row["user_id"],
+        display_name=row["display_name"],
+        language=row["language"],
+        value_added=row["value_added"],
+        saved_places=_json.loads(row["saved_places"] or "[]"),
+        search_history=_json.loads(row["search_history"] or "[]"),
+    )
+
+
 @app.post("/convenience/query")
 async def convenience_query(req: ConvenienceRequest):
     """
@@ -149,7 +212,7 @@ async def restaurant_detail(req: RestaurantDetailRequest):
     return result
 
 
-_OUTDOOR_CATEGORIES = {"restroom", "subway", "locker", "prayer_room", "halal_restaurant"}
+_OUTDOOR_CATEGORIES = {"restroom", "subway", "locker", "prayer_room", "halal_restaurant", "vegan_restaurant"}
 
 
 async def _outdoor_search(category_key: str, req: SearchRequest) -> SearchResponse:
@@ -161,6 +224,7 @@ async def _outdoor_search(category_key: str, req: SearchRequest) -> SearchRespon
         prayer_room_search,
     )
     from tools.halal_tools import halal_restaurant_search
+    from tools.vegan_tools import vegan_restaurant_search
     lat = req.lat or 37.5636
     lng = req.lng or 126.9822
 
@@ -189,6 +253,23 @@ async def _outdoor_search(category_key: str, req: SearchRequest) -> SearchRespon
             }
             for r in raw
         ]
+    elif category_key == "vegan_restaurant":
+        raw = await vegan_restaurant_search(lat, lng, radius=0)
+        rows = [
+            {
+                "name":         r.get("name", ""),
+                "address":      r.get("address", ""),
+                "phone":        r.get("phone", ""),
+                "lat":          r.get("lat"),
+                "lng":          r.get("lng"),
+                "distance_m":   r.get("distance_m", 0),
+                "open_hours":   r.get("open_hours") or "",
+                "vegan_id":     r.get("vegan_id", ""),
+                "vegan_level":  r.get("vegan_level", ""),
+                "vegan_menu":   r.get("vegan_menu", ""),
+            }
+            for r in raw
+        ]
     else:
         rows = []
 
@@ -200,6 +281,8 @@ async def _outdoor_search(category_key: str, req: SearchRequest) -> SearchRespon
             return f"restroom__{r['mng_no']}"
         if category == "halal_restaurant" and r.get("halal_id"):
             return f"halal__{r['halal_id']}"
+        if category == "vegan_restaurant" and r.get("vegan_id"):
+            return f"vegan__{r['vegan_id']}"
         if category == "prayer_room" and r.get("room_id"):
             return f"prayer__{r['room_id']}"
         return f"__outdoor__{category}__{r.get('name','')}"
@@ -208,6 +291,7 @@ async def _outdoor_search(category_key: str, req: SearchRequest) -> SearchRespon
     LABEL = {
         "restroom": "화장실", "subway": "지하철역", "locker": "물품보관함",
         "prayer_room": "기도실", "halal_restaurant": "할랄 식당",
+        "vegan_restaurant": "비건 식당",
     }
 
     results = [
@@ -456,6 +540,58 @@ async def _halal_detail(restaurant_id: str) -> PlaceDetailResponse:
     )
 
 
+async def _vegan_detail(vegan_id: str) -> PlaceDetailResponse:
+    """vegan_restaurants 테이블 1건 → PlaceDetailResponse."""
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        row = await conn.fetchrow(
+            """
+            SELECT id, store_name, category, addr, phone,
+                   details::text AS details,
+                   open_hours, closed_days, homepage,
+                   image_urls::text AS image_urls,
+                   floor, place_url, lat, lng, last_updated
+            FROM vegan_restaurants WHERE id = $1
+            """,
+            vegan_id,
+        )
+    if row is None:
+        raise HTTPException(status_code=404, detail=f"비건 식당 '{vegan_id}' 없음")
+
+    def _j(s):
+        if not s: return None
+        try: return _json.loads(s)
+        except Exception: return None
+
+    d = _j(row["details"]) or {}
+    open_hours = row["open_hours"] or ""
+    return PlaceDetailResponse(
+        id=f"vegan__{row['id']}",
+        store_name=row["store_name"] or "",
+        place_id=None,
+        lat=float(row["lat"]) if row["lat"] is not None else None,
+        lng=float(row["lng"]) if row["lng"] is not None else None,
+        category="비건 식당",
+        category_key="vegan_restaurant",
+        addr=row["addr"] or "",
+        phone=row["phone"] or "",
+        floor=row["floor"] or None,
+        homepage=row["homepage"] or None,
+        place_url=row["place_url"] or None,
+        open_hours=open_hours,
+        closed_days=row["closed_days"] or None,
+        is_open_now=_is_open_now_combined(open_hours, None),
+        image_urls=(_j(row["image_urls"]) or []),
+        details={
+            "vegan_level": d.get("vegan_level", ""),
+            "vegan_menu":  d.get("vegan_menu", ""),
+            "restaurant_type": d.get("restaurant_type", ""),
+        },
+        source="vegan_restaurants",
+        last_updated=row["last_updated"].isoformat() if row["last_updated"] else None,
+    )
+
+
 async def _prayer_detail(room_id: str) -> PlaceDetailResponse:
     """prayer_rooms 테이블 1건 → PlaceDetailResponse."""
     pool = await get_pool()
@@ -521,6 +657,7 @@ async def place_detail(req: PlaceDetailRequest):
     - `restroom__{mng_no}` → public_restrooms 테이블
     - `halal__{restaurant_id}` → halal_restaurants 테이블
     - `prayer__{room_id}` → prayer_rooms 테이블
+    - `tourist__{ufid}` → store_details 테이블 (import_tourist_places.py 배치 적재)
     - 그 외 → store_details 테이블 (건물 내 매장 캐시)
     """
     # outdoor 라우팅
@@ -528,6 +665,8 @@ async def place_detail(req: PlaceDetailRequest):
         return await _restroom_detail(req.id[len("restroom__"):])
     if req.id.startswith("halal__"):
         return await _halal_detail(req.id[len("halal__"):])
+    if req.id.startswith("vegan__"):
+        return await _vegan_detail(req.id[len("vegan__"):])
     if req.id.startswith("prayer__"):
         return await _prayer_detail(req.id[len("prayer__"):])
 

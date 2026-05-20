@@ -331,6 +331,30 @@ async def process_one_building(ufid: str) -> dict:
     # 주소 우선순위: Naver reverse geocode 결과를 1순위로 채택
     addr = naver_geo.get("addr", "")
 
+    # Naver reverse geocode 가 행정구역(읍/면/동) 단어 빠진 짧은 주소를 줄 때가
+    # 있음 (예: '경기도 용인시 처인구 외대로 6' — 모현읍 누락 → Naver
+    # addressDetailPlace API 가 404 → 정부DB fallback → 카테고리 인허가 업태로
+    # 들어감). Kakao coord2address 로 풀 도로명주소를 받아 보강.
+    if addr and not any(suf in addr for suf in ("읍", "면", "동")):
+        try:
+            import httpx as _httpx, os as _os
+            _key = _os.getenv("KAKAO_REST_API_KEY", "")
+            if _key:
+                async with _httpx.AsyncClient() as _c:
+                    _r = await _c.get(
+                        "https://dapi.kakao.com/v2/local/geo/coord2address.json",
+                        headers={"Authorization": f"KakaoAK {_key}"},
+                        params={"x": lng, "y": lat},
+                    )
+                    _docs = _r.json().get("documents", [])
+                _road = (_docs[0].get("road_address") or {}) if _docs else {}
+                _full = _road.get("address_name", "") or ""
+                if _full and any(suf in _full for suf in ("읍", "면", "동")):
+                    print(f"[pipeline] addr 보강: {addr!r} → {_full!r}")
+                    addr = _full
+        except Exception as _e:
+            print(f"[pipeline] Kakao coord2address 보강 실패: {_e}")
+
     # ── 2) Kakao 기본 정보 (전화·카테고리 보완용) ────────────────────────────
     # " 및 "로 연결된 복합 건물명(예: "롯데호텔 및 백화점")은 검색 키워드로 적합하지 않아
     # Kakao/Naver 모두 미매칭된다. 첫 번째 이름으로만 시도한다.

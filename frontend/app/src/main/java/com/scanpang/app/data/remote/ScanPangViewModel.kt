@@ -198,11 +198,11 @@ class ScanPangViewModel : ViewModel() {
 
     // ── Place Insight API ──
 
-    fun queryPlace(heading: Double, lat: Double, lng: Double, alt: Double = 0.0, pitch: Double = 0.0, message: String = "") {
+    fun queryPlace(heading: Double, lat: Double, lng: Double, alt: Double = 0.0, pitch: Double = 0.0, message: String = "", bdMgtSn: String? = null) {
         viewModelScope.launch {
             try {
                 _placeResult.value = api.queryPlace(
-                    PlaceQueryRequest(heading = heading, user_lat = lat, user_lng = lng, user_alt = alt, pitch = pitch, user_message = message)
+                    PlaceQueryRequest(heading = heading, user_lat = lat, user_lng = lng, user_alt = alt, pitch = pitch, user_message = message, bd_mgt_sn = bdMgtSn)
                 )
             } catch (e: Exception) {
                 Log.e("ScanPangVM", "queryPlace failed", e)

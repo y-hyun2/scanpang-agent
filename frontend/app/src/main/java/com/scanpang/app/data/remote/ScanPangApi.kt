@@ -51,7 +51,31 @@ interface ScanPangApi {
         @Query("lat") lat: Double,
         @Query("lng") lng: Double,
     ): BuildingsChunkResponse
+
+    // ── User Preferences ──
+    // 온보딩 완료 / 프로필 수정 시 호출. user_id 는 Supabase auth.users.id.
+    @POST("user/preferences")
+    suspend fun upsertUserPreferences(@Body request: UserPreferencesUpsertRequest): UserPreferencesResponse
+
+    @GET("user/preferences/{user_id}")
+    suspend fun getUserPreferences(@retrofit2.http.Path("user_id") userId: String): UserPreferencesResponse
 }
+
+data class UserPreferencesUpsertRequest(
+    val user_id: String,
+    val display_name: String? = null,
+    val language: String? = null,
+    val value_added: String? = null,
+)
+
+data class UserPreferencesResponse(
+    val user_id: String = "",
+    val display_name: String? = null,
+    val language: String? = null,
+    val value_added: String? = null,
+    val saved_places: List<Any> = emptyList(),
+    val search_history: List<Any> = emptyList(),
+)
 
 // ── Navigation DTOs ──
 

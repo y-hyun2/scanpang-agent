@@ -21,6 +21,8 @@ from dotenv import load_dotenv
 # import 하면 fetch_tour_info 만 호출하려는 fetcher 가 무거운 ML 모듈을 같이 로드해
 # NumPy/torch 호환성 크래시까지 일으킴. 임베딩 빌드 시점에만 lazy 로 들여온다.
 
+from tools.tour_api_client import fetch_tour_info, TOUR_CONTENT_TYPES, INTRO_FIELD_MAP
+
 load_dotenv()
 
 KAKAO_REST_API_KEY = os.getenv("KAKAO_REST_API_KEY", "")
@@ -88,112 +90,7 @@ async def fetch_kakao_info(place_name: str, kakao_name: Optional[str] = None) ->
     }
 
 
-# ── Step 2: TourAPI description + image + 상세정보 ────────────────────────────
-
-# 명동 확장 대응: 전체 contentTypeId 포함
-TOUR_CONTENT_TYPES = [12, 14, 15, 25, 28, 32, 38, 39]
-# 12:관광지, 14:문화시설, 15:행사/공연/축제, 25:여행코스,
-# 28:레포츠, 32:숙박, 38:쇼핑, 39:음식점
-
-# contentTypeId별 detailIntro2 필드 매핑
-INTRO_FIELD_MAP = {
-    12: {"open_hours": "usetime",         "closed_days": "restdate",         "parking_info": "parking",         "admission_fee": ""},
-    14: {"open_hours": "usetimeculture",   "closed_days": "restdateculture",  "parking_info": "parkingculture",  "admission_fee": "usefee"},
-    15: {"open_hours": "playtime",         "closed_days": "",                 "parking_info": "",                "admission_fee": "usetimefestival"},
-    25: {"open_hours": "taketime",         "closed_days": "",                 "parking_info": "",                "admission_fee": ""},
-    28: {"open_hours": "usetimeleports",   "closed_days": "restdateleports",  "parking_info": "parkingleports",  "admission_fee": "usefeeleports"},
-    32: {"open_hours": "checkintime",      "closed_days": "checkouttime",     "parking_info": "parkinghotel",    "admission_fee": ""},
-    38: {"open_hours": "opentime",         "closed_days": "restdateshopping", "parking_info": "parkingshopping", "admission_fee": ""},
-    39: {"open_hours": "opentimefood",     "closed_days": "restdatefood",     "parking_info": "parkingfood",     "admission_fee": ""},
-}
-
-async def fetch_tour_info(place_name: str, tour_keyword: Optional[str] = None, sigungu_code: Optional[int] = None) -> dict:
-    base = "https://apis.data.go.kr/B551011/KorService2"
-    common_params = {
-        "serviceKey": TOUR_API_KEY,
-        "MobileOS": "ETC",
-        "MobileApp": "ScanPang",
-        "_type": "json",
-    }
-
-    keyword = tour_keyword or place_name
-    content_id = None
-    content_type_id = None
-    image_url = ""
-
-    async with httpx.AsyncClient() as client:
-        for ctype in TOUR_CONTENT_TYPES:
-            params = {**common_params, "keyword": keyword, "contentTypeId": ctype, "numOfRows": 100}
-            if sigungu_code:
-                params["lDongRegnCd"] = 11  # 서울특별시 고정
-                params["lDongSignguCd"] = sigungu_code
-            resp = await client.get(f"{base}/searchKeyword2", params=params)
-            items_raw = resp.json().get("response", {}).get("body", {}).get("items", {})
-            items = items_raw.get("item", []) if isinstance(items_raw, dict) else []
-            if isinstance(items, dict):
-                items = [items]
-            if not items:
-                continue
-            # title이 keyword와 정확히 일치하는 항목 우선 선택, 없으면 첫 번째
-            matched = next((it for it in items if it.get("title", "") == keyword), None)
-            selected = matched or items[0]
-            content_id = selected.get("contentid")
-            content_type_id = ctype
-            image_url = selected.get("firstimage", "")
-            break
-
-        if not content_id:
-            return {}
-
-        # detailCommon2: overview + homepage (파라미터 없이 호출해야 overview/homepage 포함됨)
-        resp = await client.get(f"{base}/detailCommon2", params={
-            **common_params, "contentId": content_id
-        })
-        detail_raw = resp.json().get("response", {}).get("body", {}).get("items", {})
-        detail = detail_raw.get("item", {}) if isinstance(detail_raw, dict) else {}
-        if isinstance(detail, list):
-            detail = detail[0] if detail else {}
-        overview_ko = detail.get("overview", "") if isinstance(detail, dict) else ""
-        homepage = detail.get("homepage", "") if isinstance(detail, dict) else ""
-
-        # detailIntro2: contentTypeId별 운영시간, 휴무일, 주차, 입장료
-        field_map = INTRO_FIELD_MAP.get(content_type_id, {})
-        resp2 = await client.get(f"{base}/detailIntro2", params={
-            **common_params, "contentId": content_id, "contentTypeId": content_type_id
-        })
-        intro_raw = resp2.json().get("response", {}).get("body", {}).get("items", {})
-        intro = intro_raw.get("item", {}) if isinstance(intro_raw, dict) else {}
-        if isinstance(intro, list):
-            intro = intro[0] if intro else {}
-
-        open_hours    = intro.get(field_map.get("open_hours", ""), "")
-        closed_days   = intro.get(field_map.get("closed_days", ""), "")
-        parking_info  = intro.get(field_map.get("parking_info", ""), "")
-        admission_fee = intro.get(field_map.get("admission_fee", ""), "")
-
-    description_en = await translate_to_english(overview_ko, place_name) if overview_ko else ""
-
-    return {
-        "description_en": description_en,
-        "image_url": image_url,
-        "homepage": homepage,
-        "open_hours": open_hours,
-        "closed_days": closed_days,
-        "parking_info": parking_info,
-        "admission_fee": admission_fee,
-    }
-
-
-async def translate_to_english(text_ko: str, place_name: str) -> str:
-    response = await openai_client.chat.completions.create(
-        model="gpt-4o",
-        messages=[
-            {"role": "system", "content": "You are a professional translator. Translate Korean to English concisely."},
-            {"role": "user", "content": f"Translate this Korean description of {place_name} to English (2-3 sentences max):\n\n{text_ko}"},
-        ],
-        max_tokens=200,
-    )
-    return response.choices[0].message.content.strip()
+# ── Step 2: TourAPI — tools/tour_api_client.py 로 이전 ────────────────────────
 
 
 async def gpt_generate_description(place_name: str) -> str:
