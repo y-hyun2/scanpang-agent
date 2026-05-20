@@ -104,24 +104,36 @@ async def _find_building_for_store(
     bld_pool,
     store_lat: float,
     store_lng: float,
+    retries: int = 3,
 ) -> str | None:
     """
     store의 좌표가 buildings.geom 폴리곤 안에 있으면 해당 ufid 반환.
     없으면 None → 호출 측에서 __outdoor__ 처리.
+    네트워크 단절 시 최대 retries회 재시도.
     """
-    async with bld_pool.acquire() as conn:
-        row = await conn.fetchrow(
-            """
-            SELECT ufid FROM buildings
-            WHERE ST_Within(
-                ST_SetSRID(ST_MakePoint($1, $2), 4326),
-                geom
-            )
-            LIMIT 1
-            """,
-            store_lng, store_lat,
-        )
-    return row["ufid"] if row else None
+    for attempt in range(retries):
+        try:
+            async with bld_pool.acquire() as conn:
+                row = await conn.fetchrow(
+                    """
+                    SELECT ufid FROM buildings
+                    WHERE ST_Within(
+                        ST_SetSRID(ST_MakePoint($1, $2), 4326),
+                        geom
+                    )
+                    LIMIT 1
+                    """,
+                    store_lng, store_lat,
+                )
+            return row["ufid"] if row else None
+        except Exception as e:
+            if attempt < retries - 1:
+                wait = 2 ** attempt  # 1s, 2s
+                print(f"    [bld_pool] 연결 오류 재시도 {attempt + 1}/{retries - 1} ({wait}s): {e}")
+                await asyncio.sleep(wait)
+            else:
+                print(f"    [bld_pool] 재시도 실패, __outdoor__ 처리: {e}")
+                return None
 
 
 # ── buildings 로드 & 클러스터링 ───────────────────────────────────────────────
