@@ -1,5 +1,6 @@
 package com.scanpang.app.screens
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -165,6 +166,10 @@ fun SearchDefaultScreen(
     // 화면을 떠났다 돌아와도(상세 화면 등) 입력값을 유지.
     var query by rememberSaveable { mutableStateOf("") }
     var recent by remember { mutableStateOf(historyPrefs.getRecent()) }
+
+    BackHandler(enabled = query.isNotEmpty()) {
+        query = ""
+    }
     val backendResults by viewModel.searchResults.collectAsState()
     // NavHost destination 마다 viewModel() 이 다른 인스턴스를 주므로 HomeScreen 의
     // setUserLocation 이 SearchDefaultScreen 에 안 닿음. SearchDefaultScreen 도 자체적으로

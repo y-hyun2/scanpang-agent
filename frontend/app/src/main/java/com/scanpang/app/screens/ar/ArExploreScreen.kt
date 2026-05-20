@@ -6,6 +6,11 @@ import android.location.Location
 import android.opengl.Matrix
 import android.speech.SpeechRecognizer
 import android.util.Log
+import android.app.Activity
+import android.graphics.Bitmap
+import android.graphics.PixelCopy
+import android.os.Handler
+import android.os.Looper
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -30,9 +35,7 @@ import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.CameraAlt
 import androidx.compose.material.icons.rounded.Close
@@ -43,7 +46,6 @@ import androidx.compose.material.icons.rounded.History
 import androidx.compose.material.icons.rounded.KeyboardArrowDown
 import androidx.compose.material.icons.rounded.Pause
 import androidx.compose.material.icons.rounded.Search
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Scaffold
@@ -51,11 +53,11 @@ import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -68,9 +70,13 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.foundation.Image
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.style.TextOverflow
@@ -97,6 +103,8 @@ import androidx.compose.runtime.collectAsState
 import com.scanpang.app.components.ar.ArAgentChatMessage
 import com.scanpang.app.components.ar.ArCircleIconButton
 import com.scanpang.app.components.ar.ArExploreInteractiveChatSection
+import com.scanpang.app.components.ar.ArExploreSearchHitUi
+import com.scanpang.app.components.ar.ArExploreSearchPanelContent
 import com.scanpang.app.components.ar.ArFloorStoreGuideOverlay
 import com.scanpang.app.components.ar.ArPoiFloatingDetailOverlay
 import com.scanpang.app.components.ar.ArPoiTabBuilding
@@ -104,10 +112,10 @@ import com.scanpang.app.components.ar.ArExploreFilterPanelFigma
 import com.scanpang.app.components.ar.ArExploreSideColumn
 import com.scanpang.app.components.ar.arExploreCategoryChipSpecs
 import com.scanpang.app.components.ar.ArPoiCard
+import com.scanpang.app.data.SearchHistoryPreferences
 import com.scanpang.app.navigation.AppRoutes
 import com.scanpang.app.ui.theme.ScanPangColors
 import com.scanpang.app.ui.theme.ScanPangDimens
-import com.scanpang.app.ui.theme.ScanPangShapes
 import com.scanpang.app.ui.theme.ScanPangSpacing
 import com.scanpang.app.ui.theme.ScanPangType
 import io.github.sceneview.ar.ARScene
@@ -127,12 +135,6 @@ import com.scanpang.app.components.ar.computeAngularFootprint
 import com.scanpang.app.components.ar.computeFrontEdgeMidpoint
 import com.scanpang.app.components.ar.isRayBlockedByPolygon
 import kotlin.math.abs
-
-private data class ArSearchHit(
-    val title: String,
-    val scoreLine: String,
-    val distance: String,
-)
 
 private data class DynamicPoi(
     val id: String,
@@ -206,6 +208,20 @@ fun ArExploreScreen(
     }
 
     var isFrozen by remember { mutableStateOf(false) }
+    var frozenBitmap by remember { mutableStateOf<Bitmap?>(null) }
+    val currentView = LocalView.current
+    LaunchedEffect(isFrozen) {
+        if (isFrozen) {
+            val window = (currentView.context as? Activity)?.window ?: return@LaunchedEffect
+            val bmp = Bitmap.createBitmap(currentView.width, currentView.height, Bitmap.Config.ARGB_8888)
+            PixelCopy.request(window, bmp, { result ->
+                frozenBitmap = if (result == PixelCopy.SUCCESS) bmp else null
+            }, Handler(Looper.getMainLooper()))
+        } else {
+            frozenBitmap = null
+        }
+    }
+
     var isTtsOn by remember { mutableStateOf(true) }
 
     var isSttListening by remember { mutableStateOf(false) }
@@ -284,18 +300,37 @@ fun ArExploreScreen(
     var selectedStore by remember { mutableStateOf<String?>(null) }
 
     val categoryChipSpecs = remember { arExploreCategoryChipSpecs() }
-    val recentQueries = remember {
-        listOf("할랄 식당", "명동성당", "근처 환전소")
-    }
-    val suggestionTags = remember {
-        listOf("할랄", "카페", "기도실", "환전소")
-    }
-    val searchHits = remember {
+    var arSearchHistoryTick by remember { mutableIntStateOf(0) }
+    val searchHistoryPrefs = remember(appContext) { SearchHistoryPreferences(appContext) }
+    val arExploreDemoHits = remember {
         listOf(
-            ArSearchHit("할랄가든 명동점", "일치도 98%", "120m"),
-            ArSearchHit("명동성당", "일치도 92%", "350m"),
-            ArSearchHit("우리은행 환전소", "일치도 88%", "80m"),
+            ArExploreSearchHitUi("할랄가든 명동점", "식당", "120m", "할랄 인증"),
+            ArExploreSearchHitUi("명동성당", "관광지", "350m", null),
+            ArExploreSearchHitUi("우리은행 환전소", "환전소", "80m", null),
         )
+    }
+    val arRecentQueries = remember(arSearchHistoryTick, isSearchOpen) {
+        if (isSearchOpen) searchHistoryPrefs.getRecent() else emptyList()
+    }
+    val displayedArHits = remember(arSearchQuery, showArSearchResults, arExploreDemoHits) {
+        if (!showArSearchResults) emptyList()
+        else filterArExploreHits(arSearchQuery, arExploreDemoHits)
+    }
+
+    LaunchedEffect(isSearchOpen) {
+        if (isSearchOpen) {
+            arSearchQuery = ""
+            showArSearchResults = false
+        }
+    }
+
+    val submitArSearch: () -> Unit = {
+        val q = arSearchQuery.trim()
+        if (q.isNotEmpty()) {
+            searchHistoryPrefs.add(q)
+            arSearchHistoryTick++
+            showArSearchResults = true
+        }
     }
 
     // ── ARCore Geospatial 상태 ──
@@ -597,6 +632,22 @@ fun ArExploreScreen(
                 },
             )
 
+            // ── Screen Freeze 오버레이 ──
+            val bitmap = frozenBitmap
+            if (isFrozen && bitmap != null) {
+                Image(
+                    bitmap = bitmap.asImageBitmap(),
+                    contentDescription = null,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier.fillMaxSize(),
+                )
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(ScanPangColors.ArFreezeTint),
+                )
+            }
+
             // AR 엔진 초기화 중 노이즈 화면 가림 (2초 타임아웃)
             if (showInitOverlay) {
                 Box(
@@ -627,6 +678,7 @@ fun ArExploreScreen(
                         ),
                     )
                     .statusBarsPadding()
+                    .padding(top = 8.dp)
                     .padding(horizontal = ScanPangDimens.arTopBarHorizontal)
                     .padding(bottom = ScanPangDimens.arTopBarBottomPadding),
             ) {
@@ -829,193 +881,45 @@ fun ArExploreScreen(
                         .background(Color.Transparent)
                         .clickable { isSearchOpen = false; showArSearchResults = false },
                 ) {
-                    Surface(
+                    ArExploreSearchPanelContent(
+                        query = arSearchQuery,
+                        onQueryChange = { arSearchQuery = it },
+                        onSubmitSearch = submitArSearch,
+                        recentQueries = arRecentQueries,
+                        onRecentQueryClick = { q ->
+                            arSearchQuery = q
+                            searchHistoryPrefs.add(q)
+                            arSearchHistoryTick++
+                            showArSearchResults = true
+                        },
+                        onRecentQueryRemove = { q ->
+                            searchHistoryPrefs.remove(q)
+                            arSearchHistoryTick++
+                        },
+                        onRecentClearAll = {
+                            searchHistoryPrefs.clearAll()
+                            arSearchHistoryTick++
+                        },
+                        showResultList = showArSearchResults,
+                        searchHits = displayedArHits,
+                        onHitViewInfo = { hit ->
+                            selectedPoi = hit.title
+                            activeDetailTab = ArPoiTabBuilding
+                            isSearchOpen = false
+                            showArSearchResults = false
+                        },
+                        onHitStartNav = { hit ->
+                            navController.navigate(AppRoutes.arNavMapRoute(hit.title)) { launchSingleTop = true }
+                            isSearchOpen = false
+                            showArSearchResults = false
+                        },
                         modifier = Modifier
                             .align(Alignment.TopCenter)
                             .fillMaxWidth()
                             .padding(horizontal = ScanPangDimens.arFilterPanelHorizontal)
-                            .padding(top = ScanPangSpacing.lg)
+                            .padding(top = ScanPangDimens.arFilterPanelTopOffset)
                             .clickable(enabled = false) { },
-                        shape = ScanPangShapes.arSearchPanel,
-                        color = ScanPangColors.ArOverlayWhite93,
-                        shadowElevation = ScanPangDimens.arPoiCardShadowElevation,
-                    ) {
-                        Column(
-                            modifier = Modifier
-                                .padding(ScanPangDimens.arTopBarHorizontal)
-                                .verticalScroll(rememberScrollState()),
-                            verticalArrangement = Arrangement.spacedBy(ScanPangSpacing.md),
-                        ) {
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                            ) {
-                                Row(
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(ScanPangSpacing.sm),
-                                    modifier = Modifier.weight(1f),
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Rounded.Search,
-                                        contentDescription = null,
-                                        tint = ScanPangColors.OnSurfaceMuted,
-                                        modifier = Modifier.size(ScanPangDimens.icon20),
-                                    )
-                                    BasicTextField(
-                                        value = arSearchQuery,
-                                        onValueChange = { arSearchQuery = it; if (it.isNotEmpty()) showArSearchResults = true },
-                                        modifier = Modifier.weight(1f),
-                                        textStyle = ScanPangType.body14Regular.copy(color = ScanPangColors.OnSurfaceStrong),
-                                        cursorBrush = SolidColor(ScanPangColors.Primary),
-                                        singleLine = true,
-                                        decorationBox = { inner ->
-                                            if (arSearchQuery.isEmpty()) {
-                                                Text(
-                                                    text = "장소·메뉴 검색",
-                                                    style = ScanPangType.searchPlaceholderRegular,
-                                                    color = ScanPangColors.OnSurfacePlaceholder,
-                                                )
-                                            }
-                                            inner()
-                                        },
-                                    )
-                                }
-                                IconButton(
-                                    onClick = {
-                                        arSearchQuery = ""
-                                        isSearchOpen = false
-                                        showArSearchResults = false
-                                    },
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Rounded.Close,
-                                        contentDescription = "닫기",
-                                        tint = ScanPangColors.OnSurfaceStrong,
-                                    )
-                                }
-                            }
-                            Text(
-                                text = "최근 검색",
-                                style = ScanPangType.sectionTitle16,
-                                color = ScanPangColors.OnSurfaceStrong,
-                            )
-                            recentQueries.forEach { q ->
-                                Row(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .clickable {
-                                            showArSearchResults = true
-                                        }
-                                        .padding(vertical = ScanPangSpacing.sm),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(ScanPangSpacing.sm),
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Rounded.History,
-                                        contentDescription = null,
-                                        tint = ScanPangColors.OnSurfaceMuted,
-                                        modifier = Modifier.size(ScanPangDimens.icon18),
-                                    )
-                                    Text(
-                                        text = q,
-                                        style = ScanPangType.body14Regular,
-                                        color = ScanPangColors.OnSurfaceStrong,
-                                    )
-                                }
-                            }
-                            Text(
-                                text = "추천 검색어",
-                                style = ScanPangType.sectionTitle16,
-                                color = ScanPangColors.OnSurfaceStrong,
-                            )
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.spacedBy(ScanPangSpacing.sm),
-                            ) {
-                                suggestionTags.forEach { tag ->
-                                    Surface(
-                                        shape = ScanPangShapes.badge6,
-                                        color = ScanPangColors.ArRecommendTagHalalBackground,
-                                        modifier = Modifier.clickable { showArSearchResults = true },
-                                    ) {
-                                        Text(
-                                            text = tag,
-                                            modifier = Modifier.padding(
-                                                horizontal = ScanPangDimens.arSearchTagHorizontalPad,
-                                                vertical = ScanPangDimens.arSearchTagVerticalPad,
-                                            ),
-                                            style = ScanPangType.tag11Medium,
-                                            color = ScanPangColors.Primary,
-                                        )
-                                    }
-                                }
-                            }
-                            if (showArSearchResults) {
-                                HorizontalDivider(color = ScanPangColors.OutlineSubtle)
-                                Text(
-                                    text = "정확도 · 거리순",
-                                    style = ScanPangType.meta11SemiBold,
-                                    color = ScanPangColors.OnSurfaceMuted,
-                                )
-                                searchHits.forEach { hit ->
-                                    Column(
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .padding(vertical = ScanPangSpacing.sm),
-                                    ) {
-                                        Text(
-                                            text = hit.title,
-                                            style = ScanPangType.title14,
-                                            color = ScanPangColors.OnSurfaceStrong,
-                                        )
-                                        Text(
-                                            text = "${hit.scoreLine} · ${hit.distance}",
-                                            style = ScanPangType.caption12Medium,
-                                            color = ScanPangColors.OnSurfaceMuted,
-                                        )
-                                        Row(
-                                            horizontalArrangement = Arrangement.spacedBy(ScanPangSpacing.sm),
-                                            modifier = Modifier.padding(top = ScanPangSpacing.sm),
-                                        ) {
-                                            TextButton(
-                                                onClick = {
-                                                    selectedPoi = hit.title
-                                                    selectedPoiOverlay = null
-                                                    selectedPoiDocent = null
-                                                    activeDetailTab = ArPoiTabBuilding
-                                                    isSearchOpen = false
-                                                    showArSearchResults = false
-                                                },
-                                            ) {
-                                                Text(
-                                                    text = "정보 보기",
-                                                    color = ScanPangColors.Primary,
-                                                    style = ScanPangType.body15Medium,
-                                                )
-                                            }
-                                            TextButton(
-                                                onClick = {
-                                                    navController.navigate(AppRoutes.arNavMapRoute(hit.title)) {
-                                                        launchSingleTop = true
-                                                    }
-                                                    isSearchOpen = false
-                                                    showArSearchResults = false
-                                                },
-                                            ) {
-                                                Text(
-                                                    text = "길안내",
-                                                    color = ScanPangColors.Primary,
-                                                    style = ScanPangType.body15Medium,
-                                                )
-                                            }
-                                        }
-                                    }
-                                    HorizontalDivider(color = ScanPangColors.OutlineSubtle)
-                                }
-                            }
-                        }
-                    }
+                    )
                 }
             }
 
@@ -1238,6 +1142,17 @@ private fun ArExploreStatusPill(
             }
         }
     }
+}
+
+private fun filterArExploreHits(query: String, all: List<ArExploreSearchHitUi>): List<ArExploreSearchHitUi> {
+    val t = query.trim().lowercase()
+    if (t.isEmpty()) return all
+    val filtered = all.filter { hit ->
+        hit.title.lowercase().contains(t) ||
+            hit.category.lowercase().contains(t) ||
+            hit.badgeLabel?.lowercase()?.contains(t) == true
+    }
+    return filtered.ifEmpty { all }
 }
 
 private fun buildFilterPillLabel(selected: Set<String>): String {
