@@ -560,13 +560,7 @@ fun ArExploreScreen(
                                             )
                                         } else {
                                             val nearby = filterStores.filter { store ->
-                                                val sLat = store.lat ?: return@filter false
-                                                val sLng = store.lng ?: return@filter false
-                                                val r = FloatArray(1)
-                                                Location.distanceBetween(
-                                                    cand.centerLat, cand.centerLng, sLat, sLng, r
-                                                )
-                                                r[0] <= 150f
+                                                store.place_id == cand.b.ufid
                                             }
                                             if (nearby.isEmpty()) null else {
                                                 val picked = nearby.random()
@@ -750,9 +744,18 @@ fun ArExploreScreen(
                     dynamicPois = dynamicPois,
                     anchorScreenPositions = anchorScreenPositions,
                     onPoiClick = { poi ->
-                        if (poi.storeCount > 1) {
-                            storeListPoi = poi
+                        if (poi.matchingStores.isNotEmpty()) {
+                            // 필터 모드 — 매장 마커
+                            if (poi.storeCount > 1) {
+                                storeListPoi = poi
+                            } else {
+                                val store = poi.matchingStores.first()
+                                navController.navigate(
+                                    AppRoutes.placeDetailRoute(store.category_key ?: "other", store.id)
+                                )
+                            }
                         } else {
+                            // 건물 마커 — 건물 상세 플로우
                             selectedPoi = poi.name
                             selectedPoiOverlay = poi.arOverlay
                             selectedPoiDocent = null
@@ -1150,7 +1153,9 @@ fun ArExploreScreen(
                         poi = poi,
                         onStoreClick = { store ->
                             storeListPoi = null
-                            selectedStore = store.store_name
+                            navController.navigate(
+                                AppRoutes.placeDetailRoute(store.category_key ?: "other", store.id)
+                            )
                         },
                         onDismiss = { storeListPoi = null },
                         modifier = Modifier.fillMaxSize(),
