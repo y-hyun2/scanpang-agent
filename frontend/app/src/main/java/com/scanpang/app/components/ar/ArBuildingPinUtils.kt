@@ -124,6 +124,17 @@ internal fun computeFrontEdgeMidpoint(
     return Pair(bestMidLat, bestMidLng)
 }
 
+// visible polygon (lng, lat) 리스트의 무게중심 — 마커 배치용
+// FOV 클리핑으로 생긴 경계 에지를 선택하는 computeFrontEdgeMidpoint 대신 사용
+internal fun computePolygonCentroid(
+    polygon: List<Pair<Double, Double>>,  // (lng, lat)
+): Pair<Double, Double>? {
+    if (polygon.isEmpty()) return null
+    var sumLng = 0.0; var sumLat = 0.0
+    for (p in polygon) { sumLng += p.first; sumLat += p.second }
+    return Pair(sumLat / polygon.size, sumLng / polygon.size)  // (lat, lng)
+}
+
 internal fun isRayBlockedByPolygon(
     userLng: Double, userLat: Double,
     targetLng: Double, targetLat: Double,

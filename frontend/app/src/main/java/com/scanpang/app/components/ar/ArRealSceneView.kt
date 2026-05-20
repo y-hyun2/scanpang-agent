@@ -423,8 +423,7 @@ fun ArRealSceneView(
                 val existingIds = navBuildingPins.map { it.id }.toSet()
                 for (entry in visibleCandidates) {
                     val id = "navbld_${entry.b.ufid.ifEmpty { entry.b.h3_index_10 }}_${entry.b.hashCode()}"
-                    val groundAlt = cameraAlt - 1.5
-                    val labelAlt = groundAlt + (entry.b.render_height / 2.0)
+                    val labelAlt = cameraAlt
                     if (id !in existingIds) {
                         runCatching {
                             val anchor = earth.createAnchor(entry.markerPos.first, entry.markerPos.second, labelAlt, 0f, 0f, 0f, 1f)

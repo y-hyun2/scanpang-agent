@@ -91,6 +91,8 @@ import com.scanpang.app.data.remote.ArOverlay
 import com.scanpang.app.data.remote.Docent
 import com.scanpang.app.data.remote.PlaceQueryRequest
 import com.scanpang.app.data.remote.RetrofitClient
+import com.scanpang.app.data.remote.SearchRequest
+import com.scanpang.app.data.remote.SearchResultItem
 import com.scanpang.app.data.remote.ScanPangViewModel
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.compose.runtime.collectAsState
@@ -103,6 +105,7 @@ import com.scanpang.app.components.ar.ArPoiTabBuilding
 import com.scanpang.app.components.ar.ArExploreFilterPanelFigma
 import com.scanpang.app.components.ar.ArExploreSideColumn
 import com.scanpang.app.components.ar.arExploreCategoryChipSpecs
+import com.scanpang.app.components.ar.ArCategoryIconBadge
 import com.scanpang.app.components.ar.ArPoiCard
 import com.scanpang.app.navigation.AppRoutes
 import com.scanpang.app.ui.theme.ScanPangColors
@@ -125,6 +128,7 @@ import com.scanpang.app.components.ar.clipPolygon
 import com.scanpang.app.components.ar.computeCentroid
 import com.scanpang.app.components.ar.computeAngularFootprint
 import com.scanpang.app.components.ar.computeFrontEdgeMidpoint
+import com.scanpang.app.components.ar.computePolygonCentroid
 import com.scanpang.app.components.ar.isRayBlockedByPolygon
 import kotlin.math.abs
 
@@ -144,6 +148,8 @@ private data class DynamicPoi(
     val arOverlay: ArOverlay? = null,
     val docent: Docent? = null,
     val isPending: Boolean = false,
+    val storeCount: Int = 0,
+    val matchingStores: List<SearchResultItem> = emptyList(),
     val bdMgtSn: String? = null,
 )
 
@@ -196,6 +202,7 @@ fun ArExploreScreen(
 
     var isFilterOpen by remember { mutableStateOf(false) }
     var categorySelection by remember { mutableStateOf(setOf<String>()) }
+    var filterStores by remember { mutableStateOf<List<SearchResultItem>>(emptyList()) }
     var isSearchOpen by remember { mutableStateOf(false) }
     var showArSearchResults by remember { mutableStateOf(false) }
     var arSearchQuery by remember { mutableStateOf("") }
@@ -283,6 +290,7 @@ fun ArExploreScreen(
     var selectedPoiDocent by remember { mutableStateOf<Docent?>(null) }
     var activeDetailTab by remember { mutableStateOf(ArPoiTabBuilding) }
     var selectedStore by remember { mutableStateOf<String?>(null) }
+    var storeListPoi by remember { mutableStateOf<DynamicPoi?>(null) }
 
     val categoryChipSpecs = remember { arExploreCategoryChipSpecs() }
     val recentQueries = remember {
@@ -333,6 +341,33 @@ fun ArExploreScreen(
     LaunchedEffect(Unit) {
         kotlinx.coroutines.delay(2000)
         showInitOverlay = false
+    }
+
+    LaunchedEffect(categorySelection) {
+        // 기존 building 마커 전부 제거 — 다음 프레임 사이클에서 필터 기준으로 재생성
+        val buildingKeys = geospatialAnchors.keys.filter { it.startsWith("building_") }.toList()
+        buildingKeys.forEach { k ->
+            geospatialAnchors[k]?.detach()
+            geospatialAnchors.remove(k)
+        }
+        dynamicPois.removeAll { it.id.startsWith("building_") }
+
+        if (categorySelection.isEmpty()) {
+            filterStores = emptyList()
+        } else {
+            val results = mutableListOf<SearchResultItem>()
+            for (cat in categorySelection) {
+                try {
+                    val resp = api.searchPlaces(
+                        SearchRequest(query = cat, lat = currentLat, lng = currentLng, limit = 100)
+                    )
+                    results.addAll(resp.results)
+                } catch (e: Exception) {
+                    Log.e("ArExplore", "카테고리 필터 검색 실패 ($cat): ${e.message}")
+                }
+            }
+            filterStores = results
+        }
     }
 
     Scaffold(
@@ -407,7 +442,7 @@ fun ArExploreScreen(
                         viewModel.updateLocationForChunk(currentLat, currentLng)
 
                         val now2 = System.currentTimeMillis()
-                        if (now2 - lastVisibilityCalcTime > 300) {
+                        if (now2 - lastVisibilityCalcTime > 150) {
                             lastVisibilityCalcTime = now2
 
                             val cache = viewModel.buildingsCache.value
@@ -451,6 +486,17 @@ fun ArExploreScreen(
                                         cand.visiblePolygon, currentLat, currentLng
                                     ) ?: Pair(cand.centerLat, cand.centerLng)
 
+                                    // 중심점이 10m 이내인 마커가 이미 있으면 같은 건물 중복 레코드로 간주
+                                    val isDuplicate = visibleCandidates.any { other ->
+                                        val r = FloatArray(1)
+                                        Location.distanceBetween(
+                                            other.centerLat, other.centerLng,
+                                            cand.centerLat, cand.centerLng, r,
+                                        )
+                                        r[0] < 10f
+                                    }
+                                    if (isDuplicate) continue
+
                                     val isOccluded = visibleCandidates.any { occluder ->
                                         // 거리 차 5m 미만이면 옆에 나란히 있는 거 — 가린다고 판단 안 함
                                         if (cand.dist - occluder.dist < 5f) return@any false
@@ -492,47 +538,70 @@ fun ArExploreScreen(
                                 visibleCandidates.forEach { cand ->
                                     val id = "building_${cand.b.ufid ?: cand.b.h3_index_10}_${cand.b.hashCode()}"
 
-                                    // 마커 위치 — visible polygon front edge 중점
-                                    val markerPos = computeFrontEdgeMidpoint(
-                                        cand.visiblePolygon, currentLat, currentLng
-                                    ) ?: Pair(cand.centerLat, cand.centerLng)
+                                    // 마커 위치 — visible polygon 무게중심
+                                    val markerPos = computePolygonCentroid(cand.visiblePolygon)
+                                        ?: Pair(cand.centerLat, cand.centerLng)
 
-                                    // 땅 높이 ≈ 사용자 위치 - 키(1.5m 가정)
-                                    val groundAltitude = currentAltitude - 1.5
-                                    val labelAltitude = groundAltitude + (cand.b.render_height / 2.0)
+                                    // 마커를 사용자 눈높이와 동일한 고도에 배치
+                                    // (render_height를 더하면 가까운 건물에서 마커가 하늘로 올라가는 문제 발생)
+                                    val labelAltitude = currentAltitude
 
                                     if (id !in existingIds) {
-                                        // 새 건물 — anchor 신규 생성
-                                        try {
+                                        // 새 건물 — 필터 미적용: 건물 마커, 필터 적용: 매칭 매장 마커
+                                        val poiToAdd: DynamicPoi? = if (categorySelection.isEmpty()) {
+                                            DynamicPoi(
+                                                id = id,
+                                                name = cand.b.bld_nm ?: "이름 없는 건물",
+                                                category = "건물",
+                                                distance = cand.dist,
+                                                latitude = markerPos.first,
+                                                longitude = markerPos.second,
+                                                bdMgtSn = cand.b.bd_mgt_sn,
+                                            )
+                                        } else {
+                                            val nearby = filterStores.filter { store ->
+                                                val sLat = store.lat ?: return@filter false
+                                                val sLng = store.lng ?: return@filter false
+                                                val r = FloatArray(1)
+                                                Location.distanceBetween(
+                                                    cand.centerLat, cand.centerLng, sLat, sLng, r
+                                                )
+                                                r[0] <= 150f
+                                            }
+                                            if (nearby.isEmpty()) null else {
+                                                val picked = nearby.random()
+                                                DynamicPoi(
+                                                    id = id,
+                                                    name = picked.store_name,
+                                                    category = picked.category
+                                                        ?: categorySelection.first(),
+                                                    distance = cand.dist,
+                                                    latitude = markerPos.first,
+                                                    longitude = markerPos.second,
+                                                    storeCount = nearby.size,
+                                                    matchingStores = nearby,
+                                                )
+                                            }
+                                        }
+                                        if (poiToAdd != null) try {
                                             val anchor = earth.createAnchor(
                                                 markerPos.first, markerPos.second, labelAltitude,
                                                 0f, 0f, 0f, 1f,
                                             )
                                             geospatialAnchors[id] = anchor
-                                            dynamicPois.add(
-                                                DynamicPoi(
-                                                    id = id,
-                                                    name = cand.b.bld_nm ?: "이름 없는 건물",
-                                                    category = "건물",
-                                                    distance = cand.dist,
-                                                    latitude = markerPos.first,
-                                                    longitude = markerPos.second,
-                                                    bdMgtSn = cand.b.bd_mgt_sn,
-                                                ),
-                                            )
+                                            dynamicPois.add(poiToAdd)
                                         } catch (e: Exception) {
                                             Log.e("ArExplore", "건물 앵커 실패 ${cand.b.bld_nm}: ${e.message}")
                                         }
                                     } else {
-                                        // 기존 건물 — markerPos 3m 이상 변할 때만 anchor 재생성
-                                        // (작은 변화는 ARCore 자동 추적이 더 부드럽게 처리)
+                                        // 기존 건물 — centroid 1m 이상 변할 때만 anchor 재생성
                                         val existingPoi = dynamicPois.firstOrNull { it.id == id } ?: return@forEach
                                         val r = FloatArray(1)
                                         Location.distanceBetween(
                                             existingPoi.latitude, existingPoi.longitude,
                                             markerPos.first, markerPos.second, r,
                                         )
-                                        if (r[0] > 3f) {
+                                        if (r[0] > 1f) {
                                             try {
                                                 val newAnchor = earth.createAnchor(
                                                     markerPos.first, markerPos.second, labelAltitude,
@@ -551,7 +620,7 @@ fun ArExploreScreen(
                                                 Log.e("ArExplore", "앵커 갱신 실패 ${cand.b.bld_nm}: ${e.message}")
                                             }
                                         }
-                                        // 3m 이내 변화면 anchor 그대로 — ARCore가 자동으로 부드럽게 추적
+                                        // 1m 이내 변화면 anchor 그대로 — ARCore가 자동으로 부드럽게 추적
                                     }
                                 }
 
@@ -681,17 +750,21 @@ fun ArExploreScreen(
                     dynamicPois = dynamicPois,
                     anchorScreenPositions = anchorScreenPositions,
                     onPoiClick = { poi ->
-                        selectedPoi = poi.name
-                        selectedPoiOverlay = poi.arOverlay
-                        selectedPoiDocent = null
-                        activeDetailTab = ArPoiTabBuilding
-                        if (poi.bdMgtSn != null) {
-                            viewModel.queryPlace(
-                                heading = currentHeading,
-                                lat = currentLat,
-                                lng = currentLng,
-                                bdMgtSn = poi.bdMgtSn,
-                            )
+                        if (poi.storeCount > 1) {
+                            storeListPoi = poi
+                        } else {
+                            selectedPoi = poi.name
+                            selectedPoiOverlay = poi.arOverlay
+                            selectedPoiDocent = null
+                            activeDetailTab = ArPoiTabBuilding
+                            if (poi.bdMgtSn != null) {
+                                viewModel.queryPlace(
+                                    heading = currentHeading,
+                                    lat = currentLat,
+                                    lng = currentLng,
+                                    bdMgtSn = poi.bdMgtSn,
+                                )
+                            }
                         }
                     },
                 )
@@ -812,11 +885,8 @@ fun ArExploreScreen(
                                 categorySelection = categorySelection,
                                 onCategoryToggle = { label ->
                                     categorySelection =
-                                        if (label in categorySelection) {
-                                            categorySelection - label
-                                        } else {
-                                            categorySelection + label
-                                        }
+                                        if (label in categorySelection) emptySet()
+                                        else setOf(label)
                                 },
                                 onReset = { categorySelection = emptySet() },
                                 onApply = { isFilterOpen = false },
@@ -1068,6 +1138,25 @@ fun ArExploreScreen(
                     isOpenNow = s?.is_open_now,
                 )
             }
+
+            // ── 필터 매장 리스트 ──
+            AnimatedVisibility(
+                visible = storeListPoi != null,
+                enter = slideInVertically { it },
+                exit = slideOutVertically { it },
+            ) {
+                storeListPoi?.let { poi ->
+                    ArFilteredStoreListOverlay(
+                        poi = poi,
+                        onStoreClick = { store ->
+                            storeListPoi = null
+                            selectedStore = store.store_name
+                        },
+                        onDismiss = { storeListPoi = null },
+                        modifier = Modifier.fillMaxSize(),
+                    )
+                }
+            }
         }
     }
 }
@@ -1093,8 +1182,85 @@ private fun BoxScope.ArDynamicPoiMarkers(
                     if (poi.category.isNotEmpty()) append("${poi.category} · ")
                     append("${"%.0f".format(poi.distance)}m")
                 },
+                category = poi.category,
+                extraCount = poi.storeCount,
                 onClick = { onPoiClick(poi) },
             )
+        }
+    }
+}
+
+@Composable
+private fun ArFilteredStoreListOverlay(
+    poi: DynamicPoi,
+    onStoreClick: (SearchResultItem) -> Unit,
+    onDismiss: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Box(
+        modifier = modifier
+            .background(ScanPangColors.ArOverlayScrimDark)
+            .clickable { onDismiss() },
+        contentAlignment = Alignment.BottomCenter,
+    ) {
+        Surface(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable(enabled = false) {},
+            shape = ScanPangShapes.arFilterPanelTop,
+            color = ScanPangColors.Surface,
+        ) {
+            Column(
+                modifier = Modifier
+                    .padding(horizontal = ScanPangDimens.arTopBarHorizontal)
+                    .padding(top = ScanPangSpacing.md)
+                    .navigationBarsPadding()
+                    .verticalScroll(rememberScrollState()),
+            ) {
+                Text(
+                    text = "${poi.category} ${poi.storeCount}개",
+                    style = ScanPangType.arFilterTitle16,
+                    color = ScanPangColors.OnSurfaceStrong,
+                    modifier = Modifier.padding(bottom = ScanPangSpacing.sm),
+                )
+                poi.matchingStores.forEach { store ->
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { onStoreClick(store) }
+                            .padding(vertical = ScanPangSpacing.sm),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(ScanPangSpacing.sm),
+                    ) {
+                        ArCategoryIconBadge(
+                            category = store.category ?: poi.category,
+                            badgeSize = 32,
+                            iconSize = 18,
+                        )
+                        Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                            Text(
+                                text = store.store_name,
+                                style = ScanPangType.chip13SemiBold,
+                                color = ScanPangColors.OnSurfaceStrong,
+                            )
+                            val meta = buildString {
+                                store.floor?.let { append(it) }
+                                if (store.floor != null && store.addr != null) append(" · ")
+                                store.addr?.let { append(it) }
+                            }
+                            if (meta.isNotEmpty()) {
+                                Text(
+                                    text = meta,
+                                    style = ScanPangType.meta11Medium,
+                                    color = ScanPangColors.ArPoiSubtitle,
+                                )
+                            }
+                        }
+                    }
+                    HorizontalDivider()
+                }
+                Spacer(modifier = Modifier.height(ScanPangSpacing.sm))
+            }
         }
     }
 }

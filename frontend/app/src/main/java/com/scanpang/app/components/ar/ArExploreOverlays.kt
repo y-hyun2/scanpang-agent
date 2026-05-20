@@ -27,6 +27,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.size
@@ -315,43 +316,63 @@ fun ArPoiCard(
     title: String,
     subtitle: String,
     category: String = "",
+    extraCount: Int = 0,
     modifier: Modifier = Modifier,
     onClick: (() -> Unit)? = null,
 ) {
-    val clickMod = if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier
-    Surface(
-        modifier = modifier
-            .wrapContentWidth()
-            .heightIn(min = ScanPangDimens.arPoiCardHeight)
-            .then(clickMod),
-        shape = ScanPangShapes.arPoiCard,
-        color = ScanPangColors.Surface,
-        shadowElevation = ScanPangDimens.arPoiCardShadowElevation,
-    ) {
-        Row(
+    Box(modifier = modifier) {
+        val clickMod = if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier
+        Surface(
             modifier = Modifier
-                .padding(
-                    horizontal = ScanPangDimens.arPoiCardHorizontalPad,
-                    vertical = ScanPangDimens.arPoiCardVerticalPad,
-                ),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(ScanPangSpacing.sm),
+                .wrapContentWidth()
+                .heightIn(min = ScanPangDimens.arPoiCardHeight)
+                .then(clickMod),
+            shape = ScanPangShapes.arPoiCard,
+            color = ScanPangColors.Surface,
+            shadowElevation = ScanPangDimens.arPoiCardShadowElevation,
         ) {
-            ArCategoryIconBadge(
-                category = category,
-                badgeSize = ScanPangDimens.arPoiIcon24.value.toInt(),
-                iconSize = ScanPangDimens.icon14.value.toInt(),
-            )
-            Column(verticalArrangement = Arrangement.spacedBy(0.dp)) {
-                Text(
-                    text = title,
-                    style = ScanPangType.chip13SemiBold,
-                    color = ScanPangColors.ArPoiTitle,
+            Row(
+                modifier = Modifier
+                    .padding(
+                        horizontal = ScanPangDimens.arPoiCardHorizontalPad,
+                        vertical = ScanPangDimens.arPoiCardVerticalPad,
+                    ),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(ScanPangSpacing.sm),
+            ) {
+                ArCategoryIconBadge(
+                    category = category,
+                    badgeSize = ScanPangDimens.arPoiIcon24.value.toInt(),
+                    iconSize = ScanPangDimens.icon14.value.toInt(),
                 )
+                Column(verticalArrangement = Arrangement.spacedBy(0.dp)) {
+                    Text(
+                        text = title,
+                        style = ScanPangType.chip13SemiBold,
+                        color = ScanPangColors.ArPoiTitle,
+                    )
+                    Text(
+                        text = subtitle,
+                        style = ScanPangType.meta11Medium,
+                        color = ScanPangColors.ArPoiSubtitle,
+                    )
+                }
+            }
+        }
+        if (extraCount > 1) {
+            Box(
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .offset(x = 6.dp, y = (-6).dp)
+                    .size(20.dp)
+                    .clip(CircleShape)
+                    .background(Color(0xFFE53935)),
+                contentAlignment = Alignment.Center,
+            ) {
                 Text(
-                    text = subtitle,
+                    text = extraCount.toString(),
                     style = ScanPangType.meta11Medium,
-                    color = ScanPangColors.ArPoiSubtitle,
+                    color = Color.White,
                 )
             }
         }
