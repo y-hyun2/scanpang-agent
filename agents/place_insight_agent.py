@@ -5,9 +5,9 @@ from datetime import datetime, timezone
 from openai import AsyncOpenAI
 from dotenv import load_dotenv
 
-from core.db import get_pool
+from core.db import get_pool, get_building_pool
 from schemas.place import PlaceRequest
-from tools.building_raycast import find_building_by_raycast,  fetch_building_by_bd_mgt_sn
+from tools.building_raycast import find_building_by_raycast, fetch_building_by_bd_mgt_sn
 
 load_dotenv()
 
@@ -57,6 +57,25 @@ async def _fetch_place_info(ufid: str) -> dict:
     except Exception as e:
         print(f"[place_insight] Supabase 조회 실패: {e}")
         return {}
+
+
+async def _fetch_building_meta_by_bd_mgt_sn(bd_mgt_sn: str) -> tuple[str, str]:
+    """buildings 테이블에서 bd_mgt_sn → (ufid, bld_nm) 조회.
+    vworld JSON 미스 시 폴백으로 사용.
+    """
+    try:
+        pool = await get_building_pool()
+        async with pool.acquire() as conn:
+            row = await conn.fetchrow(
+                "SELECT ufid, bld_nm FROM buildings WHERE bd_mgt_sn = $1 LIMIT 1",
+                bd_mgt_sn,
+            )
+        if row:
+            return (row["ufid"] or ""), (row["bld_nm"] or "")
+        return "", ""
+    except Exception as e:
+        print(f"[place_insight] buildings 테이블 조회 실패: {e}")
+        return "", ""
 
 
 # ── LLM: docent 해설 생성 ──────────────────────────────────────────────────────
@@ -109,9 +128,15 @@ def generate_follow_ups(user_message: str, place_data: dict) -> list[str]:
 # ── Main agent ────────────────────────────────────────────────────────────────
 
 async def run_place_insight_agent(req: PlaceRequest) -> dict:
-    # 1) 바라보는 건물 식별 — bd_mgt_sn 있으면 DB lookup, 없으면 raycasting
+    # 1) 바라보는 건물 식별 — bd_mgt_sn 있으면 vworld JSON lookup, 없으면 raycasting
     if req.bd_mgt_sn:
         vworld_meta = fetch_building_by_bd_mgt_sn(req.bd_mgt_sn)
+        # vworld JSON 미스(파일 없거나 bd_mgt_sn 미저장) → buildings 테이블 직접 조회
+        if not vworld_meta:
+            ufid_db, bld_nm_db = await _fetch_building_meta_by_bd_mgt_sn(req.bd_mgt_sn)
+            if ufid_db:
+                print(f"[place_insight] buildings 테이블 폴백: bd_mgt_sn={req.bd_mgt_sn} → ufid={ufid_db}")
+                vworld_meta = {"ufid": ufid_db, "bld_nm": bld_nm_db}
     else:
         vworld_meta = find_building_by_raycast(
             user_lat=req.user_lat,
