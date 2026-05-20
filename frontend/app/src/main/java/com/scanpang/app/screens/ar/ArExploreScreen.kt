@@ -95,7 +95,6 @@ import com.scanpang.app.ar.ArSpeechRecognizerHelper
 import com.scanpang.app.ar.ScanPangAgentService
 import com.scanpang.app.ar.sendVoiceMessage
 import com.scanpang.app.data.remote.ArOverlay
-import com.scanpang.app.data.remote.Docent
 import com.scanpang.app.data.remote.PlaceQueryRequest
 import com.scanpang.app.data.remote.RetrofitClient
 import com.scanpang.app.data.remote.SearchRequest
@@ -149,7 +148,6 @@ private data class DynamicPoi(
     val latitude: Double = 0.0,
     val longitude: Double = 0.0,
     val arOverlay: ArOverlay? = null,
-    val docent: Docent? = null,
     val isPending: Boolean = false,
     val storeCount: Int = 0,
     val matchingStores: List<SearchResultItem> = emptyList(),
@@ -304,7 +302,6 @@ fun ArExploreScreen(
 
     var selectedPoi by remember { mutableStateOf<String?>(null) }
     var selectedPoiOverlay by remember { mutableStateOf<ArOverlay?>(null) }
-    var selectedPoiDocent by remember { mutableStateOf<Docent?>(null) }
     var activeDetailTab by remember { mutableStateOf(ArPoiTabBuilding) }
     var selectedStore by remember { mutableStateOf<String?>(null) }
     var storeListPoi by remember { mutableStateOf<DynamicPoi?>(null) }
@@ -811,7 +808,6 @@ fun ArExploreScreen(
                             // 건물 마커 — 건물 상세 플로우
                             selectedPoi = poi.name
                             selectedPoiOverlay = poi.arOverlay
-                            selectedPoiDocent = null
                             activeDetailTab = ArPoiTabBuilding
                             if (poi.bdMgtSn != null) {
                                 viewModel.queryPlace(
@@ -1015,7 +1011,6 @@ fun ArExploreScreen(
                     onDismiss = {
                         selectedPoi = null
                         selectedPoiOverlay = null
-                        selectedPoiDocent = null
                         selectedStore = null
                         activeDetailTab = ArPoiTabBuilding
                     },
@@ -1025,7 +1020,6 @@ fun ArExploreScreen(
                     },
                     modifier = Modifier.fillMaxSize(),
                     arOverlay = selectedPoiOverlay ?: placeResult?.ar_overlay,
-                    docent = selectedPoiDocent ?: placeResult?.docent,
                 )
             }
 
