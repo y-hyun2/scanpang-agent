@@ -83,35 +83,7 @@ import com.scanpang.app.ui.theme.ScanPangType
 private val INFO_ROW_SPACING = 14.dp
 private val SECTION_INNER_SPACING = 12.dp
 
-private val CATEGORY_KO = mapOf(
-    "cafe"              to "카페",
-    "restaurant"        to "식당",
-    "shopping"          to "쇼핑",
-    "convenience_store" to "편의점",
-    "pharmacy"          to "약국",
-    "hospital"          to "병원",
-    "bank"              to "은행",
-    "atm"               to "ATM",
-    "exchange"          to "환전소",
-    "subway"            to "지하철역",
-    "subway_station"    to "지하철역",
-    "restroom"          to "화장실",
-    "public_restroom"   to "화장실",
-    "locker"            to "물품보관함",
-    "lockers"           to "물품보관함",
-    "prayer_room"       to "기도실",
-    "accommodation"     to "호텔",
-    "cultural"          to "문화시설",
-    "tourist"           to "관광지",
-    "tourist_spot"      to "관광지",
-    "halal_restaurant"  to "할랄 식당",
-    "vegan_restaurant"  to "비건 식당",
-    "vegan_cafe"        to "비건 카페",
-)
-
-// 이 카테고리들은 raw Kakao 소분류("한식", "의류", "의원")를 그대로 표시.
-// 나머지는 CATEGORY_KO 고정 ("관광지", "환전소", "카페" 등).
-private val USE_RAW_CATEGORY = setOf("restaurant", "shopping", "hospital", "cultural", "accommodation")
+// 카테고리 맵/셋은 PlaceDetailCommon.kt 의 PLACE_CATEGORY_KO / PLACE_USE_RAW_CATEGORY 공유.
 
 /**
  * 카테고리 14종을 한 화면에서 처리하는 통합 상세 화면.
@@ -189,16 +161,11 @@ fun PlaceDetailScreen(
         return
     }
 
-    val displayCategory = when {
-        categoryKey == "vegan_restaurant" -> {
-            val veganLevel = (backend?.details?.get("vegan_level") as? String).orEmpty()
-            if (veganLevel == "채식가능") "채식가능" else "비건 식당"
-        }
-        categoryKey in USE_RAW_CATEGORY ->
-            place.category.substringAfterLast(">").trim().ifBlank { CATEGORY_KO[categoryKey] ?: categoryKey }
-        else ->
-            CATEGORY_KO[categoryKey] ?: place.category.substringAfterLast(">").trim().ifBlank { "—" }
-    }
+    val displayCategory = resolveCategoryLabel(
+        categoryKey = categoryKey,
+        rawCategory = place.category,
+        veganLevel = (backend?.details?.get("vegan_level") as? String).orEmpty(),
+    )
 
     val restaurantExtra = remember(categoryKey, backend) {
         if (categoryKey !in setOf("restaurant", "halal_restaurant")) return@remember null

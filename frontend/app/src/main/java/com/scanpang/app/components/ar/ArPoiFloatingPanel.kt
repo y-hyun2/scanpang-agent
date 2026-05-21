@@ -65,6 +65,7 @@ import androidx.compose.ui.window.DialogProperties
 import com.scanpang.app.data.remote.ArOverlay
 import com.scanpang.app.data.remote.FloorInfo
 import com.scanpang.app.screens.DetailCategoryTagDistanceRow
+import com.scanpang.app.screens.resolveCategoryLabel
 import com.scanpang.app.screens.DetailFacilityTagRow
 import com.scanpang.app.screens.DetailImageFullscreenDialog
 import com.scanpang.app.screens.DetailInfoLine
@@ -733,7 +734,11 @@ fun ArFloorStoreGuideOverlay(
     distanceLabel: String = "",
 ) {
     val imageUrls = (storeResult?.image_urls ?: emptyList()).take(6)
-    val displayCategory = (storeResult?.category?.ifBlank { null }) ?: category
+    val displayCategory = resolveCategoryLabel(
+        categoryKey = storeResult?.category_key ?: "",
+        rawCategory = storeResult?.category ?: category,
+        veganLevel = (storeResult?.details?.get("vegan_level") as? String).orEmpty(),
+    )
     val displayOpenNow = storeResult?.is_open_now ?: isOpenNow
     val intro = (storeResult?.details?.get("intro") as? String)?.trim().orEmpty()
     val openHours = storeResult?.open_hours?.trim().orEmpty()
