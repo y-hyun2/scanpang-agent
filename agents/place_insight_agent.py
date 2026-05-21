@@ -165,8 +165,19 @@ async def run_place_insight_agent(req: PlaceRequest) -> dict:
             },
         }
 
-    # asyncpg JSONB → 이미 Python list, json.loads 불필요
-    floor_info = place_data.get("floor_info") or []
+    # JSONB 컬럼 — asyncpg 가 환경(statement_cache_size=0 + jsonb codec 미설정)에
+    # 따라 list 가 아니라 raw JSON 문자열로 반환할 때가 있다. 그대로 응답에 넣으면
+    # frontend(List<FloorInfo> 기대)가 deserialize 실패해 빈 list 로 처리해 층별
+    # 정보가 텅 빈 채 표시됨. str 면 json.loads 로 dict/list 복원.
+    import json as _json_safe
+    raw_floor = place_data.get("floor_info")
+    if isinstance(raw_floor, str):
+        try:
+            floor_info = _json_safe.loads(raw_floor) or []
+        except (ValueError, TypeError):
+            floor_info = []
+    else:
+        floor_info = raw_floor or []
     halal_info = place_data.get("halal_info", "")
 
     # last_updated: asyncpg가 datetime 객체로 반환
