@@ -173,15 +173,17 @@ async def user_saved_places_update(user_id: str, req: SavedPlacesUpdateRequest):
     """SavedPlacesStore 변경 시 호출. 전체 list 교체 (delta sync 가 아닌 full replace)."""
     pool = await get_pool()
     async with pool.acquire() as conn:
+        # core/db.py 의 jsonb codec 이 list 를 자동 직렬화. _json.dumps + ::jsonb
+        # 하면 더블 인코딩(jsonb_typeof=string)돼서 GET 시 list 가 아닌 string 으로 디코드.
         await conn.execute(
             """
             INSERT INTO user_preferences (user_id, saved_places, created_at, updated_at)
-            VALUES ($1, $2::jsonb, NOW(), NOW())
+            VALUES ($1, $2, NOW(), NOW())
             ON CONFLICT (user_id) DO UPDATE SET
                 saved_places = EXCLUDED.saved_places,
                 updated_at   = NOW()
             """,
-            user_id, _json.dumps(req.items, ensure_ascii=False),
+            user_id, req.items,
         )
     return {"user_id": user_id, "count": len(req.items)}
 
@@ -194,12 +196,12 @@ async def user_search_history_update(user_id: str, req: SearchHistoryUpdateReque
         await conn.execute(
             """
             INSERT INTO user_preferences (user_id, search_history, created_at, updated_at)
-            VALUES ($1, $2::jsonb, NOW(), NOW())
+            VALUES ($1, $2, NOW(), NOW())
             ON CONFLICT (user_id) DO UPDATE SET
                 search_history = EXCLUDED.search_history,
                 updated_at     = NOW()
             """,
-            user_id, _json.dumps(req.items, ensure_ascii=False),
+            user_id, req.items,
         )
     return {"user_id": user_id, "count": len(req.items)}
 
