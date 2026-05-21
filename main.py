@@ -23,7 +23,7 @@ from tools.open_hours_parser import is_open_now_combined as _is_open_now_combine
 import json as _json
 from datetime import datetime, timedelta, timezone
 from rag.automation.worker import start_worker, stop_worker
-from core.db import get_pool, get_building_pool, close_pool
+from core.db import get_pool, close_pool
 from api.h3_buildings import router as h3_buildings_router
 
 app = FastAPI(title="ScanPang Navigation API")
@@ -35,7 +35,6 @@ app.include_router(h3_buildings_router)
 async def _startup():
     await get_session_store().connect()
     await get_pool()
-    await get_building_pool()
     await start_worker()
 
 

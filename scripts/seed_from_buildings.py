@@ -30,7 +30,7 @@ import h3
 import httpx
 from dotenv import load_dotenv
 
-from core.db import get_pool, get_building_pool
+from core.db import get_pool
 from tools.store_tools import get_store_detail
 
 load_dotenv()
@@ -142,7 +142,7 @@ async def _find_building_for_store(
 
 async def load_building_clusters() -> list[tuple[str, float, float, int]]:
     """buildings DB에서 H3 res-7 클러스터별 (cell, lat, lng, 건물수)를 반환."""
-    pool = await get_building_pool()
+    pool = await get_pool()
     async with pool.acquire() as conn:
         rows = await conn.fetch(
             "SELECT center_lat, center_lng FROM buildings "
@@ -202,7 +202,7 @@ async def run(
         print(f"  {cell}  lat={lat:.4f} lng={lng:.4f}  건물={cnt}개")
 
     pool = await get_pool()
-    bld_pool = await get_building_pool()
+    bld_pool = pool  # buildings 도 동일한 DB 사용 — 변수명 호환용
 
     async with pool.acquire() as conn:
         existing: set[str] = (
