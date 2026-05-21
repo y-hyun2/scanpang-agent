@@ -59,7 +59,29 @@ interface ScanPangApi {
 
     @GET("user/preferences/{user_id}")
     suspend fun getUserPreferences(@retrofit2.http.Path("user_id") userId: String): UserPreferencesResponse
+
+    // saved_places / search_history 전체 replace. local SavedPlacesStore /
+    // SearchHistoryPreferences 변경 후 fire-and-forget 으로 sync.
+    @retrofit2.http.PUT("user/preferences/{user_id}/saved-places")
+    suspend fun updateSavedPlaces(
+        @retrofit2.http.Path("user_id") userId: String,
+        @Body request: SavedPlacesUpdateRequest,
+    ): Map<String, Any>
+
+    @retrofit2.http.PUT("user/preferences/{user_id}/search-history")
+    suspend fun updateSearchHistory(
+        @retrofit2.http.Path("user_id") userId: String,
+        @Body request: SearchHistoryUpdateRequest,
+    ): Map<String, Any>
 }
+
+data class SavedPlacesUpdateRequest(
+    val items: List<Map<String, Any>> = emptyList(),
+)
+
+data class SearchHistoryUpdateRequest(
+    val items: List<String> = emptyList(),
+)
 
 data class UserPreferencesUpsertRequest(
     val user_id: String,

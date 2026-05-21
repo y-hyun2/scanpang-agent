@@ -1,8 +1,18 @@
 package com.scanpang.app.data
 
 import android.content.Context
+import com.scanpang.app.auth.AuthRepository
+import com.scanpang.app.data.remote.RetrofitClient
+import com.scanpang.app.data.remote.SavedPlacesUpdateRequest
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
 import org.json.JSONArray
 import org.json.JSONObject
+
+// SavedPlacesStore.syncToBackend() 용 fire-and-forget IO scope.
+private val savedPlacesSyncScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
 data class SavedPlaceEntry(
     val id: String,
@@ -108,11 +118,15 @@ class SavedPlacesStore(context: Context) {
         list.removeAll { it.id == entry.id }
         list.add(0, entry.copy(savedOrder = System.currentTimeMillis()))
         saveList(list)
+        syncToBackend(list)
     }
 
     fun remove(id: String) {
         val list = getAll().toMutableList()
-        if (list.removeAll { it.id == id }) saveList(list)
+        if (list.removeAll { it.id == id }) {
+            saveList(list)
+            syncToBackend(list)
+        }
     }
 
     private fun saveList(list: List<SavedPlaceEntry>) {
@@ -131,6 +145,33 @@ class SavedPlacesStore(context: Context) {
             )
         }
         prefs.edit().putString(KEY_PLACES, arr.toString()).apply()
+    }
+
+    /**
+     * 전체 list 를 backend `user_preferences.saved_places` 로 전송.
+     * Supabase Auth 안 돼 있으면 skip (FK 위반 방지). 실패해도 로컬은 유지.
+     */
+    private fun syncToBackend(list: List<SavedPlaceEntry>) {
+        val userId = AuthRepository.currentUserId() ?: return
+        val items = list.map { e ->
+            mapOf(
+                "id" to e.id,
+                "name" to e.name,
+                "category" to e.category,
+                "distanceLine" to e.distanceLine,
+                "tags" to e.tags,
+                "target" to e.target.name,
+                "savedOrder" to e.savedOrder,
+            )
+        }
+        savedPlacesSyncScope.launch {
+            try {
+                RetrofitClient.api.updateSavedPlaces(userId, SavedPlacesUpdateRequest(items = items))
+                android.util.Log.d("SavedPlacesStore", "syncToBackend OK: ${items.size}건")
+            } catch (e: Exception) {
+                android.util.Log.e("SavedPlacesStore", "syncToBackend FAILED", e)
+            }
+        }
     }
 
     private fun JSONArray.toStringList(): List<String> = buildList {
