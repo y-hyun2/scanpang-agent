@@ -371,7 +371,7 @@ fun ArRealSceneView(
             val isLookingDown = poseMatrix[9] > 0.5f
 
             // ── 건물 PIN: 300ms 스로틀로 FOV+Occlusion+FrontEdge 계산 (탐색모드 동일 로직) ──
-            if (buildingsCache.isNotEmpty() && now - lastNavBuildingVisibilityTime > 300) {
+            if (buildingsCache.isNotEmpty() && pose.horizontalAccuracy < 3.0 && now - lastNavBuildingVisibilityTime > 300) {
                 lastNavBuildingVisibilityTime = now
 
                 val fov = buildFovPolygon(lat, lng, pose.heading)
