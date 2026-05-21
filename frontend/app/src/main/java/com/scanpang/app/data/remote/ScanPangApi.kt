@@ -418,6 +418,7 @@ data class SearchResultItem(
     val image_url: String? = null,
     val is_open_now: Boolean? = null,
     val distance_m: Double? = null,  // outdoor 카테고리 검색 시 거리(m). 그 외 null
+    val halal_type: String? = null,  // 할랄 식당 전용 (HALAL MEAT / SEAFOOD / VEGGIE / SALAM SEOUL)
 )
 
 data class SearchResponse(

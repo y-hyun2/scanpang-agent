@@ -305,7 +305,9 @@ async def _outdoor_search(category_key: str, req: SearchRequest) -> SearchRespon
         SearchResultItem(
             id=_outdoor_id(category_key, r),
             store_name=r.get("name", ""),
-            category=_vegan_category_label(r.get("vegan_level", ""), category_key),
+            category=(_vegan_category_label(r.get("vegan_level", ""), category_key)
+                      if category_key in ("vegan_restaurant", "vegan_cafe")
+                      else LABEL.get(category_key, category_key)),
             category_key=category_key,
             addr=r.get("address", ""),
             phone=r.get("phone", ""),
