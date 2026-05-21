@@ -148,15 +148,27 @@ fun PlaceDetailScreen(
                     context, android.Manifest.permission.ACCESS_COARSE_LOCATION
                 )
         if (!hasPermission) return@LaunchedEffect
-        com.google.android.gms.location.LocationServices
+        val client = com.google.android.gms.location.LocationServices
             .getFusedLocationProviderClient(context)
-            .lastLocation
-            .addOnSuccessListener { loc ->
-                if (loc != null) {
-                    userLat = loc.latitude
-                    userLng = loc.longitude
+        client.lastLocation.addOnSuccessListener { loc ->
+            if (loc != null) {
+                userLat = loc.latitude
+                userLng = loc.longitude
+            } else {
+                // lastLocation null (GPS cold start 등) → getCurrentLocation 으로
+                // 능동 1회 fix. PRIORITY_BALANCED 면 셀룰러/와이파이도 활용해
+                // 빨리 반환됨. 안 그러면 distance_m 영원히 null.
+                client.getCurrentLocation(
+                    com.google.android.gms.location.Priority.PRIORITY_BALANCED_POWER_ACCURACY,
+                    null,
+                ).addOnSuccessListener { fresh ->
+                    if (fresh != null) {
+                        userLat = fresh.latitude
+                        userLng = fresh.longitude
+                    }
                 }
             }
+        }
     }
 
     // 1) 백엔드 store_details 조회 — placeId/userLat/userLng 변경 시 재호출
