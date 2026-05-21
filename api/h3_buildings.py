@@ -65,6 +65,7 @@ async def get_buildings_chunk(
         SELECT
             ufid,
             bld_nm,
+            bd_mgt_sn,
             COALESCE(NULLIF(height, 0), estimated_height) AS render_height,
             h3_index_10,
             ST_AsGeoJSON(geom) AS geom_json,
