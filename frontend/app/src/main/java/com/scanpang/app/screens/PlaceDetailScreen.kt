@@ -60,7 +60,6 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavController
-import com.scanpang.app.data.DummyData
 import com.scanpang.app.data.ExchangeRate
 import com.scanpang.app.data.MenuItem
 import com.scanpang.app.data.Place
@@ -71,7 +70,6 @@ import com.scanpang.app.util.OpenHoursUtils
 import com.scanpang.app.data.SubwayExit
 import com.scanpang.app.data.SubwayFastAlight
 import com.scanpang.app.data.SubwayScheduleDir
-import com.scanpang.app.data.galleryModels
 import com.scanpang.app.data.remote.PlaceDetailResponse
 import com.scanpang.app.data.remote.ScanPangViewModel
 import com.scanpang.app.data.toSubwayDetail
@@ -90,7 +88,7 @@ private val SECTION_INNER_SPACING = 12.dp
  *
  * categoryKey 는 백엔드 store_details.category_key (cafe/restaurant/...) 또는
  * [com.scanpang.app.data.SavedPlaceNavTarget.toCategoryKey] 값.
- * 데이터는 [DummyData.findPlaceById] 로 조회 — 매칭 실패 시 즉시 pop back.
+ * 백엔드 응답 도착 전 로딩 중, 응답 후 place == null 이면 즉시 pop back.
  *
  * 카테고리 분기는 메타행/할랄 신뢰칩/CTA 까지만이고, 본문 ([PlaceDetailContent]) 는
  * Place 필드 유무로 자동 표시 — openHours/floor/parking/website/convenienceServices/departments.
@@ -141,44 +139,29 @@ fun PlaceDetailScreen(
     }
     val backend by viewModel.placeDetail.collectAsState()
 
-    // 2) DummyData fallback — backend 가 비어있어도(또는 도착 전) 화면이 비지 않게.
-    val dummyPlace = remember(categoryKey, placeId) { DummyData.findPlaceById(categoryKey, placeId) }
-
-    // 3) 머지 — 백엔드 필드를 우선, 비면 DummyData.
-    val place = remember(backend, dummyPlace) { backend?.mergeOnto(dummyPlace, categoryKey) ?: dummyPlace }
+    val place = remember(backend) { backend?.mergeOnto(null, categoryKey) }
     if (place == null) {
-        // backend 응답 도착 후에도 매칭 실패면 진짜 없음 → popBack.
-        // backend == null 인 동안(요청 in-flight)은 popBack 하지 않고 대기 —
-        // 그렇지 않으면 카드 탭 직후 dummyPlace 도 null 이라 즉시 뒤로 튕김.
         if (backend != null) {
             LaunchedEffect(Unit) { navController.popBackStack() }
         }
         return
     }
 
-    val restaurantExtra = remember(categoryKey, placeId, backend) {
-        // dummy id 가 정확히 일치할 때만 매칭. 매칭 실패 시 backend details 로 fallback.
+    val restaurantExtra = remember(categoryKey, backend) {
         if (categoryKey !in setOf("restaurant", "halal_restaurant")) return@remember null
-        DummyData.halalRestaurants.firstOrNull { it.place.id == placeId }
-            ?: backend?.toRestaurantPlaceOrNull()
+        backend?.toRestaurantPlaceOrNull()
     }
-    val menuItems = remember(backend, categoryKey, placeId) {
-        // 백엔드 details.menu 가 있으면 1순위 (Naver Place 크롤링 결과).
-        // 비면 DummyData (cafeRepresentativeMenus / halalRestaurants[*].menuItems).
+    val menuItems = remember(backend, categoryKey) {
         val backendMenu = backend?.extractMenuItems().orEmpty()
         if (backendMenu.isNotEmpty()) backendMenu
         else when (categoryKey) {
             "restaurant", "halal_restaurant" -> restaurantExtra?.menuItems.orEmpty()
-            "cafe" -> DummyData.cafeRepresentativeMenus[placeId].orEmpty()
             else -> emptyList()
         }
     }
-    // 환율: 백엔드 details.rates_today (한국수출입은행 OpenAPI 일일 캐시) 1순위,
-    //       비면 DummyData 폴백. backend rates_today = [{ccy, name, flag, base_rate}].
     val exchangeRates = remember(categoryKey, backend) {
         if (categoryKey !in setOf("exchange", "atm", "bank")) return@remember emptyList()
-        val backendRates = backend?.extractExchangeRates().orEmpty()
-        if (backendRates.isNotEmpty()) backendRates else DummyData.exchangeRates
+        backend?.extractExchangeRates().orEmpty()
     }
 
     // 지하철 카테고리는 백엔드 details(exits/schedule/fast_alights)에서 추출
@@ -331,8 +314,7 @@ private fun PlaceDetailContent(
     subwayDetail: SubwayDetail? = null,
 ) {
     val isSubway = subwayDetail != null
-    // 화장실 — public_restrooms DB 에 description/intro 필드 없음. DummyData fallback
-    // 의 소개 텍스트가 새어 나오면 안 되니까 화장실 카테고리는 소개·웹사이트·매장 층수 숨김.
+    // 화장실 카테고리는 소개·웹사이트·매장 층수 숨김.
     val isRestroom = place.categoryKey in setOf("restroom", "public_restroom")
 
     if (menuItems.isNotEmpty()) {
@@ -713,7 +695,6 @@ private fun PlaceDetailResponse.mergeOnto(fallback: Place?, categoryKey: String)
     )
 }
 
-/**
 /**
  * details.rates_today (한국수출입은행 OpenAPI) → 화면용 [ExchangeRate] 리스트.
  * 백엔드 format: [{ccy, name, flag, base_rate, ...}]. base_rate 는 매매기준율
