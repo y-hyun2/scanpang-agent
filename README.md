@@ -202,8 +202,8 @@ pip install -r requirements.txt
 python -m rag.build_place_db
 python -m rag.build_vworld_buildings
 
-# 서버 실행
-python -m uvicorn main:app --host 0.0.0.0 --port 8000 --timeout-keep-alive 120
+# 서버 실행 (--reload: .py 파일 변경 시 자동 재시작 — git pull 즉시 반영)
+python -m uvicorn main:app --host 0.0.0.0 --port 8000 --timeout-keep-alive 120 --reload
 ```
 
 Swagger UI: http://localhost:8000/docs
