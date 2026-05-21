@@ -33,6 +33,23 @@ def _log_scan_event(ufid: str, lat: float, lng: float) -> None:
         print(f"[place_insight] 스캔 로그 기록 실패: {e}")
 
 
+def _compute_distance_m(
+    user_lat: float | None, user_lng: float | None,
+    poi_lat: float | None, poi_lng: float | None,
+) -> float | None:
+    """Haversine 거리(m). 한 좌표라도 None 이면 None 반환."""
+    if user_lat is None or user_lng is None or poi_lat is None or poi_lng is None:
+        return None
+    import math
+    R = 6371000.0
+    lat1 = math.radians(float(user_lat))
+    lat2 = math.radians(float(poi_lat))
+    dlat = lat2 - lat1
+    dlng = math.radians(float(poi_lng) - float(user_lng))
+    a = math.sin(dlat/2)**2 + math.cos(lat1) * math.cos(lat2) * math.sin(dlng/2)**2
+    return round(2 * R * math.asin(math.sqrt(a)), 1)
+
+
 def _is_stale(last_updated) -> bool:
     if not last_updated:
         return True
@@ -190,6 +207,13 @@ async def run_place_insight_agent(req: PlaceRequest) -> dict:
         "address":           place_data.get("addr", ""),
         "phone":             place_data.get("phone", ""),
         "ufid":              place_data.get("ufid", "") or (vworld_meta.get("ufid", "") if vworld_meta else ""),
+        "distance_m":        _compute_distance_m(
+            req.user_lat, req.user_lng,
+            place_data.get("lat") if place_data.get("lat") is not None
+                else (vworld_meta.get("center_lat") if vworld_meta else None),
+            place_data.get("lng") if place_data.get("lng") is not None
+                else (vworld_meta.get("center_lng") if vworld_meta else None),
+        ),
         "is_estimated":      False,
         "status":            "ready",
         "floor_info_loading": False,
@@ -251,6 +275,7 @@ def _partial_response(name: str, ufid: str = "") -> dict:
             "address":           "",
             "phone":             "",
             "ufid":              ufid,
+            "distance_m":        None,
             "is_estimated":      True,
             "status":            "partial",
             "floor_info_loading": True,

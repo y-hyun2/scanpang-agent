@@ -42,6 +42,8 @@ class ArOverlay(BaseModel):
     # /place/store(place_id=ufid) 호출 → store_details row 의 place_id 가
     # 일관되게 채워져 fetcher 결과가 동일 행에 누적된다.
     ufid: str = ""
+    # 사용자-건물 거리(m). PlaceRequest.user_lat/lng 가 있을 때 Haversine 계산.
+    distance_m: Optional[float] = None
     is_estimated: bool = False
     status: Literal["partial", "ready"] = "ready"
     floor_info_loading: bool = False

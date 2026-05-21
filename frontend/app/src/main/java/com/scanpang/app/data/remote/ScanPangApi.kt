@@ -188,6 +188,8 @@ data class ArOverlay(
     // store_details cache key 의 building 파트. 층별 매장 탭 → /place/store
     // 호출 시 place_id 로 전달해야 store_details row 의 place_id 가 일관됨.
     val ufid: String = "",
+    // 사용자-건물 거리(m). PlaceRequest 에 user_lat/lng 보냈을 때만 채워짐.
+    val distance_m: Double? = null,
     val is_estimated: Boolean = false,
 )
 
