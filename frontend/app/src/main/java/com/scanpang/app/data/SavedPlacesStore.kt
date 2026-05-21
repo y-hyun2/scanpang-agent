@@ -113,6 +113,14 @@ class SavedPlacesStore(context: Context) {
 
     fun isSaved(id: String): Boolean = getAll().any { it.id == id }
 
+    /**
+     * 서버 pull 결과로 로컬 list 를 완전히 교체. syncToBackend 안 호출 — pull → write
+     * loop 방지. 빈 list 가 들어오면 로컬도 비움.
+     */
+    fun replaceAll(list: List<SavedPlaceEntry>) {
+        saveList(list)
+    }
+
     fun save(entry: SavedPlaceEntry) {
         val list = getAll().toMutableList()
         list.removeAll { it.id == entry.id }

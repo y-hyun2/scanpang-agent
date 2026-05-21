@@ -54,6 +54,11 @@ class SearchHistoryPreferences(context: Context) {
         syncToBackend(emptyList())
     }
 
+    /** 서버 pull 결과로 로컬 list 를 완전히 교체. syncToBackend 안 호출. */
+    fun replaceAll(list: List<String>) {
+        saveList(list)
+    }
+
     private fun saveList(list: List<String>) {
         val arr = JSONArray()
         list.forEach { arr.put(it) }
