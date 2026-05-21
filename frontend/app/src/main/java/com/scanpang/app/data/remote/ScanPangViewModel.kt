@@ -63,9 +63,6 @@ class ScanPangViewModel : ViewModel() {
     private val _storeResult = MutableStateFlow<StoreResponse?>(null)
     val storeResult: StateFlow<StoreResponse?> = _storeResult
 
-    private val _buildingInfo = MutableStateFlow<BuildingInfoDto?>(null)
-    val buildingInfo: StateFlow<BuildingInfoDto?> = _buildingInfo
-
     // ── Convenience ──
     private val _convenienceResult = MutableStateFlow<ConvenienceResponse?>(null)
     val convenienceResult: StateFlow<ConvenienceResponse?> = _convenienceResult
@@ -211,32 +208,6 @@ class ScanPangViewModel : ViewModel() {
                 Log.e("ScanPangVM", "queryPlace failed", e)
             }
         }
-    }
-
-    fun fetchBuildingInfo(ufid: String) {
-        viewModelScope.launch {
-            try {
-                _buildingInfo.value = api.getBuildingInfo(ufid)
-            } catch (e: Exception) {
-                Log.e("ScanPangVM", "fetchBuildingInfo failed for ufid=$ufid", e)
-            }
-        }
-    }
-
-    fun fetchBuildingInfoByBd(bdMgtSn: String) {
-        viewModelScope.launch {
-            try {
-                val dto = api.getBuildingInfoByBd(bdMgtSn)
-                Log.d("ScanPangVM", "buildingInfoByBd OK: name='${dto.name}', floors=${dto.floor_info.size}")
-                _buildingInfo.value = dto
-            } catch (e: Exception) {
-                Log.e("ScanPangVM", "fetchBuildingInfoByBd failed for bdMgtSn=$bdMgtSn", e)
-            }
-        }
-    }
-
-    fun clearBuildingInfo() {
-        _buildingInfo.value = null
     }
 
     fun queryStore(placeId: String, storeName: String) {

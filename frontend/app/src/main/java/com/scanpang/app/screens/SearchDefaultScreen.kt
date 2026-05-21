@@ -535,8 +535,6 @@ private val CATEGORY_KO = mapOf(
     "tourist" to "관광지",
     "tourist_spot" to "관광지",
     "halal_restaurant" to "할랄 식당",
-    "vegan_restaurant" to "비건 식당",
-    "vegan_cafe" to "비건 카페",
 )
 
 private fun formatDistance(m: Double?): String = when {

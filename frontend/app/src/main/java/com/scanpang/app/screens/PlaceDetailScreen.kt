@@ -129,11 +129,14 @@ fun PlaceDetailScreen(
 
     val context = LocalContext.current
 
-    val restaurantExtra = remember(categoryKey, placeId, backend) {
-        // dummy id 가 정확히 일치할 때만 매칭. 매칭 실패 시 backend details 로 fallback.
-        if (categoryKey !in setOf("restaurant", "halal_restaurant")) return@remember null
-        DummyData.halalRestaurants.firstOrNull { it.place.id == placeId }
-            ?: backend?.toRestaurantPlaceOrNull()
+    val restaurantExtra = remember(categoryKey, placeId) {
+        // dummy id 가 정확히 일치할 때만 매칭. 매칭 실패 시 null 로 두어 backend
+        // 데이터가 그대로 표시되도록 함 (이전엔 firstOrNull() fallback 때문에
+        // halal__00006 같은 backend id 가 들어오면 무조건 첫 dummy='봉추찜닭'이
+        // 표시돼 메뉴/소개가 다른 매장 정보로 덮어쓰여 보였음).
+        if (categoryKey in setOf("restaurant", "halal_restaurant"))
+            DummyData.halalRestaurants.firstOrNull { it.place.id == placeId }
+        else null
     }
     val menuItems = remember(backend, categoryKey, placeId) {
         // 백엔드 details.menu 가 있으면 1순위 (Naver Place 크롤링 결과).
@@ -627,21 +630,10 @@ private fun PlaceDetailResponse.mergeOnto(fallback: Place?, categoryKey: String)
         .ifBlank { (details["intro"] as? String)?.trim().orEmpty() }
         .ifBlank { (details["notes"] as? String)?.trim().orEmpty() }
 
-    // cuisine_type → subCategory (예: "한식·해산물")
-    val cuisineList = (details["cuisine_type"] as? List<*>)?.filterIsInstance<String>() ?: emptyList()
-    val subCategory = cuisineList.joinToString("·").ifBlank { base.subCategory }
-
-    // 할랄 신뢰 태그 — details 에 있으면 덮어씀
-    val halalTags = buildList {
-        if (details["muslim_cooks_available"] as? Boolean == true) add("무슬림 조리사")
-        if (details["no_alcohol_sales"]       as? Boolean == true) add("주류 미판매")
-    }
-
     return base.copy(
         id = id.ifBlank { base.id },
         name = store_name.ifBlank { base.name },
         category = category ?: base.category,
-        subCategory = subCategory,
         address = addr ?: base.address,
         phone = phone ?: base.phone,
         openHours = open_hours ?: base.openHours,
@@ -653,7 +645,6 @@ private fun PlaceDetailResponse.mergeOnto(fallback: Place?, categoryKey: String)
         latitude = lat ?: base.latitude,
         longitude = lng ?: base.longitude,
         description = backendDesc.ifBlank { base.description },
-        tags = halalTags.ifEmpty { base.tags },
         toiletMale   = toiletMale.ifBlank   { base.toiletMale },
         toiletFemale = toiletFemale.ifBlank { base.toiletFemale },
         facilityTags = if (facilityList.isNotEmpty()) facilityList.joinToString(", ") else base.facilityTags,
@@ -692,55 +683,6 @@ private fun PlaceDetailResponse.extractMenuItems(): List<MenuItem> {
         }
     }
     return emptyList()
-}
-
-/**
- * `/place/detail` 응답 → RestaurantPlace.
- * halal_type 이 없고 category_key 도 halal_restaurant 이 아니면 null 반환.
- */
-private fun PlaceDetailResponse.toRestaurantPlaceOrNull(): RestaurantPlace? {
-    val halalType = (details["halal_type"] as? String).orEmpty()
-    if (halalType.isEmpty() && category_key != "halal_restaurant") return null
-
-    val cuisineList = (details["cuisine_type"] as? List<*>)?.filterIsInstance<String>() ?: emptyList()
-    val tags = buildList {
-        if (details["muslim_cooks_available"] as? Boolean == true) add("무슬림 조리사")
-        if (details["no_alcohol_sales"]       as? Boolean == true) add("주류 미판매")
-    }
-    val place = com.scanpang.app.data.Place(
-        id = id,
-        name = store_name,
-        category = category.orEmpty(),
-        subCategory = cuisineList.joinToString("·"),
-        categoryKey = category_key.orEmpty(),
-        distance = "",
-        address = addr.orEmpty(),
-        phone = phone.orEmpty(),
-        openHours = open_hours.orEmpty(),
-        isOpen = is_open_now ?: true,
-        tags = tags,
-        latitude = lat ?: 37.5636,
-        longitude = lng ?: 126.9869,
-    )
-    // last_order 는 dict({mon:..., tue:...}) 또는 문자열로 올 수 있음 — 오늘 값만 추출
-    val lastOrderRaw = details["last_order"]
-    val lastOrderStr = when (lastOrderRaw) {
-        is String -> lastOrderRaw
-        is Map<*, *> -> {
-            val days = listOf("mon","tue","wed","thu","fri","sat","sun")
-            val todayIdx = (java.util.Calendar.getInstance().get(java.util.Calendar.DAY_OF_WEEK) + 5) % 7
-            (lastOrderRaw[days.getOrNull(todayIdx)] as? String).orEmpty()
-        }
-        else -> ""
-    }
-    return com.scanpang.app.data.RestaurantPlace(
-        place = place,
-        halalCategory = halalType,
-        menuItems = extractMenuItems(),
-        lastOrder = lastOrderStr,
-        isMoslemChef = details["muslim_cooks_available"] as? Boolean ?: false,
-        noAlcohol = details["no_alcohol_sales"] as? Boolean ?: false,
-    )
 }
 
 

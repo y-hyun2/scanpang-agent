@@ -59,7 +59,7 @@ import io.github.sceneview.rememberViewNodeManager
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
-private data class NavBuildingPin(val id: String, val name: String, val lat: Double, val lng: Double, val bdMgtSn: String?, val ufid: String? = null)
+private data class NavBuildingPin(val id: String, val name: String, val lat: Double, val lng: Double, val bdMgtSn: String?)
 
 private data class NavBuildingCandidate(
     val building: Building,
@@ -117,7 +117,7 @@ fun ArRealSceneView(
     onRouteAvailable: (routePoints: List<Pair<Double, Double>>, destinationLat: Double, destinationLng: Double) -> Unit = { _, _, _ -> },
     voiceOn: Boolean = true,
     buildingsCache: Map<String, Building> = emptyMap(),
-    onBuildingPinClick: (pinName: String, bdMgtSn: String?, ufid: String?) -> Unit = { _, _, _ -> },
+    onBuildingPinClick: (pinName: String, bdMgtSn: String?) -> Unit = { _, _ -> },
 ) {
     val context = LocalContext.current
     val engine = rememberEngine()
@@ -370,8 +370,8 @@ fun ArRealSceneView(
             frame.camera.pose.toMatrix(poseMatrix, 0)
             val isLookingDown = poseMatrix[9] > 0.5f
 
-            // ── 건물 PIN: VPS 정확도 3m 이상이면 생략 (탐색탭과 동일 기준) ──
-            if (buildingsCache.isNotEmpty() && pose.horizontalAccuracy < 3.0 && now - lastNavBuildingVisibilityTime > 300) {
+            // ── 건물 PIN: 300ms 스로틀로 FOV+Occlusion+FrontEdge 계산 (탐색모드 동일 로직) ──
+            if (buildingsCache.isNotEmpty() && now - lastNavBuildingVisibilityTime > 300) {
                 lastNavBuildingVisibilityTime = now
 
                 val fov = buildFovPolygon(lat, lng, pose.heading)
@@ -429,7 +429,7 @@ fun ArRealSceneView(
                             val anchor = earth.createAnchor(entry.markerPos.first, entry.markerPos.second, labelAlt, 0f, 0f, 0f, 1f)
                             if (anchor != null) {
                                 navBuildingAnchors[id] = anchor
-                                navBuildingPins.add(NavBuildingPin(id, entry.b.bld_nm ?: "건물", entry.markerPos.first, entry.markerPos.second, entry.b.bd_mgt_sn, entry.b.ufid.ifEmpty { null }))
+                                navBuildingPins.add(NavBuildingPin(id, entry.b.bld_nm ?: "건물", entry.markerPos.first, entry.markerPos.second, entry.b.bd_mgt_sn))
                             }
                         }
                     } else {
@@ -722,7 +722,7 @@ fun ArRealSceneView(
                     title = pin.name,
                     subtitle = "건물",
                     modifier = Modifier.offset(x = xDp - 60.dp, y = yDp - 32.dp),
-                    onClick = { onBuildingPinClick(pin.name, pin.bdMgtSn, pin.ufid) },
+                    onClick = { onBuildingPinClick(pin.name, pin.bdMgtSn) },
                 )
             }
         }

@@ -303,8 +303,7 @@ object ScanPangDimens {
     val arNavNextStepHeight: Dp = 38.dp
     val arNavNextStepOffsetStart: Dp = 5.dp
     val arNavNextStepTop: Dp = 66.dp
-    val arNavActionClusterTop: Dp = 95.dp
-    val arNavSideVolumeTop: Dp = 90.dp
+    val arNavActionClusterTop: Dp = 113.dp
     val arNavActionClusterStart: Dp = 16.dp
     val arNavTurnBadgeSize: Dp = 72.dp
     val arNavTurnBadgeIcon: Dp = 50.dp

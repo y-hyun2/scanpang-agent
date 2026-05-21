@@ -45,17 +45,6 @@ interface ScanPangApi {
     @POST("place/detail")
     suspend fun getPlaceDetail(@Body request: PlaceDetailRequest): PlaceDetailResponse
 
-    // ── Building Info (건물 핀 탭) ──
-    @GET("place/building/{ufid}")
-    suspend fun getBuildingInfo(
-        @retrofit2.http.Path("ufid") ufid: String,
-    ): BuildingInfoDto
-
-    @GET("place/building/by-bd/{bd_mgt_sn}")
-    suspend fun getBuildingInfoByBd(
-        @retrofit2.http.Path("bd_mgt_sn") bdMgtSn: String,
-    ): BuildingInfoDto
-
     // ── Spatial: H3 청크 단위 건물 ──
     @GET("buildings")
     suspend fun getBuildings(
@@ -200,9 +189,6 @@ data class ArOverlay(
     // 호출 시 place_id 로 전달해야 store_details row 의 place_id 가 일관됨.
     val ufid: String = "",
     val is_estimated: Boolean = false,
-    val description: String = "",
-    val address: String = "",
-    val phone: String = "",
 )
 
 data class StoreItem(
@@ -491,33 +477,4 @@ data class BuildingsChunkResponse(
     val cells_queried: List<String> = emptyList(),
     val count: Int = 0,
     val buildings: List<Building> = emptyList(),
-)
-
-// ── Building Info DTOs (GET /place/building/{ufid}) ──
-
-data class BuildingInfoFloorStoreDto(
-    val name: String = "",
-    val category: String = "",
-)
-
-data class BuildingInfoFloorDto(
-    val floor: String = "",
-    val stores: List<BuildingInfoFloorStoreDto> = emptyList(),
-)
-
-data class BuildingInfoDto(
-    val ufid: String = "",
-    val found: Boolean = false,
-    val name: String = "",
-    val category: String = "",
-    val description_ko: String = "",
-    val open_hours: String = "",
-    val closed_days: String = "",
-    val parking_info: String = "",
-    val admission_fee: String = "",
-    val homepage: String = "",
-    val image_url: String = "",
-    val address: String = "",
-    val phone: String = "",
-    val floor_info: List<BuildingInfoFloorDto> = emptyList(),
 )

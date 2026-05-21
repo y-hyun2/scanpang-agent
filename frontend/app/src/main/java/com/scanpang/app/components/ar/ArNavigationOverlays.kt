@@ -216,7 +216,7 @@ fun BoxScope.ArNavSideVolumeCamera(
             .align(Alignment.TopEnd)
             .padding(
                 end = ScanPangDimens.arSideColumnEnd,
-                top = ScanPangDimens.arNavSideVolumeTop,
+                top = ScanPangDimens.arSideColumnTop,
             ),
         verticalArrangement = Arrangement.spacedBy(ScanPangDimens.arSideIconGap),
         horizontalAlignment = Alignment.CenterHorizontally,

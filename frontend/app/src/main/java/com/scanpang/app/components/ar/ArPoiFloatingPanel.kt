@@ -26,7 +26,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.AccessTime
-import androidx.compose.material.icons.rounded.Bookmark
 import androidx.compose.material.icons.rounded.BookmarkBorder
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.ExpandLess
@@ -55,9 +54,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import coil.compose.AsyncImage
-import coil.request.ImageRequest
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -65,7 +61,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import com.scanpang.app.data.remote.ArOverlay
-import com.scanpang.app.data.remote.Docent
 import com.scanpang.app.data.remote.FloorInfo
 import com.scanpang.app.ui.theme.ScanPangColors
 import com.scanpang.app.ui.theme.ScanPangDimens
@@ -101,10 +96,8 @@ fun ArPoiFloatingDetailOverlay(
     onDismiss: () -> Unit,
     onFloorStoreClick: (String) -> Unit,
     modifier: Modifier = Modifier,
-    isSaved: Boolean = false,
     onSave: () -> Unit = {},
     arOverlay: ArOverlay? = null,
-    docent: Docent? = null,
 ) {
     var expandedFloors by remember { mutableStateOf(setOf("B1")) }
     val floorData = remember(arOverlay) {
@@ -113,7 +106,7 @@ fun ArPoiFloatingDetailOverlay(
                 ArFloorSectionUi(
                     label = fi.floor,
                     storeCount = fi.stores.size,
-                    categoryLabel = fi.stores.map { it.category }.distinct().take(2).joinToString("·"),
+                    categoryLabel = "",
                     stores = fi.stores.map { ArFloorStoreLine(it.name, it.category, false) },
                 )
             }
@@ -137,65 +130,61 @@ fun ArPoiFloatingDetailOverlay(
                 .height(ScanPangDimens.detailArPanelHeight)
                 .clickable(enabled = false) { },
             shape = ScanPangShapes.radius16,
-            color = Color.White.copy(alpha = 0.93f),
+            color = Color.White,
             shadowElevation = ScanPangDimens.arPoiCardShadowElevation,
         ) {
             Column(
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(horizontal = ScanPangSpacing.md)
-                    .padding(top = 12.dp),
-                verticalArrangement = Arrangement.spacedBy(6.dp),
+                    .padding(horizontal = ScanPangSpacing.md, vertical = ScanPangSpacing.sm),
             ) {
-                // Header: Close (left) · Name · Bookmark (right) — matches hufs-cdp
                 Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 4.dp, vertical = 4.dp),
+                    modifier = Modifier.fillMaxWidth(),
                     verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(10.dp),
                 ) {
-                    Icon(
-                        imageVector = Icons.Rounded.Close,
-                        contentDescription = "닫기",
-                        tint = ScanPangColors.OnSurfaceMuted,
-                        modifier = Modifier
-                            .size(20.dp)
-                            .clickable { onDismiss() },
-                    )
                     Text(
                         text = poiName,
-                        style = ScanPangType.profileName18,
+                        style = ScanPangType.title16SemiBold,
                         color = ScanPangColors.OnSurfaceStrong,
                         modifier = Modifier.weight(1f),
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                     )
-                    Box(
-                        modifier = Modifier
-                            .size(28.dp)
-                            .clip(RoundedCornerShape(14.dp))
-                            .background(if (isSaved) ScanPangColors.PrimarySoft else DetailTabTrackGray)
-                            .clickable { onSave() },
-                        contentAlignment = Alignment.Center,
+                    IconButton(
+                        onClick = onSave,
+                        modifier = Modifier.size(40.dp),
                     ) {
                         Icon(
-                            imageVector = if (isSaved) Icons.Rounded.Bookmark else Icons.Rounded.BookmarkBorder,
+                            imageVector = Icons.Rounded.BookmarkBorder,
                             contentDescription = "저장",
-                            tint = if (isSaved) ScanPangColors.Primary else ScanPangColors.OnSurfaceMuted,
-                            modifier = Modifier.size(20.dp),
+                            tint = ScanPangColors.OnSurfaceStrong,
+                            modifier = Modifier.size(ScanPangDimens.icon20),
+                        )
+                    }
+                    IconButton(
+                        onClick = onDismiss,
+                        modifier = Modifier.size(40.dp),
+                    ) {
+                        Icon(
+                            imageVector = Icons.Rounded.Close,
+                            contentDescription = "닫기",
+                            tint = ScanPangColors.OnSurfaceStrong,
+                            modifier = Modifier.size(ScanPangDimens.icon20),
                         )
                     }
                 }
+                Spacer(modifier = Modifier.height(6.dp))
                 ArPoiStatusMetaRow(
                     category = arOverlay?.category ?: "",
                     openHours = arOverlay?.open_hours ?: "",
                     isEstimated = arOverlay?.is_estimated ?: false,
                 )
+                Spacer(modifier = Modifier.height(ScanPangSpacing.sm))
                 ArPoiDetailSegmentedTabs(
                     active = activeDetailTab,
                     onSelect = onActiveDetailTabChange,
                 )
+                Spacer(modifier = Modifier.height(ScanPangSpacing.sm))
                 Column(
                     modifier = Modifier
                         .weight(1f)
@@ -226,41 +215,35 @@ private fun ArPoiStatusMetaRow(
     openHours: String = "",
     isEstimated: Boolean = false,
 ) {
-    Column(
+    Row(
         modifier = Modifier.fillMaxWidth(),
-        verticalArrangement = Arrangement.spacedBy(4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(ScanPangSpacing.sm),
     ) {
-        if (category.isNotBlank() || isEstimated) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(ScanPangSpacing.sm),
+        if (category.isNotBlank()) {
+            Surface(
+                shape = ScanPangShapes.badge6,
+                color = ScanPangColors.PrimarySoft,
             ) {
-                if (category.isNotBlank()) {
-                    Surface(
-                        shape = ScanPangShapes.badge6,
-                        color = ScanPangColors.PrimarySoft,
-                    ) {
-                        Text(
-                            text = category,
-                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
-                            style = ScanPangType.caption12Medium,
-                            color = ScanPangColors.Primary,
-                        )
-                    }
-                }
-                if (isEstimated) {
-                    Surface(
-                        shape = ScanPangShapes.badge6,
-                        color = Color(0xFFFFF3E0),
-                    ) {
-                        Text(
-                            text = "AI 추정",
-                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
-                            style = ScanPangType.caption12Medium,
-                            color = Color(0xFFE65100),
-                        )
-                    }
-                }
+                Text(
+                    text = category,
+                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                    style = ScanPangType.caption12Medium,
+                    color = ScanPangColors.Primary,
+                )
+            }
+        }
+        if (isEstimated) {
+            Surface(
+                shape = ScanPangShapes.badge6,
+                color = Color(0xFFFFF3E0),
+            ) {
+                Text(
+                    text = "AI 추정",
+                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                    style = ScanPangType.caption12Medium,
+                    color = Color(0xFFE65100),
+                )
             }
         }
         if (openHours.isNotBlank()) {
@@ -269,10 +252,12 @@ private fun ArPoiStatusMetaRow(
                 style = ScanPangType.body14Regular,
                 color = ScanPangColors.OnSurfaceMuted,
             )
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(4.dp),
-            ) {
+        }
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(4.dp),
+        ) {
+            if (openHours.isNotBlank()) {
                 Box(
                     modifier = Modifier
                         .size(6.dp)
@@ -339,32 +324,13 @@ private fun ArPoiDetailSegmentedTabs(
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun ArPoiBuildingTabBody(arOverlay: ArOverlay? = null) {
-    // 데이터가 아직 안 왔거나 place_info 에 없는 건물 — 빈 상태 표시
-    if (arOverlay == null) {
-        ArPoiEmptyState(message = "건물 정보를 불러오는 중이에요…")
-        return
-    }
-    val hasAnyInfo = listOf(
-        arOverlay.description,
-        arOverlay.open_hours,
-        arOverlay.address,
-        arOverlay.phone,
-        arOverlay.parking_info,
-        arOverlay.admission_fee,
-        arOverlay.homepage,
-        arOverlay.image_url,
-    ).any { it.isNotBlank() } || arOverlay.floor_info.isNotEmpty()
-    if (!hasAnyInfo) {
-        ArPoiEmptyState(message = "아직 등록된 건물 정보가 없어요.\n곧 업데이트될 예정입니다.")
-        return
-    }
-
-    val imageUrls = listOfNotNull(arOverlay.image_url.ifEmpty { null })
-    val placeholderColors = listOf(
-        Color(0xFFE8E8E8), Color(0xFFD8D8D8), Color(0xFFC8C8C8), Color(0xFFB8B8B8),
+    val buildingImageCount = 4
+    val buildingImageBg = listOf(
+        Color(0xFFE8E8E8),
+        Color(0xFFD8D8D8),
+        Color(0xFFC8C8C8),
+        Color(0xFFB8B8B8),
     )
-    val buildingImageCount = if (imageUrls.isNotEmpty()) imageUrls.size else placeholderColors.size
-    val buildingImageBg = placeholderColors
     val pagerState = rememberPagerState(pageCount = { buildingImageCount })
     var buildingGalleryFullscreen by remember { mutableStateOf(false) }
     val currentBuildingPage = pagerState.currentPage
@@ -387,20 +353,11 @@ private fun ArPoiBuildingTabBody(arOverlay: ArOverlay? = null) {
                         orientation = Orientation.Horizontal,
                     ),
                 ) { page ->
-                    val url = imageUrls.getOrNull(page)
-                    if (url != null) {
-                        AsyncImage(
-                            model = url,
-                            contentDescription = "건물 이미지",
-                            modifier = Modifier.fillMaxSize(),
-                        )
-                    } else {
-                        Box(
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .background(buildingImageBg[page % buildingImageBg.size]),
-                        )
-                    }
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .background(buildingImageBg[page]),
+                    )
                 }
                 Surface(
                     shape = RoundedCornerShape(6.dp),
@@ -434,86 +391,79 @@ private fun ArPoiBuildingTabBody(arOverlay: ArOverlay? = null) {
         }
     }
 
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(top = 10.dp, bottom = 12.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
-    ) {
-        // Description card (like hufs-cdp)
-        val descText = arOverlay?.description?.ifEmpty { null }
-            ?: arOverlay?.let {
-                listOfNotNull(it.name.ifEmpty { null }, it.category.ifEmpty { null }).joinToString(" · ")
-            }
-        if (descText != null) {
+    Column(modifier = Modifier.fillMaxWidth()) {
+        val descText = arOverlay?.let {
+            listOfNotNull(it.name.ifEmpty { null }, it.category.ifEmpty { null }).joinToString(" · ")
+        }.orEmpty()
+        if (descText.isNotEmpty()) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
                 verticalAlignment = Alignment.Top,
             ) {
                 Icon(
                     imageVector = Icons.Rounded.Info,
                     contentDescription = null,
                     tint = ScanPangColors.Primary,
-                    modifier = Modifier.size(15.dp),
+                    modifier = Modifier.size(18.dp),
                 )
                 Text(
                     text = descText,
-                    style = ScanPangType.caption12,
+                    style = ScanPangType.body14Regular,
                     color = ScanPangColors.OnSurfaceStrong,
                     modifier = Modifier.weight(1f),
                 )
             }
         }
-
-        val floorRangeText = arOverlay.floor_info
-            .mapNotNull { it.floor.ifBlank { null } }
-            .takeIf { it.isNotEmpty() }
-            ?.let { labels -> "${labels.first()}~${labels.last()} (${labels.size}개층)" }
-        val hoursText = listOfNotNull(
-            arOverlay.open_hours.ifEmpty { null },
-            arOverlay.closed_days.ifEmpty { null }?.let { "휴무 $it" },
-        ).joinToString(" · ")
+        // floor_info 의 floor 라벨에서 "B2~8F" 같은 건물 단위 층 범위 derive.
+        // "B1","1F","2F",..,"8F" 중 음수(지하)는 B prefix, 양수는 F suffix.
+        val floorRange = arOverlay?.floor_info?.let { fs ->
+            val parsed = fs.mapNotNull { f ->
+                val s = f.floor.trim()
+                when {
+                    s.startsWith("B") -> s.removePrefix("B").toIntOrNull()?.let { -it }
+                    s.endsWith("F")   -> s.removeSuffix("F").toIntOrNull()
+                    else              -> null
+                }
+            }
+            if (parsed.isEmpty()) null
+            else {
+                val mn = parsed.min(); val mx = parsed.max()
+                val lo = if (mn < 0) "B${-mn}" else "${mn}F"
+                val hi = if (mx < 0) "B${-mx}" else "${mx}F"
+                if (lo == hi) lo else "$lo~$hi"
+            }
+        }
         val gridItems = listOfNotNull(
-            hoursText.ifEmpty { null }?.let { Triple(Icons.Rounded.AccessTime, it, false) },
-            floorRangeText?.let { Triple(Icons.Rounded.Stairs, it, false) },
-            arOverlay.address.ifEmpty { null }?.let { Triple(Icons.Rounded.Place, it, false) },
-            arOverlay.phone.ifEmpty { null }?.let { Triple(Icons.Rounded.LocalPhone, it, false) },
-            arOverlay.parking_info.ifEmpty { null }?.let { Triple(Icons.Rounded.LocalParking, it, false) },
-            arOverlay.admission_fee.ifEmpty { null }?.let { Triple(Icons.Rounded.ConfirmationNumber, it, false) },
-            arOverlay.halal_info.ifEmpty { null }?.let { Triple(Icons.Rounded.Restaurant, it, false) },
+            arOverlay?.open_hours?.ifEmpty { null }?.let { Triple(Icons.Rounded.AccessTime, it, false) },
+            floorRange?.let { Triple(Icons.Rounded.Stairs, it, false) },
+            arOverlay?.address?.ifEmpty { null }?.let { Triple(Icons.Rounded.Place, it, false) },
+            arOverlay?.phone?.ifEmpty { null }?.let { Triple(Icons.Rounded.LocalPhone, it, true) },
+            arOverlay?.parking_info?.ifEmpty { null }?.let { Triple(Icons.Rounded.LocalParking, it, false) },
+            arOverlay?.admission_fee?.ifEmpty { null }?.let { Triple(Icons.Rounded.ConfirmationNumber, it, false) },
+            arOverlay?.halal_info?.ifEmpty { null }?.let { Triple(Icons.Rounded.Restaurant, it, false) },
         )
         if (gridItems.isNotEmpty()) {
-            Column(verticalArrangement = Arrangement.spacedBy(7.dp)) {
-                gridItems.chunked(2).forEach { row ->
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(7.dp),
-                    ) {
-                        row.forEach { (icon, label, isLink) ->
-                            ArPoiInfoChip(
-                                icon = icon,
-                                text = label,
-                                modifier = Modifier.weight(1f),
-                                textColor = if (isLink) ScanPangColors.Primary else ScanPangColors.OnSurfaceStrong,
-                                iconTint = if (isLink) ScanPangColors.Primary else ScanPangColors.OnSurfaceMuted,
-                                background = if (label.contains("할랄")) DetailHalalChipBg else DetailChipBg,
-                                strongText = label.contains("할랄"),
-                            )
-                        }
-                        if (row.size == 1) Spacer(modifier = Modifier.weight(1f))
+            Spacer(modifier = Modifier.height(ScanPangSpacing.md))
+            gridItems.chunked(2).forEach { row ->
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    row.forEach { (icon, label, isLink) ->
+                        ArPoiInfoChip(
+                            icon = icon,
+                            text = label,
+                            modifier = Modifier.weight(1f),
+                            textColor = if (isLink) ScanPangColors.Primary else ScanPangColors.OnSurfaceStrong,
+                            iconTint = if (isLink) ScanPangColors.Primary else ScanPangColors.OnSurfaceMuted,
+                            background = if (label.contains("할랄")) DetailHalalChipBg else DetailChipBg,
+                            strongText = label.contains("할랄"),
+                        )
                     }
+                    if (row.size == 1) Spacer(modifier = Modifier.weight(1f))
                 }
-                // Homepage — full width chip
-                arOverlay.homepage.ifEmpty { null }?.let {
-                    ArPoiInfoChip(
-                        icon = Icons.Rounded.Language,
-                        text = "홈페이지",
-                        modifier = Modifier.fillMaxWidth(),
-                        textColor = ScanPangColors.Primary,
-                        iconTint = ScanPangColors.Primary,
-                    )
-                }
+                Spacer(modifier = Modifier.height(8.dp))
             }
         }
 
@@ -532,23 +482,11 @@ private fun ArPoiBuildingTabBody(arOverlay: ArOverlay? = null) {
                     orientation = Orientation.Horizontal,
                 ),
             ) { page ->
-                val url = imageUrls.getOrNull(page)
-                if (url != null) {
-                    AsyncImage(
-                        model = ImageRequest.Builder(LocalContext.current)
-                            .data(url)
-                            .crossfade(true)
-                            .build(),
-                        contentDescription = "건물 이미지",
-                        modifier = Modifier.fillMaxSize(),
-                    )
-                } else {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .background(buildingImageBg[page % buildingImageBg.size]),
-                    )
-                }
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(buildingImageBg[page]),
+                )
             }
             Surface(
                 shape = RoundedCornerShape(6.dp),
@@ -648,43 +586,12 @@ private fun ArPoiInfoChip(
 }
 
 @Composable
-private fun ArPoiEmptyState(message: String) {
-    Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(vertical = 32.dp),
-        contentAlignment = Alignment.Center,
-    ) {
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            Icon(
-                imageVector = Icons.Rounded.Info,
-                contentDescription = null,
-                tint = ScanPangColors.OnSurfaceMuted,
-                modifier = Modifier.size(18.dp),
-            )
-            Text(
-                text = message,
-                style = ScanPangType.caption12Medium,
-                color = ScanPangColors.OnSurfaceMuted,
-            )
-        }
-    }
-}
-
-@Composable
 private fun ArPoiFloorsTabBody(
     floors: List<ArFloorSectionUi>,
     expanded: Set<String>,
     onToggle: (String) -> Unit,
     onStoreClick: (String) -> Unit,
 ) {
-    if (floors.isEmpty()) {
-        ArPoiEmptyState(message = "층별 매장 정보가 아직 준비되지 않았어요.")
-        return
-    }
     floors.forEach { floor ->
         val isOpen = floor.label in expanded
         Surface(
@@ -775,133 +682,6 @@ private fun ArPoiFloorsTabBody(
                         }
                     }
                 }
-            }
-        }
-    }
-}
-
-@Composable
-private fun ArPoiAiGuideTabBody(docent: Docent? = null) {
-    val speechText = docent?.speech?.ifEmpty { null }
-    val suggestions = docent?.follow_up_suggestions?.filter { it.isNotBlank() } ?: emptyList()
-
-    if (speechText == null && suggestions.isEmpty()) {
-        // docent 없음 — AR 카메라 스캔 유도 안내
-        Surface(
-            modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(12.dp),
-            color = DetailAiSummaryBg,
-        ) {
-            Row(
-                modifier = Modifier.padding(12.dp),
-                horizontalArrangement = Arrangement.spacedBy(10.dp),
-                verticalAlignment = Alignment.Top,
-            ) {
-                Icon(
-                    imageVector = Icons.Rounded.SmartToy,
-                    contentDescription = null,
-                    tint = ScanPangColors.OnSurfaceMuted,
-                    modifier = Modifier.size(22.dp),
-                )
-                Text(
-                    text = "카메라로 건물을 스캔하면\nAI 가이드가 활성화됩니다.",
-                    style = ScanPangType.body14Regular,
-                    color = ScanPangColors.OnSurfaceMuted,
-                )
-            }
-        }
-        return
-    }
-
-    if (speechText != null) {
-        Surface(
-            modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(12.dp),
-            color = DetailAiSummaryBg,
-        ) {
-            Row(
-                modifier = Modifier.padding(12.dp),
-                horizontalArrangement = Arrangement.spacedBy(10.dp),
-                verticalAlignment = Alignment.Top,
-            ) {
-                Icon(
-                    imageVector = Icons.Rounded.SmartToy,
-                    contentDescription = null,
-                    tint = ScanPangColors.Primary,
-                    modifier = Modifier.size(22.dp),
-                )
-                Text(
-                    text = speechText,
-                    style = ScanPangType.body14Regular,
-                    color = ScanPangColors.OnSurfaceStrong,
-                )
-            }
-        }
-        Spacer(modifier = Modifier.height(ScanPangSpacing.md))
-    }
-
-    if (suggestions.isNotEmpty()) {
-        Text(
-            text = "추천 질문",
-            style = ScanPangType.title14,
-            color = ScanPangColors.OnSurfaceStrong,
-        )
-        Spacer(modifier = Modifier.height(8.dp))
-        suggestions.forEachIndexed { index, suggestion ->
-            val icon = when (index % 3) {
-                0 -> Icons.Rounded.Restaurant
-                1 -> Icons.Rounded.ShoppingBag
-                else -> Icons.Rounded.CameraAlt
-            }
-            ArPoiAiPointCard(icon = icon, title = suggestion, subtitle = "")
-            Spacer(modifier = Modifier.height(8.dp))
-        }
-        Spacer(modifier = Modifier.height(8.dp))
-    }
-}
-
-@Composable
-private fun ArPoiAiPointCard(
-    icon: ImageVector,
-    title: String,
-    subtitle: String,
-) {
-    Surface(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(12.dp),
-        color = DetailChipBg,
-    ) {
-        Row(
-            modifier = Modifier.padding(12.dp),
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Surface(
-                shape = CircleShape,
-                color = ScanPangColors.PrimarySoft,
-                modifier = Modifier.size(40.dp),
-            ) {
-                Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
-                    Icon(
-                        imageVector = icon,
-                        contentDescription = null,
-                        tint = ScanPangColors.Primary,
-                        modifier = Modifier.size(22.dp),
-                    )
-                }
-            }
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = title,
-                    style = ScanPangType.title14,
-                    color = ScanPangColors.OnSurfaceStrong,
-                )
-                Spacer(modifier = Modifier.height(2.dp))
-                Text(
-                    text = subtitle,
-                    style = ScanPangType.caption12Medium,
-                    color = ScanPangColors.OnSurfaceMuted,
-                )
             }
         }
     }
