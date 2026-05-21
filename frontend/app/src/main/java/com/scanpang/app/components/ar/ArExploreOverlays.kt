@@ -523,7 +523,7 @@ fun ArExploreInteractiveChatSection(
         modifier = modifier
             .fillMaxWidth()
             .padding(horizontal = ScanPangDimens.arTopBarHorizontal)
-            .padding(bottom = ScanPangDimens.arChatAreaBottomPad),
+            .padding(bottom = 10.dp),
         verticalArrangement = Arrangement.spacedBy(ScanPangDimens.arChatBubbleGap),
     ) {
         LazyColumn(
@@ -561,7 +561,7 @@ fun ArExploreInteractiveChatSection(
                 .clip(ScanPangShapes.arInputPill)
                 .background(ScanPangColors.ArOverlayWhite93)
                 .padding(horizontal = 6.dp, vertical = 6.dp),
-            verticalAlignment = Alignment.CenterVertically,
+            verticalAlignment = Alignment.Bottom,
             horizontalArrangement = Arrangement.spacedBy(ScanPangSpacing.sm),
         ) {
             ArMicSttButton(
@@ -571,14 +571,16 @@ fun ArExploreInteractiveChatSection(
             BasicTextField(
                 value = inputText,
                 onValueChange = onInputChange,
-                modifier = Modifier.weight(1f),
+                modifier = Modifier
+                    .weight(1f)
+                    .padding(vertical = 6.dp),
                 singleLine = false,
                 maxLines = 4,
                 textStyle = ScanPangType.body15Medium.copy(color = ScanPangColors.OnSurfaceStrong),
                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Default),
                 cursorBrush = SolidColor(ScanPangColors.Primary),
                 decorationBox = { innerTextField ->
-                    Box(contentAlignment = Alignment.CenterStart) {
+                    Box {
                         if (inputText.isEmpty()) {
                             Text(
                                 text = "무엇이든 물어보세요",

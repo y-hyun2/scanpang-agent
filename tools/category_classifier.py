@@ -261,10 +261,15 @@ _QUERY_KEYWORD_TO_CATEGORY: list[tuple[str, str]] = [
 
 
 def classify_query(query: str) -> str:
-    """검색바 입력 → category_key. 매칭 X면 classify_category 매장명 fallback,
-    그것도 매칭 X면 'other'."""
+    """검색바 입력 → category_key.
+
+    키워드가 공백으로 분리된 독립 단어일 때만 카테고리 검색으로 분류한다.
+    '행복약국'처럼 매장명 안에 카테고리 단어가 붙어 있는 경우(독립 단어 아님)는
+    'other'를 반환해 이름 ILIKE 검색만 수행한다.
+    """
     q = (query or "").strip()
     for kw, key in _QUERY_KEYWORD_TO_CATEGORY:
-        if kw in q:
+        # 단어 경계 매칭 — 앞뒤가 공백(또는 문자열 시작/끝)일 때만 매칭.
+        if re.search(r"(?<!\S)" + re.escape(kw) + r"(?!\S)", q):
             return key
-    return classify_category(category_name="", store_name=q)
+    return "other"

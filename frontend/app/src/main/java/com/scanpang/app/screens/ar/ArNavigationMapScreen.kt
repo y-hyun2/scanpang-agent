@@ -340,6 +340,7 @@ fun ArNavigationMapScreen(
                 modifier = Modifier.fillMaxSize(),
                 category = s?.category.orEmpty(),
                 isOpenNow = s?.is_open_now,
+                storeResult = s,
             )
         }
 

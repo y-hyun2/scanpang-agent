@@ -27,20 +27,16 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.AccessTime
 import androidx.compose.material.icons.rounded.Bookmark
 import androidx.compose.material.icons.rounded.BookmarkBorder
-import androidx.compose.material.icons.rounded.CameraAlt
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.ExpandLess
 import androidx.compose.material.icons.rounded.ExpandMore
 import androidx.compose.material.icons.rounded.Info
 import androidx.compose.material.icons.rounded.Language
-import androidx.compose.material.icons.rounded.Lightbulb
 import androidx.compose.material.icons.rounded.LocalParking
 import androidx.compose.material.icons.rounded.LocalPhone
 import androidx.compose.material.icons.rounded.OpenInFull
 import androidx.compose.material.icons.rounded.Place
 import androidx.compose.material.icons.rounded.Restaurant
-import androidx.compose.material.icons.rounded.ShoppingBag
-import androidx.compose.material.icons.rounded.SmartToy
 import androidx.compose.material.icons.rounded.Stairs
 import androidx.compose.material.icons.rounded.ConfirmationNumber
 import androidx.compose.material3.Button
@@ -78,13 +74,9 @@ import com.scanpang.app.ui.theme.ScanPangType
 
 const val ArPoiTabBuilding = "building"
 const val ArPoiTabFloors = "floors"
-const val ArPoiTabAi = "ai"
 
 private val DetailTabTrackGray = Color(0xFFEBEBEB)
 private val DetailChipBg = Color(0xFFF3F4F6)
-private val DetailAiSummaryBg = Color(0xFFE8F1FF)
-private val DetailAiTipBg = Color(0xFFFFF4E5)
-private val DetailAiTipFg = Color(0xFFB45309)
 private val DetailHalalChipBg = Color(0xFFE8F5E9)
 private val DetailHalalChipFg = Color(0xFF2E7D32)
 
@@ -95,28 +87,6 @@ private data class ArFloorSectionUi(
     val storeCount: Int,
     val categoryLabel: String,
     val stores: List<ArFloorStoreLine>,
-)
-
-private fun noonSquareFloorSections(): List<ArFloorSectionUi> = listOf(
-    ArFloorSectionUi("B2", 6, "식음료", emptyList()),
-    ArFloorSectionUi(
-        "B1",
-        8,
-        "식음료",
-        listOf(
-            ArFloorStoreLine("무궁화식당", "한식", false),
-            ArFloorStoreLine("알리바바 케밥", "할랄", true),
-            ArFloorStoreLine("올리브영", "뷰티", false),
-        ),
-    ),
-    ArFloorSectionUi("1F", 12, "패션·잡화", emptyList()),
-    ArFloorSectionUi("2F", 10, "뷰티·라이프", emptyList()),
-    ArFloorSectionUi("3F", 9, "패션", emptyList()),
-    ArFloorSectionUi("4F", 7, "잡화", emptyList()),
-    ArFloorSectionUi("5F", 6, "F&B", emptyList()),
-    ArFloorSectionUi("6F", 5, "문화", emptyList()),
-    ArFloorSectionUi("7F", 4, "전망", emptyList()),
-    ArFloorSectionUi("8F", 3, "루프탑", emptyList()),
 )
 
 /**
@@ -242,7 +212,6 @@ fun ArPoiFloatingDetailOverlay(
                             },
                             onStoreClick = onFloorStoreClick,
                         )
-                        ArPoiTabAi -> ArPoiAiGuideTabBody(docent = docent)
                     }
                 }
             }
@@ -327,7 +296,6 @@ private fun ArPoiDetailSegmentedTabs(
     val tabs = listOf(
         ArPoiTabBuilding to "건물 정보",
         ArPoiTabFloors to "층별 정보",
-        ArPoiTabAi to "AI 가이드",
     )
     Surface(
         modifier = Modifier.fillMaxWidth(),
@@ -954,7 +922,19 @@ fun ArFloorStoreGuideOverlay(
     modifier: Modifier = Modifier,
     category: String = "",
     isOpenNow: Boolean? = null,
+    storeResult: com.scanpang.app.data.remote.StoreResponse? = null,
+    distanceLabel: String = "",
 ) {
+    val displayCategory = (storeResult?.category?.ifBlank { null }) ?: category
+    val displayOpenNow  = storeResult?.is_open_now ?: isOpenNow
+    val imageUrl        = storeResult?.image_urls?.firstOrNull()?.takeIf { it.isNotBlank() }
+    val intro           = (storeResult?.details?.get("intro") as? String)?.trim().orEmpty()
+    val openHours       = storeResult?.open_hours?.trim().orEmpty()
+    val addr            = storeResult?.addr?.trim().orEmpty()
+    val phone           = storeResult?.phone?.trim().orEmpty()
+    val floor           = storeResult?.floor?.trim().orEmpty()
+    val homepage        = storeResult?.homepage?.trim().orEmpty()
+
     Box(
         modifier = modifier
             .fillMaxSize()
@@ -965,38 +945,100 @@ fun ArFloorStoreGuideOverlay(
             modifier = Modifier
                 .align(Alignment.BottomCenter)
                 .fillMaxWidth()
-                .padding(ScanPangSpacing.lg),
+                .padding(ScanPangSpacing.lg)
+                .clickable(enabled = false) { },
             shape = ScanPangShapes.radius16,
             color = ScanPangColors.Surface,
             shadowElevation = ScanPangDimens.arPoiCardShadowElevation,
         ) {
-            Column(modifier = Modifier.padding(ScanPangSpacing.lg)) {
+            Column(
+                modifier = Modifier
+                    .padding(ScanPangSpacing.lg)
+                    .verticalScroll(rememberScrollState()),
+            ) {
+                // 매장 메인 사진 1장 — image_urls[0]. 없으면 행 자체 생략.
+                if (imageUrl != null) {
+                    coil.compose.AsyncImage(
+                        model = imageUrl,
+                        contentDescription = storeName,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(140.dp)
+                            .clip(RoundedCornerShape(12.dp)),
+                        contentScale = androidx.compose.ui.layout.ContentScale.Crop,
+                    )
+                    Spacer(modifier = Modifier.height(ScanPangSpacing.md))
+                }
                 Text(
                     text = storeName,
                     style = ScanPangType.title16SemiBold,
                     color = ScanPangColors.OnSurfaceStrong,
                 )
                 Spacer(modifier = Modifier.height(ScanPangSpacing.sm))
-                // category·영업중 뱃지를 동적으로 구성. 둘 다 비면 메타 행 자체를 숨김.
-                val openLabel = when (isOpenNow) {
+                val openLabel = when (displayOpenNow) {
                     true  -> "영업 중"
                     false -> "영업 종료"
                     null  -> ""
                 }
                 val parts = listOfNotNull(
-                    category.takeIf { it.isNotBlank() },
+                    displayCategory.takeIf { it.isNotBlank() },
+                    distanceLabel.takeIf { it.isNotBlank() },
                     openLabel.takeIf { it.isNotBlank() },
                 )
                 if (parts.isNotEmpty()) {
                     Text(
                         text = parts.joinToString(" · "),
                         style = ScanPangType.caption12Medium,
-                        color = when (isOpenNow) {
+                        color = when (displayOpenNow) {
                             true  -> ScanPangColors.Success
                             false -> ScanPangColors.OnSurfaceMuted
                             null  -> ScanPangColors.OnSurfaceMuted
                         },
                     )
+                }
+                if (intro.isNotEmpty()) {
+                    Spacer(modifier = Modifier.height(ScanPangSpacing.md))
+                    Text(
+                        text = intro,
+                        style = ScanPangType.body14Regular,
+                        color = ScanPangColors.OnSurfaceStrong,
+                        maxLines = 3,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+                // 풀필드 메타 — 영업시간 / 주소 / 전화 / 층 / 홈페이지. 비어있으면 행 자체 숨김.
+                val metaRows: List<Triple<androidx.compose.ui.graphics.vector.ImageVector, String, Boolean>> = listOfNotNull(
+                    openHours.takeIf { it.isNotEmpty() }?.let { Triple(Icons.Rounded.AccessTime, it, false) },
+                    addr.takeIf { it.isNotEmpty() }?.let { Triple(Icons.Rounded.Place, it, false) },
+                    phone.takeIf { it.isNotEmpty() }?.let { Triple(Icons.Rounded.LocalPhone, it, true) },
+                    floor.takeIf { it.isNotEmpty() }?.let { Triple(Icons.Rounded.Stairs, it, false) },
+                    homepage.takeIf { it.isNotEmpty() }?.let { Triple(Icons.Rounded.Language, it, true) },
+                )
+                if (metaRows.isNotEmpty()) {
+                    Spacer(modifier = Modifier.height(ScanPangSpacing.md))
+                    metaRows.forEach { (icon, text, isLink) ->
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Icon(
+                                imageVector = icon,
+                                contentDescription = null,
+                                tint = if (isLink) ScanPangColors.Primary else ScanPangColors.OnSurfaceMuted,
+                                modifier = Modifier.size(18.dp),
+                            )
+                            Text(
+                                text = text,
+                                style = ScanPangType.body14Regular,
+                                color = if (isLink) ScanPangColors.Primary else ScanPangColors.OnSurfaceStrong,
+                                maxLines = 2,
+                                overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.weight(1f),
+                            )
+                        }
+                        Spacer(modifier = Modifier.height(6.dp))
+                    }
                 }
                 Spacer(modifier = Modifier.height(ScanPangSpacing.md))
                 Button(

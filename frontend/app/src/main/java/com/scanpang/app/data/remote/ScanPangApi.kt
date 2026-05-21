@@ -193,6 +193,9 @@ data class ArOverlay(
     val closed_days: String = "",
     val parking_info: String = "",
     val admission_fee: String = "",
+    // AR 건물 floating 패널의 chip 표시용 — 주소·전화 chip 렌더링.
+    val address: String = "",
+    val phone: String = "",
     val is_estimated: Boolean = false,
     val description: String = "",
     val address: String = "",

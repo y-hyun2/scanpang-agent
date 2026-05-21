@@ -862,7 +862,6 @@ fun GeospatialARExploreScreen(
                     onSave = { scope.launch { snackbarHostState.showSnackbar("저장되었습니다") } },
                     modifier = Modifier.fillMaxSize(),
                     arOverlay = selectedPoiOverlay ?: placeResult?.ar_overlay,
-                    docent = selectedPoiDocent ?: placeResult?.docent,
                 )
             }
 
