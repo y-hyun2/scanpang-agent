@@ -355,7 +355,7 @@ private fun PlaceDetailContent(
             if (!isRestroom && place.floor.isNotBlank())
                 DetailInfoLine(Icons.Rounded.Store, "매장 층수", place.floor)
             val showParking = place.parking.isNotBlank() &&
-                categoryKey !in setOf("prayer_room", "prayer", "lockers", "locker", "restroom", "public_restroom", "subway", "subway_station")
+                place.categoryKey !in setOf("prayer_room", "prayer", "lockers", "locker", "restroom", "public_restroom", "subway", "subway_station")
             if (showParking) DetailInfoLine(Icons.Rounded.LocalParking, "주차 가능 여부", place.parking)
             if (!isSubway && !isRestroom && place.website.isNotBlank())
                 DetailInfoLine(Icons.Rounded.Language, "웹사이트", place.website)
