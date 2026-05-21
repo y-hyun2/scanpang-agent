@@ -1,5 +1,6 @@
 package com.scanpang.app.components.ar
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -735,6 +736,8 @@ fun ArFloorStoreGuideOverlay(
 
     val pagerState = rememberPagerState(pageCount = { imageUrls.size.coerceAtLeast(1) })
     var isFullscreen by remember { mutableStateOf(false) }
+
+    BackHandler(enabled = isFullscreen) { isFullscreen = false }
 
     val bookmark = rememberDetailBookmark(
         placeId = storeResult?.id ?: storeName,

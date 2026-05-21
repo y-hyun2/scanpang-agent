@@ -42,7 +42,7 @@ fun ScanPangApp(modifier: Modifier = Modifier) {
                     AppRoutes.Search -> ScanPangMainTab.Search
                     AppRoutes.Saved -> ScanPangMainTab.Saved
                     AppRoutes.Profile -> ScanPangMainTab.Profile
-                    else -> ScanPangMainTab.Home
+                    else -> ScanPangMainTab.Explore
                 },
                 onHomeClick = { navigateToHome(navController) },
                 onSearchClick = { navigateMainTab(navController, AppRoutes.Search) },

@@ -2,6 +2,7 @@
 
 package com.scanpang.app.screens
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -157,7 +158,7 @@ fun PlaceDetailScreen(
     val subwayDetail: SubwayDetail? = remember(backend) { backend?.toSubwayDetail() }
 
     val hasHeroPhoto = categoryKey !in setOf("atm", "subway", "subway_station", "restroom", "public_restroom", "lockers", "locker")
-    val canFullscreen = categoryKey in setOf("restaurant", "halal_restaurant", "tourist", "tourist_spot", "attraction")
+    val canFullscreen = hasHeroPhoto
 
     // 갤러리: 백엔드 image_urls (HTTP URL) 가 있으면 그걸 Coil 모델로 노출.
     // 비면 DummyData galleryModels (drawable Int → URL 폴백 순) 으로 대체.
@@ -171,6 +172,7 @@ fun PlaceDetailScreen(
     }
     val pagerState = if (hasHeroPhoto) rememberPagerState(pageCount = { imageModels.size.coerceAtLeast(1) }) else null
     var fullscreenOpen by remember { mutableStateOf(false) }
+    BackHandler(enabled = fullscreenOpen) { fullscreenOpen = false }
 
     val bookmark = rememberDetailBookmark(
         placeId = place.id,

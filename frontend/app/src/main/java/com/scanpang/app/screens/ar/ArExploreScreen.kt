@@ -308,6 +308,14 @@ fun ArExploreScreen(
     var selectedStore by remember { mutableStateOf<String?>(null) }
     var storeListPoi by remember { mutableStateOf<DynamicPoi?>(null) }
 
+    BackHandler(enabled = selectedPoi != null && selectedStore == null) {
+        selectedPoi = null
+        selectedPoiOverlay = null
+    }
+    BackHandler(enabled = selectedStore != null) {
+        selectedStore = null
+    }
+
     val categoryChipSpecs = remember { arExploreCategoryChipSpecs() }
     var arSearchHistoryTick by remember { mutableIntStateOf(0) }
     val searchHistoryPrefs = remember(appContext) { SearchHistoryPreferences(appContext) }
