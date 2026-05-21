@@ -8,7 +8,7 @@ import android.speech.SpeechRecognizer
 import android.util.Log
 import android.app.Activity
 import android.graphics.Bitmap
-import android.graphics.PixelCopy
+import android.view.PixelCopy
 import android.os.Handler
 import android.os.Looper
 import androidx.activity.compose.BackHandler
@@ -119,6 +119,8 @@ import com.scanpang.app.data.SearchHistoryPreferences
 import com.scanpang.app.navigation.AppRoutes
 import com.scanpang.app.ui.theme.ScanPangColors
 import com.scanpang.app.ui.theme.ScanPangDimens
+import com.scanpang.app.ui.theme.ScanPangShapes
+import androidx.compose.material3.HorizontalDivider
 import com.scanpang.app.ui.theme.ScanPangSpacing
 import com.scanpang.app.ui.theme.ScanPangType
 import io.github.sceneview.ar.ARScene
