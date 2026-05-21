@@ -568,8 +568,6 @@ private val CATEGORY_KO = mapOf(
     "vegan_cafe"        to "비건 카페",
 )
 
-// 이 카테고리들은 raw Kakao 소분류("한식", "의류", "의원")를 그대로 표시.
-// 나머지는 CATEGORY_KO 고정 ("관광지", "환전소", "카페" 등).
 private val USE_RAW_CATEGORY = setOf("restaurant", "shopping", "hospital", "cultural", "accommodation")
 
 private fun formatDistance(m: Double?): String = when {
