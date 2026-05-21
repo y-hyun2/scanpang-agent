@@ -320,6 +320,14 @@ fun ArExploreScreen(
     var selectedStore by remember { mutableStateOf<String?>(null) }
     var storeListPoi by remember { mutableStateOf<DynamicPoi?>(null) }
 
+    BackHandler(enabled = selectedPoi != null && selectedStore == null) {
+        selectedPoi = null
+        selectedPoiOverlay = null
+    }
+    BackHandler(enabled = selectedStore != null) {
+        selectedStore = null
+    }
+
     val categoryChipSpecs = remember { arExploreCategoryChipSpecs() }
     var arSearchHistoryTick by remember { mutableIntStateOf(0) }
     val searchHistoryPrefs = remember(appContext) { SearchHistoryPreferences(appContext) }
@@ -1437,8 +1445,8 @@ private fun filterArExploreHits(query: String, all: List<ArExploreSearchHitUi>):
 private fun buildFilterPillLabel(selected: Set<String>): String {
     val list = selected.toList()
     if (list.isEmpty()) return ""
-    if (list.size == 1) return list[0]
-    return "${list[0]} 외 ${list.size - 1}개"
+    if (list.size == 1) return "${list[0]} 탐색 중"
+    return "${list[0]} 외 ${list.size - 1}개 탐색 중"
 }
 
 /**

@@ -2,6 +2,7 @@
 
 package com.scanpang.app.screens
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -164,6 +165,7 @@ fun PlaceDetailScreen(
     val hasHeroPhoto = heroPhotoAllowed && imageModels.isNotEmpty()
     val pagerState = if (hasHeroPhoto) rememberPagerState(pageCount = { imageModels.size }) else null
     var fullscreenOpen by remember { mutableStateOf(false) }
+    BackHandler(enabled = fullscreenOpen) { fullscreenOpen = false }
 
     val bookmark = rememberDetailBookmark(
         placeId = place.id,

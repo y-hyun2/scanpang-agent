@@ -1,5 +1,6 @@
 ﻿package com.scanpang.app.screens.ar
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxHeight
@@ -127,6 +128,13 @@ fun ArNavigationMapScreen(
     var isTtsOn by remember { mutableStateOf(true) }
     var showStopNavSheet by remember { mutableStateOf(false) }
     var showStopConfirmDialog by remember { mutableStateOf(false) }
+
+    BackHandler(enabled = showStopConfirmDialog) {
+        showStopConfirmDialog = false
+    }
+    BackHandler(enabled = !showStopConfirmDialog) {
+        showStopConfirmDialog = true
+    }
 
     // 건물 핀 클릭 → 상세 오버레이
     var selectedBuildingPoi by remember { mutableStateOf<String?>(null) }
