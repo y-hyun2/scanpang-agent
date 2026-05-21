@@ -73,7 +73,24 @@ interface ScanPangApi {
         @retrofit2.http.Path("user_id") userId: String,
         @Body request: SearchHistoryUpdateRequest,
     ): Map<String, Any>
+
+    // 1:1 문의 — ContactScreen 의 제출 버튼이 호출.
+    @POST("user/inquiry")
+    suspend fun submitInquiry(@Body request: InquirySubmitRequest): InquirySubmitResponse
 }
+
+data class InquirySubmitRequest(
+    val user_id: String,
+    val category: String,
+    val title: String,
+    val content: String,
+)
+
+data class InquirySubmitResponse(
+    val id: Long = 0,
+    val user_id: String = "",
+    val status: String = "open",
+)
 
 data class SavedPlacesUpdateRequest(
     val items: List<Map<String, Any>> = emptyList(),

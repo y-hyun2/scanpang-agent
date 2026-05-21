@@ -21,6 +21,7 @@ from schemas.place_detail import PlaceDetailRequest, PlaceDetailResponse
 from schemas.user import (
     UserPreferencesUpsertRequest, UserPreferencesResponse,
     SavedPlacesUpdateRequest, SearchHistoryUpdateRequest,
+    InquirySubmitRequest, InquirySubmitResponse,
 )
 from tools.open_hours_parser import is_open_now_combined as _is_open_now_combined
 import json as _json
@@ -204,6 +205,30 @@ async def user_search_history_update(user_id: str, req: SearchHistoryUpdateReque
             user_id, req.items,
         )
     return {"user_id": user_id, "count": len(req.items)}
+
+
+@app.post("/user/inquiry", response_model=InquirySubmitResponse)
+async def user_inquiry_submit(req: InquirySubmitRequest):
+    """
+    1:1 문의 접수 — ContactScreen 의 제출 버튼이 호출.
+    inquiries 테이블에 row 생성하고 id+status 반환. 추후 status 변경/응답은
+    어드민 도구에서 처리. 이메일/Slack 알림은 이 핸들러에 후속 추가 가능.
+    """
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        row = await conn.fetchrow(
+            """
+            INSERT INTO inquiries (user_id, category, title, content)
+            VALUES ($1, $2, $3, $4)
+            RETURNING id, user_id, status
+            """,
+            req.user_id, req.category, req.title, req.content,
+        )
+    return InquirySubmitResponse(
+        id=row["id"],
+        user_id=row["user_id"],
+        status=row["status"],
+    )
 
 
 @app.post("/convenience/query")

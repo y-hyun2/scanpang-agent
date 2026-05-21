@@ -32,3 +32,17 @@ class SavedPlacesUpdateRequest(BaseModel):
 class SearchHistoryUpdateRequest(BaseModel):
     """search_history 전체 list 교체. 최근 검색어(string) 목록."""
     items: List[str] = []
+
+
+class InquirySubmitRequest(BaseModel):
+    """1:1 문의 — ContactScreen 의 카테고리/제목/내용."""
+    user_id: UUID
+    category: str
+    title: str
+    content: str
+
+
+class InquirySubmitResponse(BaseModel):
+    id: int
+    user_id: UUID
+    status: str
