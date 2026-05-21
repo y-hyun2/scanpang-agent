@@ -11,3 +11,6 @@ android-compose/
 # 대용량 캐시 (코드가 첫 실행 시 자동 생성)
 rag/data/public_restrooms.json
 rag/data/exchange_rates_cache.json
+
+# 런타임 로그 (스캔 이벤트, seed 결과 등)
+logs/
