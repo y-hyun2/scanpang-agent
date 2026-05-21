@@ -26,6 +26,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.AccessTime
+import androidx.compose.material.icons.rounded.Bookmark
 import androidx.compose.material.icons.rounded.BookmarkBorder
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.ExpandLess
@@ -62,6 +63,15 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import com.scanpang.app.data.remote.ArOverlay
 import com.scanpang.app.data.remote.FloorInfo
+import com.scanpang.app.screens.DetailCategoryTagDistanceRow
+import com.scanpang.app.screens.DetailFacilityTagRow
+import com.scanpang.app.screens.DetailImageFullscreenDialog
+import com.scanpang.app.screens.DetailInfoLine
+import com.scanpang.app.screens.DetailIntroBody
+import com.scanpang.app.screens.DetailScreenDivider
+import com.scanpang.app.screens.DetailSectionHeader
+import com.scanpang.app.screens.DetailTodayVisitStatus
+import com.scanpang.app.screens.rememberDetailBookmark
 import com.scanpang.app.ui.theme.ScanPangColors
 import com.scanpang.app.ui.theme.ScanPangDimens
 import com.scanpang.app.ui.theme.ScanPangShapes
@@ -688,13 +698,12 @@ private fun ArPoiFloorsTabBody(
 }
 
 /**
- * 사진의 "탐색-매장(X)" 작은 카드 — AR 마커 탭 시 floating.
+ * AR 마커 탭 매장 상세 플로팅 카드 (361×352, 상단 Y=230).
  *
- * 백엔드 `/place/store` 응답(StoreResponse) 풀필드를 받아서 표시:
- * - category: Kakao raw category_name ("음식점 > 한식 > 국밥")
- * - isOpenNow: 영업중 판정 (b55f1e5 백엔드 계산). null=판정 불가
+ * 백엔드 `/place/store` 응답(StoreResponse) 풀필드를 받아서 표시.
  * 응답 도착 전에는 storeName만 표시되고, 메타 라인은 비어 있음.
  */
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun ArFloorStoreGuideOverlay(
     storeName: String,
@@ -706,139 +715,231 @@ fun ArFloorStoreGuideOverlay(
     storeResult: com.scanpang.app.data.remote.StoreResponse? = null,
     distanceLabel: String = "",
 ) {
+    val imageUrls = (storeResult?.image_urls ?: emptyList()).take(6)
     val displayCategory = (storeResult?.category?.ifBlank { null }) ?: category
-    val displayOpenNow  = storeResult?.is_open_now ?: isOpenNow
-    val imageUrl        = storeResult?.image_urls?.firstOrNull()?.takeIf { it.isNotBlank() }
-    val intro           = (storeResult?.details?.get("intro") as? String)?.trim().orEmpty()
-    val openHours       = storeResult?.open_hours?.trim().orEmpty()
-    val addr            = storeResult?.addr?.trim().orEmpty()
-    val phone           = storeResult?.phone?.trim().orEmpty()
-    val floor           = storeResult?.floor?.trim().orEmpty()
-    val homepage        = storeResult?.homepage?.trim().orEmpty()
+    val displayOpenNow = storeResult?.is_open_now ?: isOpenNow
+    val intro = (storeResult?.details?.get("intro") as? String)?.trim().orEmpty()
+    val openHours = storeResult?.open_hours?.trim().orEmpty()
+    val lastOrder = (storeResult?.details?.get("last_order") as? String).orEmpty()
+    val addr = storeResult?.addr?.trim().orEmpty()
+    val phone = storeResult?.phone?.trim().orEmpty()
+    val floor = storeResult?.floor?.trim().orEmpty()
+    val homepage = storeResult?.homepage?.trim().orEmpty()
+    val categoryKey = storeResult?.category_key ?: ""
+    val showVisitStatus = openHours.isNotBlank() && categoryKey in setOf(
+        "restaurant", "halal_restaurant", "cafe",
+        "shopping", "mall", "convenience", "convenience_store",
+        "exchange", "bank", "hospital", "pharmacy",
+        "tourist", "tourist_spot", "attraction",
+    )
 
-    Box(
-        modifier = modifier
-            .fillMaxSize()
-            .background(ScanPangColors.ArOverlayScrimDark)
-            .clickable { onDismiss() },
-    ) {
+    val pagerState = rememberPagerState(pageCount = { imageUrls.size.coerceAtLeast(1) })
+    var isFullscreen by remember { mutableStateOf(false) }
+
+    val bookmark = rememberDetailBookmark(
+        placeId = storeResult?.id ?: storeName,
+        placeName = storeName,
+        category = displayCategory,
+        distanceLine = distanceLabel,
+        tags = emptyList(),
+        categoryKey = categoryKey,
+    )
+
+    Box(modifier = modifier.fillMaxSize()) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(ScanPangColors.ArOverlayScrimDark)
+                .clickable { onDismiss() },
+        )
         Surface(
             modifier = Modifier
-                .align(Alignment.BottomCenter)
-                .fillMaxWidth()
-                // 콘텐츠(사진/소개/메타/chip)가 길어지면 BottomCenter Surface 가 화면
-                // 위로 넘쳐 콘텐츠 대부분이 가려진다. 화면 65% 까지만 차지하고 내부
-                // verticalScroll 로 콘텐츠 스크롤.
-                .fillMaxHeight(0.65f)
-                .padding(ScanPangSpacing.lg)
+                .align(Alignment.TopCenter)
+                .padding(top = ScanPangDimens.detailArPanelTop)
+                .width(ScanPangDimens.detailArPanelWidth)
+                .height(ScanPangDimens.detailArPanelHeight)
                 .clickable(enabled = false) { },
             shape = ScanPangShapes.radius16,
-            color = ScanPangColors.Surface,
+            color = Color.White,
             shadowElevation = ScanPangDimens.arPoiCardShadowElevation,
         ) {
-            Column(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(ScanPangSpacing.lg)
-                    .verticalScroll(rememberScrollState()),
-            ) {
-                // 매장 메인 사진 1장 — image_urls[0]. 없으면 행 자체 생략.
-                if (imageUrl != null) {
-                    coil.compose.AsyncImage(
-                        model = imageUrl,
-                        contentDescription = storeName,
+            Column(modifier = Modifier.fillMaxSize()) {
+                // ① 사진 캐러셀 (최대 6장, 90dp 고정)
+                if (imageUrls.isNotEmpty()) {
+                    Box(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .height(140.dp)
-                            .clip(RoundedCornerShape(12.dp)),
-                        contentScale = androidx.compose.ui.layout.ContentScale.Crop,
-                    )
-                    Spacer(modifier = Modifier.height(ScanPangSpacing.md))
-                }
-                Text(
-                    text = storeName,
-                    style = ScanPangType.title16SemiBold,
-                    color = ScanPangColors.OnSurfaceStrong,
-                )
-                Spacer(modifier = Modifier.height(ScanPangSpacing.sm))
-                val openLabel = when (displayOpenNow) {
-                    true  -> "영업 중"
-                    false -> "영업 종료"
-                    null  -> ""
-                }
-                val parts = listOfNotNull(
-                    displayCategory.takeIf { it.isNotBlank() },
-                    distanceLabel.takeIf { it.isNotBlank() },
-                    openLabel.takeIf { it.isNotBlank() },
-                )
-                if (parts.isNotEmpty()) {
-                    Text(
-                        text = parts.joinToString(" · "),
-                        style = ScanPangType.caption12Medium,
-                        color = when (displayOpenNow) {
-                            true  -> ScanPangColors.Success
-                            false -> ScanPangColors.OnSurfaceMuted
-                            null  -> ScanPangColors.OnSurfaceMuted
-                        },
-                    )
-                }
-                if (intro.isNotEmpty()) {
-                    Spacer(modifier = Modifier.height(ScanPangSpacing.md))
-                    Text(
-                        text = intro,
-                        style = ScanPangType.body14Regular,
-                        color = ScanPangColors.OnSurfaceStrong,
-                        maxLines = 3,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                }
-                // 풀필드 메타 — 영업시간 / 주소 / 전화 / 층 / 홈페이지. 비어있으면 행 자체 숨김.
-                val metaRows: List<Triple<androidx.compose.ui.graphics.vector.ImageVector, String, Boolean>> = listOfNotNull(
-                    openHours.takeIf { it.isNotEmpty() }?.let { Triple(Icons.Rounded.AccessTime, it, false) },
-                    addr.takeIf { it.isNotEmpty() }?.let { Triple(Icons.Rounded.Place, it, false) },
-                    phone.takeIf { it.isNotEmpty() }?.let { Triple(Icons.Rounded.LocalPhone, it, true) },
-                    floor.takeIf { it.isNotEmpty() }?.let { Triple(Icons.Rounded.Stairs, it, false) },
-                    homepage.takeIf { it.isNotEmpty() }?.let { Triple(Icons.Rounded.Language, it, true) },
-                )
-                if (metaRows.isNotEmpty()) {
-                    Spacer(modifier = Modifier.height(ScanPangSpacing.md))
-                    metaRows.forEach { (icon, text, isLink) ->
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            Icon(
-                                imageVector = icon,
+                            .height(ScanPangDimens.detailArCarouselSmallHeight),
+                    ) {
+                        HorizontalPager(
+                            state = pagerState,
+                            modifier = Modifier.fillMaxSize(),
+                            pageNestedScrollConnection = PagerDefaults.pageNestedScrollConnection(
+                                state = pagerState,
+                                orientation = Orientation.Horizontal,
+                            ),
+                        ) { page ->
+                            coil.compose.AsyncImage(
+                                model = imageUrls[page],
                                 contentDescription = null,
-                                tint = if (isLink) ScanPangColors.Primary else ScanPangColors.OnSurfaceMuted,
-                                modifier = Modifier.size(18.dp),
-                            )
-                            Text(
-                                text = text,
-                                style = ScanPangType.body14Regular,
-                                color = if (isLink) ScanPangColors.Primary else ScanPangColors.OnSurfaceStrong,
-                                maxLines = 2,
-                                overflow = TextOverflow.Ellipsis,
-                                modifier = Modifier.weight(1f),
+                                modifier = Modifier.fillMaxSize(),
+                                contentScale = androidx.compose.ui.layout.ContentScale.Crop,
                             )
                         }
-                        Spacer(modifier = Modifier.height(6.dp))
+                        Surface(
+                            modifier = Modifier
+                                .align(Alignment.TopEnd)
+                                .padding(4.dp)
+                                .size(28.dp)
+                                .clip(CircleShape)
+                                .clickable { isFullscreen = true },
+                            shape = CircleShape,
+                            color = Color.Black.copy(alpha = 0.35f),
+                        ) {
+                            Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
+                                Icon(
+                                    imageVector = Icons.Rounded.OpenInFull,
+                                    contentDescription = "전체 보기",
+                                    tint = Color.White,
+                                    modifier = Modifier.size(14.dp),
+                                )
+                            }
+                        }
+                        if (imageUrls.size > 1) {
+                            Row(
+                                modifier = Modifier
+                                    .align(Alignment.BottomCenter)
+                                    .padding(bottom = 6.dp),
+                                horizontalArrangement = Arrangement.spacedBy(4.dp),
+                            ) {
+                                repeat(imageUrls.size) { i ->
+                                    Box(
+                                        modifier = Modifier
+                                            .size(if (i == pagerState.currentPage) 6.dp else 4.dp)
+                                            .clip(CircleShape)
+                                            .background(
+                                                if (i == pagerState.currentPage) Color.White
+                                                else Color.White.copy(alpha = 0.45f),
+                                            ),
+                                    )
+                                }
+                            }
+                        }
                     }
                 }
-                Spacer(modifier = Modifier.height(ScanPangSpacing.md))
-                Button(
-                    onClick = onStartNavigation,
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = ScanPangColors.Primary,
-                        contentColor = Color.White,
-                    ),
-                    shape = ScanPangShapes.radius12,
+                // 스크롤 가능 콘텐츠 영역
+                Column(
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxWidth()
+                        .padding(horizontal = ScanPangSpacing.md, vertical = ScanPangSpacing.sm)
+                        .verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(ScanPangSpacing.sm),
                 ) {
-                    Text("길안내", style = ScanPangType.body15Medium)
+                    // ② 매장명 + 북마크 + 닫기
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(
+                            text = storeName,
+                            style = ScanPangType.title16SemiBold,
+                            color = ScanPangColors.OnSurfaceStrong,
+                            modifier = Modifier.weight(1f),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                        IconButton(
+                            onClick = bookmark.onToggle,
+                            modifier = Modifier.size(36.dp),
+                        ) {
+                            Icon(
+                                imageVector = if (bookmark.bookmarked) Icons.Rounded.Bookmark else Icons.Rounded.BookmarkBorder,
+                                contentDescription = if (bookmark.bookmarked) "저장됨" else "저장",
+                                tint = if (bookmark.bookmarked) ScanPangColors.Primary else ScanPangColors.OnSurfaceStrong,
+                                modifier = Modifier.size(ScanPangDimens.icon20),
+                            )
+                        }
+                        IconButton(
+                            onClick = onDismiss,
+                            modifier = Modifier.size(36.dp),
+                        ) {
+                            Icon(
+                                imageVector = Icons.Rounded.Close,
+                                contentDescription = "닫기",
+                                tint = ScanPangColors.OnSurfaceStrong,
+                                modifier = Modifier.size(ScanPangDimens.icon20),
+                            )
+                        }
+                    }
+                    // ③ 카테고리 뱃지 + 거리 + 영업 여부
+                    if (displayCategory.isNotBlank()) {
+                        DetailCategoryTagDistanceRow(
+                            categoryLabel = displayCategory,
+                            distanceText = distanceLabel,
+                            isOpen = displayOpenNow,
+                        )
+                    }
+                    // ④ 소개
+                    if (intro.isNotBlank()) {
+                        DetailIntroBody(text = intro)
+                    }
+                    // ⑤ 오늘 방문 가능 여부 (PlaceDetailScreen 동일 구현)
+                    if (showVisitStatus) {
+                        DetailScreenDivider()
+                        DetailTodayVisitStatus(
+                            isOpen = displayOpenNow ?: false,
+                            openHours = openHours,
+                            lastOrder = lastOrder,
+                        )
+                    }
+                    // ⑦ 상세 정보 행 (주소/전화/층/홈페이지)
+                    val infoLines = listOfNotNull(
+                        addr.takeIf { it.isNotBlank() }?.let { Triple(Icons.Rounded.Place, "주소", it) },
+                        phone.takeIf { it.isNotBlank() }?.let { Triple(Icons.Rounded.LocalPhone, "전화", it) },
+                        floor.takeIf { it.isNotBlank() }?.let { Triple(Icons.Rounded.Stairs, "층", it) },
+                        homepage.takeIf { it.isNotBlank() }?.let { Triple(Icons.Rounded.Language, "홈페이지", it) },
+                    )
+                    if (infoLines.isNotEmpty()) {
+                        DetailScreenDivider()
+                        DetailSectionHeader(title = "상세 정보")
+                        infoLines.forEach { (icon, label, value) ->
+                            DetailInfoLine(icon = icon, label = label, value = value)
+                        }
+                    }
+                    // 카테고리별 부가 정보
+                    when (categoryKey) {
+                        "restaurant", "halal_restaurant", "cafe" -> {
+                            val menuList = (storeResult?.details?.get("menu") as? List<*>)
+                                ?.filterIsInstance<String>() ?: emptyList()
+                            if (menuList.isNotEmpty()) DetailFacilityTagRow(tags = menuList)
+                        }
+                        "restroom" -> {
+                            val maleCnt = (storeResult?.details?.get("male_toilet_cnt") as? Double)?.toInt()
+                            val femaleCnt = (storeResult?.details?.get("female_toilet_cnt") as? Double)?.toInt()
+                            val tags = listOfNotNull(
+                                maleCnt?.let { "남 ${it}칸" },
+                                femaleCnt?.let { "여 ${it}칸" },
+                            )
+                            if (tags.isNotEmpty()) DetailFacilityTagRow(tags = tags)
+                        }
+                        "subway" -> {
+                            val tags = (storeResult?.details?.get("facilities") as? List<*>)
+                                ?.filterIsInstance<String>() ?: emptyList()
+                            if (tags.isNotEmpty()) DetailFacilityTagRow(tags = tags)
+                        }
+                    }
+                    Spacer(modifier = Modifier.height(ScanPangSpacing.sm))
                 }
             }
+        }
+        // 풀스크린 사진 다이얼로그
+        if (isFullscreen && imageUrls.isNotEmpty()) {
+            DetailImageFullscreenDialog(
+                gallery = imageUrls,
+                pagerState = pagerState,
+                onDismiss = { isFullscreen = false },
+            )
         }
     }
 }
