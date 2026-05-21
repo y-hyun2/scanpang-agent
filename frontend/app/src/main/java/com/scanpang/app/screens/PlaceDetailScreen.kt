@@ -173,8 +173,12 @@ fun PlaceDetailScreen(
             else -> emptyList()
         }
     }
-    val exchangeRates = remember(categoryKey) {
-        if (categoryKey in setOf("exchange", "atm", "bank")) DummyData.exchangeRates else emptyList()
+    // 환율: 백엔드 details.rates_today (한국수출입은행 OpenAPI 일일 캐시) 1순위,
+    //       비면 DummyData 폴백. backend rates_today = [{ccy, name, flag, base_rate}].
+    val exchangeRates = remember(categoryKey, backend) {
+        if (categoryKey !in setOf("exchange", "atm", "bank")) return@remember emptyList()
+        val backendRates = backend?.extractExchangeRates().orEmpty()
+        if (backendRates.isNotEmpty()) backendRates else DummyData.exchangeRates
     }
 
     // 지하철 카테고리는 백엔드 details(exits/schedule/fast_alights)에서 추출
@@ -707,6 +711,28 @@ private fun PlaceDetailResponse.mergeOnto(fallback: Place?, categoryKey: String)
         safetyTags   = if (safetyList.isNotEmpty())   safetyList.joinToString(", ")   else base.safetyTags,
         parking      = parkingValue.ifBlank { base.parking },
     )
+}
+
+/**
+/**
+ * details.rates_today (한국수출입은행 OpenAPI) → 화면용 [ExchangeRate] 리스트.
+ * 백엔드 format: [{ccy, name, flag, base_rate, ...}]. base_rate 는 매매기준율
+ * 문자열 ("1320.50") — "1,320원" 으로 천 단위 콤마 + 정수 변환.
+ */
+private fun PlaceDetailResponse.extractExchangeRates(): List<ExchangeRate> {
+    val raw = details["rates_today"] as? List<*> ?: return emptyList()
+    return raw.mapNotNull { entry ->
+        val m = entry as? Map<*, *> ?: return@mapNotNull null
+        val ccy = (m["ccy"] as? String)?.trim().orEmpty()
+        val flag = (m["flag"] as? String).orEmpty()
+        val baseRate = (m["base_rate"] as? String)?.trim().orEmpty()
+        if (ccy.isBlank() || baseRate.isBlank()) return@mapNotNull null
+        // "1,320.50" 같은 문자열 → 천 단위 콤마 제거 후 Double → 정수 + "원"
+        val rateText = baseRate.replace(",", "").toDoubleOrNull()
+            ?.let { "%,d원".format(it.toInt()) }
+            ?: "${baseRate}원"
+        ExchangeRate(currency = ccy, rate = rateText, flag = flag)
+    }
 }
 
 /**
