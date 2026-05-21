@@ -45,9 +45,6 @@ CATEGORY_CODES: dict[str, str] = {
     "bank":              "BK9",
     "hospital":          "HP8",
     "pharmacy":          "PM9",
-    "tourist":           "AT4",
-    "cultural":          "CT1",
-    "accommodation":     "AD5",
     "shopping":          "MT1",
 }
 
@@ -120,7 +117,7 @@ async def _find_building_for_store(
                     WHERE ST_DWithin(
                         geom::geography,
                         ST_SetSRID(ST_MakePoint($1, $2), 4326)::geography,
-                        30
+                        50
                     )
                     ORDER BY geom::geography <-> ST_SetSRID(ST_MakePoint($1, $2), 4326)::geography
                     LIMIT 1
@@ -236,9 +233,11 @@ async def run(
                     if not name or s_lat == 0 or s_lng == 0:
                         continue
 
-                    # 건물 폴리곤 포함 여부로 place_id 결정
                     ufid = await _find_building_for_store(bld_pool, s_lat, s_lng)
-                    place_id = ufid if ufid else "__outdoor__"
+                    if not ufid:
+                        print(f"    [{i:2d}] {name} — 건물 미매칭 skip")
+                        continue
+                    place_id = ufid
                     store_id = f"{place_id}__{name}"
 
                     if store_id in existing:

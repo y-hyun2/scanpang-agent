@@ -37,10 +37,12 @@ async def fetch_tour_info(
 ) -> dict:
     """
     TourAPI searchKeyword2 → detailCommon2 + detailIntro2 순서로 호출.
+    type 12(관광지)는 detailInfo2도 추가 호출해 admission_fee 보강.
 
     Returns:
-        {description_en, image_url, homepage, open_hours, closed_days,
-         parking_info, admission_fee}
+        {title, addr, phone, overview, image_url, homepage,
+         open_hours, closed_days, parking_info, admission_fee,
+         content_id, content_type_id}
         매칭 실패 시 빈 dict.
     """
     base = "https://apis.data.go.kr/B551011/KorService2"
@@ -55,6 +57,9 @@ async def fetch_tour_info(
     content_id = None
     content_type_id = None
     image_url = ""
+    title = ""
+    addr = ""
+    phone = ""
 
     async with httpx.AsyncClient() as client:
         for ctype in TOUR_CONTENT_TYPES:
@@ -63,6 +68,8 @@ async def fetch_tour_info(
                 params["lDongRegnCd"] = 11
                 params["lDongSignguCd"] = sigungu_code
             resp = await client.get(f"{base}/searchKeyword2", params=params)
+            if resp.status_code != 200 or not resp.text.strip():
+                return {}
             items_raw = resp.json().get("response", {}).get("body", {}).get("items", {})
             items = items_raw.get("item", []) if isinstance(items_raw, dict) else []
             if isinstance(items, dict):
@@ -71,21 +78,27 @@ async def fetch_tour_info(
                 continue
             matched = next((it for it in items if it.get("title", "") == keyword), None)
             selected = matched or items[0]
-            content_id = selected.get("contentid")
+            content_id      = selected.get("contentid")
             content_type_id = ctype
-            image_url = selected.get("firstimage", "")
+            image_url       = selected.get("firstimage", "")
+            title           = selected.get("title", "")
+            addr            = selected.get("addr1", "")
+            phone           = selected.get("tel", "")
             break
 
         if not content_id:
             return {}
 
-        resp = await client.get(f"{base}/detailCommon2", params={**common, "contentId": content_id})
+        resp = await client.get(
+            f"{base}/detailCommon2",
+            params={**common, "contentId": content_id, "overviewYN": "Y"},
+        )
         detail_raw = resp.json().get("response", {}).get("body", {}).get("items", {})
         detail = detail_raw.get("item", {}) if isinstance(detail_raw, dict) else {}
         if isinstance(detail, list):
             detail = detail[0] if detail else {}
-        overview_ko = detail.get("overview", "") if isinstance(detail, dict) else ""
-        homepage    = detail.get("homepage", "") if isinstance(detail, dict) else ""
+        overview = detail.get("overview", "") if isinstance(detail, dict) else ""
+        homepage = detail.get("homepage", "") if isinstance(detail, dict) else ""
 
         field_map = INTRO_FIELD_MAP.get(content_type_id, {})
         resp2 = await client.get(f"{base}/detailIntro2", params={
@@ -96,16 +109,36 @@ async def fetch_tour_info(
         if isinstance(intro, list):
             intro = intro[0] if intro else {}
 
-        open_hours    = intro.get(field_map.get("open_hours", ""), "")
-        closed_days   = intro.get(field_map.get("closed_days", ""), "")
-        parking_info  = intro.get(field_map.get("parking_info", ""), "")
-        admission_fee = intro.get(field_map.get("admission_fee", ""), "")
+        open_hours    = intro.get(field_map.get("open_hours", ""), "")    if isinstance(intro, dict) else ""
+        closed_days   = intro.get(field_map.get("closed_days", ""), "")   if isinstance(intro, dict) else ""
+        parking_info  = intro.get(field_map.get("parking_info", ""), "")  if isinstance(intro, dict) else ""
+        admission_fee = intro.get(field_map.get("admission_fee", ""), "") if isinstance(intro, dict) else ""
+
+        # type 12(관광지)는 intro에 admission_fee 필드 없음 → detailInfo2에서 보강
+        if content_type_id == 12 and not admission_fee:
+            resp3 = await client.get(f"{base}/detailInfo2", params={
+                **common, "contentId": content_id, "contentTypeId": content_type_id,
+            })
+            info_raw = resp3.json().get("response", {}).get("body", {}).get("items", {})
+            info_items = info_raw.get("item", []) if isinstance(info_raw, dict) else []
+            if isinstance(info_items, dict):
+                info_items = [info_items]
+            for item in info_items:
+                if "입장" in (item.get("infoname") or ""):
+                    admission_fee = item.get("infotext", "")
+                    break
 
     return {
-        "image_url":      image_url,
-        "homepage":       homepage,
-        "open_hours":     open_hours,
-        "closed_days":    closed_days,
-        "parking_info":   parking_info,
-        "admission_fee":  admission_fee,
+        "title":           title,
+        "addr":            addr,
+        "phone":           phone,
+        "overview":        overview,
+        "image_url":       image_url,
+        "homepage":        homepage,
+        "open_hours":      open_hours,
+        "closed_days":     closed_days,
+        "parking_info":    parking_info,
+        "admission_fee":   admission_fee,
+        "content_id":      content_id,
+        "content_type_id": content_type_id,
     }
