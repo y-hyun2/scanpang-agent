@@ -1,4 +1,4 @@
-"""
+﻿"""
 building_raycast.py
 사전 적재된 VWorld 건물 폴리곤(JSON)에 3D 레이캐스팅을 수행.
 
@@ -210,21 +210,20 @@ def find_building_by_raycast(
         _print_debug_geojson(user_lat, user_lng, user_lng + dlng, user_lat + dlat, None)
     return best
 
-def fetch_building_by_bd_mgt_sn(bd_mgt_sn: str) -> Optional[dict]:
+def fetch_building_by_ufid(ufid: str) -> Optional[dict]:
     """
-    bd_mgt_sn으로 buildings DB 직접 조회 — JSON 인덱스는 명동 2km 범위만 커버해서
-    외대 등 다른 지역 bd_mgt_sn 매칭 실패. DB 는 전국 615+ 건물 인덱싱돼 있음.
-
+    ufid 로 buildings 검색 — JSON 인덱스(명동 핫패스) → DB fallback(전국).
     클라이언트가 이미 정면 건물을 식별한 경우 사용 (옵션 B 경로).
+    JSON 인덱스는 명동 2km 만 커버하므로 외대 등 다른 지역은 DB 직접 조회.
     반환 형식은 find_building_by_raycast 와 호환 — meta dict 만.
     """
     # 1) JSON 인덱스 hot path (명동 영역) — 빠른 in-memory 매칭
     _load_index()
     if _buildings:
         for entry in _buildings:
-            if entry["meta"].get("bd_mgt_sn") == bd_mgt_sn:
+            if entry["meta"].get("ufid") == ufid:
                 name = entry["meta"].get("bld_nm") or "(이름 없음)"
-                print(f"[BdMgtSnLookup] JSON 매칭: {name!r} bd_mgt_sn={bd_mgt_sn}")
+                print(f"[UfidLookup] JSON 매칭: {name!r} ufid={ufid}")
                 return entry["meta"]
 
     # 2) DB fallback — JSON 미커버 지역(외대 등)
@@ -236,7 +235,7 @@ def fetch_building_by_bd_mgt_sn(bd_mgt_sn: str) -> Optional[dict]:
         load_dotenv()
         url = os.getenv("SUPABASE_DATABASE_URL", "")
         if not url:
-            print(f"[BdMgtSnLookup] DB URL 없음 — 매칭 실패: bd_mgt_sn={bd_mgt_sn}")
+            print(f"[UfidLookup] DB URL 없음 — 매칭 실패: ufid={ufid}")
             return None
 
         async def _query():
@@ -244,8 +243,8 @@ def fetch_building_by_bd_mgt_sn(bd_mgt_sn: str) -> Optional[dict]:
             try:
                 return await conn.fetchrow(
                     "SELECT ufid, bld_nm, center_lat, center_lng, bd_mgt_sn "
-                    "FROM buildings WHERE bd_mgt_sn = $1",
-                    bd_mgt_sn,
+                    "FROM buildings WHERE ufid = $1",
+                    ufid,
                 )
             finally:
                 await conn.close()
@@ -253,8 +252,7 @@ def fetch_building_by_bd_mgt_sn(bd_mgt_sn: str) -> Optional[dict]:
         try:
             loop = asyncio.get_event_loop()
             if loop.is_running():
-                # 이미 비동기 컨텍스트면 nest_asyncio 또는 동기 wrap 필요. 단순화:
-                # event loop 안에서는 asyncio.run 못 씀 → 빈 결과로 처리.
+                # 이미 비동기 컨텍스트면 asyncio.run 못 씀 → ThreadPoolExecutor wrap.
                 # 호출자(place_insight_agent) 자체가 async 이므로 보통 여기 도달.
                 import concurrent.futures
                 with concurrent.futures.ThreadPoolExecutor() as ex:
@@ -273,12 +271,12 @@ def fetch_building_by_bd_mgt_sn(bd_mgt_sn: str) -> Optional[dict]:
                 "bd_mgt_sn":  row["bd_mgt_sn"] or "",
             }
             name = meta["bld_nm"] or "(이름 없음)"
-            print(f"[BdMgtSnLookup] DB 매칭: {name!r} bd_mgt_sn={bd_mgt_sn}")
+            print(f"[UfidLookup] DB 매칭: {name!r} ufid={ufid}")
             return meta
     except Exception as e:
-        print(f"[BdMgtSnLookup] DB lookup 에러: {e}")
+        print(f"[UfidLookup] DB lookup 에러: {e}")
 
-    print(f"[BdMgtSnLookup] 매칭 실패: bd_mgt_sn={bd_mgt_sn}")
+    print(f"[UfidLookup] 매칭 실패: ufid={ufid}")
     return None
 
 def _print_debug_geojson(

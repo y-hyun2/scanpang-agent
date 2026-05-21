@@ -11,7 +11,7 @@ class PlaceRequest(BaseModel):
     pitch: float = 0.0                   # 카메라 상하 각도 (도, +위 -아래)
     user_message: str = "이 건물에 대해 알려줘"
     language: str = "ko"
-    bd_mgt_sn: Optional[str] = None
+    ufid: Optional[str] = None
 
 
 class StoreItem(BaseModel):

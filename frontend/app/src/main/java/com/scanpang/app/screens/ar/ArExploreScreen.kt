@@ -1,4 +1,4 @@
-package com.scanpang.app.screens.ar
+﻿package com.scanpang.app.screens.ar
 
 import android.Manifest
 import android.content.pm.PackageManager
@@ -17,6 +17,8 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -153,7 +155,7 @@ private data class DynamicPoi(
     val isPending: Boolean = false,
     val storeCount: Int = 0,
     val matchingStores: List<SearchResultItem> = emptyList(),
-    val bdMgtSn: String? = null,
+    val ufid: String? = null,
 )
 
 private data class BuildingCandidate(
@@ -164,6 +166,16 @@ private data class BuildingCandidate(
     val centerBearing: Double,      // 사용자 → 건물 중심 방향 (0~360°)
     val angularHalfWidth: Double,   // 사용자 위치에서 건물이 차지하는 시야각의 절반
     val visiblePolygon: List<Pair<Double, Double>>,  // FOV ∩ 건물 polygon (Pair<lng, lat>)
+)
+
+// place_id = "__outdoor__" 매장들 — 건물 폴리곤 밖에 있어 store_details.place_id 로
+// 건물 매칭이 안 되는 매장. 매장 좌표끼리 3m 이내인 것들을 한 마커로 묶는다.
+private data class OutdoorCluster(
+    val id: String,
+    val lat: Double,
+    val lng: Double,
+    val stores: List<SearchResultItem>,
+    val distance: Float,
 )
 
 /**
@@ -353,6 +365,10 @@ fun ArExploreScreen(
     var currentPitch by remember { mutableStateOf(0.0) }
     var currentLat by remember { mutableStateOf(0.0) }
     var currentLng by remember { mutableStateOf(0.0) }
+    // VPS 안정화 시점의 고도를 한번만 캐싱 — anchor 생성에 일관되게 사용.
+    // currentAltitude 를 매번 쓰면 ARCore 가 고도를 재추정할 때마다 새로 생성되는 anchor 가
+    // 서로 다른 높이에 박혀서, 필터 전환 후 건물 마커가 처음과 다른 높이로 보이는 문제 발생.
+    var stableAltitude by remember { mutableStateOf<Double?>(null) }
 
     val geospatialAnchors = remember { mutableStateMapOf<String, Anchor>() }
     var anchorScreenPositions by remember { mutableStateOf<Map<String, Offset>>(emptyMap()) }
@@ -368,7 +384,9 @@ fun ArExploreScreen(
 
     DisposableEffect(Unit) {
         onDispose {
-            geospatialAnchors.values.forEach { it.detach() }
+            // detach() 호출 금지 — disposal 순서상 ARScene 이 ArSession 을 먼저 파괴하면
+            // 죽은 session 의 anchor 를 건드려서 native SIGSEGV. ARCore 가 session 파괴 시
+            // anchor 도 같이 정리해주므로 reference 만 비우면 됨.
             geospatialAnchors.clear()
         }
     }
@@ -379,17 +397,21 @@ fun ArExploreScreen(
     }
 
     LaunchedEffect(categorySelection) {
-        // 기존 building 마커 전부 제거 — 다음 프레임 사이클에서 필터 기준으로 재생성
-        val buildingKeys = geospatialAnchors.keys.filter { it.startsWith("building_") }.toList()
-        buildingKeys.forEach { k ->
+        // 기존 building / outdoor 마커 전부 제거 — 다음 프레임 사이클에서 필터 기준으로 재생성
+        val staleKeys = geospatialAnchors.keys.filter {
+            it.startsWith("building_") || it.startsWith("outdoor_")
+        }.toList()
+        staleKeys.forEach { k ->
             geospatialAnchors[k]?.detach()
             geospatialAnchors.remove(k)
         }
-        dynamicPois.removeAll { it.id.startsWith("building_") }
+        dynamicPois.removeAll { it.id.startsWith("building_") || it.id.startsWith("outdoor_") }
+        // API 호출 전에 즉시 비움 — 이전 카테고리의 stale 데이터로 마커가 생기는 걸 방지.
+        // (안 비우면 visibility update가 150ms 안에 돌면서 이전 filterStores로 마커를 만들고,
+        //  그 마커 id가 existingIds에 박혀버려서 API 응답이 와도 새로 안 만들어짐.)
+        filterStores = emptyList()
 
-        if (categorySelection.isEmpty()) {
-            filterStores = emptyList()
-        } else {
+        if (categorySelection.isNotEmpty()) {
             val results = mutableListOf<SearchResultItem>()
             for (cat in categorySelection) {
                 try {
@@ -442,7 +464,11 @@ fun ArExploreScreen(
                     val horiz = sqrt(fx * fx + fz * fz)
                     currentPitch = Math.toDegrees(atan2(-fy.toDouble(), horiz.toDouble()))
 
-                    if (pose.horizontalAccuracy < 1.5) hasAchievedHighAccuracy = true
+                    if (pose.horizontalAccuracy < 1.5) {
+                        hasAchievedHighAccuracy = true
+                        // 첫 high-accuracy 도달 시점의 고도를 고정 — 이후 anchor 생성에 일관되게 사용
+                        if (stableAltitude == null) stableAltitude = pose.altitude
+                    }
 
                     // 10초마다 상태 종합 로그
                     if (System.currentTimeMillis() % 10000 < 100) {
@@ -554,19 +580,37 @@ fun ArExploreScreen(
                                     if (visibleCandidates.size >= 30) break
                                 }
 
-                                // 새 visible ID 집합
-                                val newVisibleIds = visibleCandidates.map { cand ->
-                                    "building_${cand.b.ufid ?: cand.b.h3_index_10}_${cand.b.hashCode()}"
-                                }.toSet()
+                                // Outdoor 매장 클러스터 — 필터 모드에서만, 좌표 3m 이내끼리 묶음
+                                val outdoorClusters: List<OutdoorCluster> =
+                                    if (categorySelection.isEmpty()) emptyList()
+                                    else computeOutdoorClusters(
+                                        outdoorStores = filterStores.filter { it.place_id == "__outdoor__" },
+                                        userLat = currentLat,
+                                        userLng = currentLng,
+                                        fov = fov,
+                                        maxDistanceM = 70f,
+                                        groupRadiusM = 3f,
+                                    )
 
-                                // 더 이상 visible 아닌 건물 라벨 제거 (멀어진 / 가려진 / FOV 밖)
-                                val currentBuildingIds = dynamicPois.filter { it.id.startsWith("building_") }.map { it.id }
-                                val toRemove = currentBuildingIds.filter { it !in newVisibleIds }
+                                // 새 visible ID 집합 (건물 + outdoor 클러스터)
+                                val newVisibleIds: Set<String> =
+                                    visibleCandidates.map { cand ->
+                                        "building_${cand.b.ufid ?: cand.b.h3_index_10}_${cand.b.hashCode()}"
+                                    }.toSet() + outdoorClusters.map { it.id }.toSet()
+
+                                // 더 이상 visible 아닌 건물/outdoor 라벨 제거 (멀어진 / 가려진 / FOV 밖)
+                                val currentDynamicIds = dynamicPois
+                                    .filter { it.id.startsWith("building_") || it.id.startsWith("outdoor_") }
+                                    .map { it.id }
+                                val toRemove = currentDynamicIds.filter { it !in newVisibleIds }
                                 toRemove.forEach { id ->
                                     geospatialAnchors[id]?.detach()
                                     geospatialAnchors.remove(id)
                                 }
-                                dynamicPois.removeAll { it.id.startsWith("building_") && it.id !in newVisibleIds }
+                                dynamicPois.removeAll {
+                                    (it.id.startsWith("building_") || it.id.startsWith("outdoor_")) &&
+                                            it.id !in newVisibleIds
+                                }
 
                                 // 새 visible 건물 — anchor 생성 또는 위치 갱신
                                 val existingIds = dynamicPois.map { it.id }.toSet()
@@ -579,7 +623,8 @@ fun ArExploreScreen(
 
                                     // 마커를 사용자 눈높이와 동일한 고도에 배치
                                     // (render_height를 더하면 가까운 건물에서 마커가 하늘로 올라가는 문제 발생)
-                                    val labelAltitude = currentAltitude
+                                    // stableAltitude 가 있으면 그걸 사용 — anchor 재생성마다 고도가 달라지는 문제 방지
+                                    val labelAltitude = stableAltitude ?: currentAltitude
 
                                     if (id !in existingIds) {
                                         // 새 건물 — 필터 미적용: 건물 마커, 필터 적용: 매칭 매장 마커
@@ -591,7 +636,7 @@ fun ArExploreScreen(
                                                 distance = cand.dist,
                                                 latitude = markerPos.first,
                                                 longitude = markerPos.second,
-                                                bdMgtSn = cand.b.bd_mgt_sn,
+                                                ufid = cand.b.ufid.ifEmpty { null },
                                             )
                                         } else {
                                             val nearby = filterStores.filter { store ->
@@ -602,8 +647,8 @@ fun ArExploreScreen(
                                                 DynamicPoi(
                                                     id = id,
                                                     name = picked.store_name,
-                                                    category = picked.category
-                                                        ?: categorySelection.first(),
+                                                    category = categorySelection.firstOrNull()
+                                                        ?: picked.category ?: "",
                                                     distance = cand.dist,
                                                     latitude = markerPos.first,
                                                     longitude = markerPos.second,
@@ -653,8 +698,39 @@ fun ArExploreScreen(
                                     }
                                 }
 
+                                // Outdoor 클러스터 마커 — 매장 좌표에 직접 anchor 생성
+                                outdoorClusters.forEach { cluster ->
+                                    if (cluster.id !in existingIds) {
+                                        val firstStore = cluster.stores.first()
+                                        val poiToAdd = DynamicPoi(
+                                            id = cluster.id,
+                                            name = firstStore.store_name,
+                                            // 필터 칩 키워드("약국", "화장실" 등)를 우선 — Kakao raw 카테고리
+                                            // 문자열은 categoryIcon 매칭이 안 돼서 기본 핀 아이콘이 뜨는 문제 방지.
+                                            category = categorySelection.firstOrNull() ?: firstStore.category ?: "",
+                                            distance = cluster.distance,
+                                            latitude = cluster.lat,
+                                            longitude = cluster.lng,
+                                            storeCount = cluster.stores.size,
+                                            matchingStores = cluster.stores,
+                                        )
+                                        try {
+                                            val anchor = earth.createAnchor(
+                                                cluster.lat, cluster.lng, stableAltitude ?: currentAltitude,
+                                                0f, 0f, 0f, 1f,
+                                            )
+                                            geospatialAnchors[cluster.id] = anchor
+                                            dynamicPois.add(poiToAdd)
+                                        } catch (e: Exception) {
+                                            Log.e("ArExplore", "outdoor 앵커 실패 ${firstStore.store_name}: ${e.message}")
+                                        }
+                                    }
+                                    // 이미 있는 outdoor 클러스터는 위치 안 바뀌므로 갱신 불필요
+                                    // (cluster id 가 store id 해시라서 멤버십 변하면 자동 재생성)
+                                }
+
                                 Log.d("ArExplore",
-                                    "visibility 갱신: 표시 ${visibleCandidates.size}개 " +
+                                    "visibility 갱신: 건물 ${visibleCandidates.size}개, outdoor 클러스터 ${outdoorClusters.size}개 " +
                                             "(캐시 ${cache.size}, FOV+100m 통과 ${candidates.size}, " +
                                             "occlusion ${candidates.size - visibleCandidates.size}개 제외, " +
                                             "제거 ${toRemove.size})")
@@ -684,10 +760,16 @@ fun ArExploreScreen(
                                 if (viewCoords[2] <= 0) {
                                     val clipCoords = FloatArray(4)
                                     Matrix.multiplyMV(clipCoords, 0, projMatrix, 0, viewCoords, 0)
-                                    if (clipCoords[3] != 0f) {
-                                        val x = ((clipCoords[0] / clipCoords[3] + 1.0f) / 2.0f) * screenWidthPx
-                                        val y = ((1.0f - clipCoords[1] / clipCoords[3]) / 2.0f) * screenHeightPx
-                                        newPositions[id] = Offset(x, y)
+                                    val w = clipCoords[3]
+                                    if (w != 0f) {
+                                        val ndcX = clipCoords[0] / w
+                                        val ndcY = clipCoords[1] / w
+                                        // NDC 범위 밖 anchor는 화면 바깥이므로 표시 안 함
+                                        if (ndcX >= -1f && ndcX <= 1f && ndcY >= -1f && ndcY <= 1f) {
+                                            val x = ((ndcX + 1.0f) / 2.0f) * screenWidthPx
+                                            val y = ((1.0f - ndcY) / 2.0f) * screenHeightPx
+                                            newPositions[id] = Offset(x, y)
+                                        }
                                     }
                                 }
                             }
@@ -811,12 +893,12 @@ fun ArExploreScreen(
                             selectedPoi = poi.name
                             selectedPoiOverlay = poi.arOverlay
                             activeDetailTab = ArPoiTabBuilding
-                            if (poi.bdMgtSn != null) {
+                            if (poi.ufid != null) {
                                 viewModel.queryPlace(
                                     heading = currentHeading,
                                     lat = currentLat,
                                     lng = currentLng,
-                                    bdMgtSn = poi.bdMgtSn,
+                                    ufid = poi.ufid,
                                 )
                             }
                         }
@@ -1052,23 +1134,35 @@ fun ArExploreScreen(
             }
 
             // ── 필터 매장 리스트 ──
-            AnimatedVisibility(
-                visible = storeListPoi != null,
-                enter = slideInVertically { it },
-                exit = slideOutVertically { it },
-            ) {
-                storeListPoi?.let { poi ->
-                    ArFilteredStoreListOverlay(
-                        poi = poi,
-                        onStoreClick = { store ->
-                            storeListPoi = null
-                            navController.navigate(
-                                AppRoutes.placeDetailRoute(store.category_key ?: "other", store.id)
+            // Dialog 로 렌더링해서 하단 탭 바보다 위 레이어에 표시.
+            // (같은 Box 안 AnimatedVisibility 는 ScanPangApp 의 ScanPangTabBar 보다
+            //  z-order 가 낮아 탭 바에 가려짐.)
+            if (storeListPoi != null) {
+                Dialog(
+                    onDismissRequest = { storeListPoi = null },
+                    properties = DialogProperties(
+                        usePlatformDefaultWidth = false,
+                        decorFitsSystemWindows = false,
+                    ),
+                ) {
+                    AnimatedVisibility(
+                        visible = true,
+                        enter = slideInVertically { it },
+                    ) {
+                        storeListPoi?.let { poi ->
+                            ArFilteredStoreListOverlay(
+                                poi = poi,
+                                onStoreClick = { store ->
+                                    storeListPoi = null
+                                    navController.navigate(
+                                        AppRoutes.placeDetailRoute(store.category_key ?: "other", store.id)
+                                    )
+                                },
+                                onDismiss = { storeListPoi = null },
+                                modifier = Modifier.fillMaxSize(),
                             )
-                        },
-                        onDismiss = { storeListPoi = null },
-                        modifier = Modifier.fillMaxSize(),
-                    )
+                        }
+                    }
                 }
             }
         }
@@ -1147,7 +1241,7 @@ private fun ArFilteredStoreListOverlay(
                         horizontalArrangement = Arrangement.spacedBy(ScanPangSpacing.sm),
                     ) {
                         ArCategoryIconBadge(
-                            category = store.category ?: poi.category,
+                            category = poi.category,
                             badgeSize = 32,
                             iconSize = 18,
                         )
@@ -1345,6 +1439,80 @@ private fun buildFilterPillLabel(selected: Set<String>): String {
     if (list.isEmpty()) return ""
     if (list.size == 1) return list[0]
     return "${list[0]} 외 ${list.size - 1}개"
+}
+
+/**
+ * place_id = "__outdoor__" 매장들을 좌표 기준으로 클러스터링.
+ * - maxDistanceM: 사용자로부터 이 거리 이내 매장만 후보 (건물과 동일 기준)
+ * - groupRadiusM: 이 반경 이내 매장끼리 한 마커로 묶음
+ * - fov: 시야 polygon (Pair<lng, lat>). 매장이 FOV 안에 있어야 후보.
+ *
+ * 클러스터 ID 는 멤버 store id 들의 정렬 해시 — 같은 멤버면 항상 같은 ID 라 마커 깜빡임 방지.
+ */
+private fun computeOutdoorClusters(
+    outdoorStores: List<SearchResultItem>,
+    userLat: Double,
+    userLng: Double,
+    fov: List<Pair<Double, Double>>,
+    maxDistanceM: Float,
+    groupRadiusM: Float,
+): List<OutdoorCluster> {
+    // 1) 시야+거리 안에 들어오는 매장만 추출
+    data class Visible(val store: SearchResultItem, val lat: Double, val lng: Double, val dist: Float)
+    val visible = outdoorStores.mapNotNull { store ->
+        val lat = store.lat ?: return@mapNotNull null
+        val lng = store.lng ?: return@mapNotNull null
+        val r = FloatArray(1)
+        Location.distanceBetween(userLat, userLng, lat, lng, r)
+        if (r[0] > maxDistanceM) return@mapNotNull null
+        if (!isPointInPolygon(lng, lat, fov)) return@mapNotNull null
+        Visible(store, lat, lng, r[0])
+    }
+
+    // 2) 3m 이내끼리 묶기 — greedy 클러스터링 (성능 충분, 보통 매장 < 100개)
+    val groups = mutableListOf<MutableList<Visible>>()
+    for (v in visible) {
+        val joined = groups.firstOrNull { g ->
+            g.any { existing ->
+                val r = FloatArray(1)
+                Location.distanceBetween(existing.lat, existing.lng, v.lat, v.lng, r)
+                r[0] <= groupRadiusM
+            }
+        }
+        if (joined != null) joined.add(v) else groups.add(mutableListOf(v))
+    }
+
+    // 3) 각 클러스터를 OutdoorCluster 로
+    return groups.map { g ->
+        val avgLat = g.map { it.lat }.average()
+        val avgLng = g.map { it.lng }.average()
+        val r = FloatArray(1)
+        Location.distanceBetween(userLat, userLng, avgLat, avgLng, r)
+        val sortedIds = g.map { it.store.id }.sorted().joinToString(",")
+        OutdoorCluster(
+            id = "outdoor_${sortedIds.hashCode()}",
+            lat = avgLat,
+            lng = avgLng,
+            stores = g.map { it.store },
+            distance = r[0],
+        )
+    }
+}
+
+/** Ray casting 알고리즘 — (x, y) 가 polygon 안에 있는지. polygon 은 List<Pair<x, y>>. */
+private fun isPointInPolygon(x: Double, y: Double, poly: List<Pair<Double, Double>>): Boolean {
+    if (poly.size < 3) return false
+    var inside = false
+    var j = poly.size - 1
+    for (i in poly.indices) {
+        val xi = poly[i].first;  val yi = poly[i].second
+        val xj = poly[j].first;  val yj = poly[j].second
+        if ((yi > y) != (yj > y) && x < (xj - xi) * (y - yi) / (yj - yi) + xi) {
+            inside = !inside
+        }
+        j = i
+    }
+    return inside
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

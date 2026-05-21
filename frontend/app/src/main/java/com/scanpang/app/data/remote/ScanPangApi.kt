@@ -161,7 +161,7 @@ data class PlaceQueryRequest(
     val user_lng: Double = 0.0,
     val user_alt: Double = 0.0,
     val pitch: Double = 0.0,
-    val bd_mgt_sn: String? = null,
+    val ufid: String? = null,
     val user_message: String = "",
     val language: String = "ko",
 )
@@ -465,7 +465,6 @@ data class GeoJsonMultiPolygon(
 
 data class Building(
     val ufid: String = "",
-    val bd_mgt_sn: String?,
     val bld_nm: String? = null,
     val render_height: Double = 0.0,
     val h3_index_10: String = "",

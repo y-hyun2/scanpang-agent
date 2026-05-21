@@ -49,7 +49,6 @@ CATEGORY_CODES: dict[str, str] = {
     "cultural":          "CT1",
     "accommodation":     "AD5",
     "shopping":          "MT1",
-    "subway":            "SW8",
 }
 
 DEFAULT_CATEGORIES = list(CATEGORY_CODES.keys())
@@ -107,7 +106,7 @@ async def _find_building_for_store(
     retries: int = 3,
 ) -> str | None:
     """
-    store의 좌표가 buildings.geom 폴리곤 안에 있으면 해당 ufid 반환.
+    30m 이내에서 가장 가까운 buildings.geom 폴리곤의 ufid 반환.
     없으면 None → 호출 측에서 __outdoor__ 처리.
     네트워크 단절 시 최대 retries회 재시도.
     """
@@ -116,11 +115,14 @@ async def _find_building_for_store(
             async with bld_pool.acquire() as conn:
                 row = await conn.fetchrow(
                     """
-                    SELECT ufid FROM buildings
-                    WHERE ST_Within(
-                        ST_SetSRID(ST_MakePoint($1, $2), 4326),
-                        geom
+                    SELECT ufid
+                    FROM buildings
+                    WHERE ST_DWithin(
+                        geom::geography,
+                        ST_SetSRID(ST_MakePoint($1, $2), 4326)::geography,
+                        30
                     )
+                    ORDER BY geom::geography <-> ST_SetSRID(ST_MakePoint($1, $2), 4326)::geography
                     LIMIT 1
                     """,
                     store_lng, store_lat,
