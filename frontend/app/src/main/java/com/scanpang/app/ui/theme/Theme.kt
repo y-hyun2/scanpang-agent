@@ -254,7 +254,7 @@ object ScanPangDimens {
     val arStatusPillHorizontalPad: Dp = 12.dp
     val arSideColumnEnd: Dp = 16.dp
     val arSideColumnWidth: Dp = 40.dp
-    val arSideColumnTop: Dp = 113.dp
+    val arSideColumnTop: Dp = 90.dp
     val arSideIconGap: Dp = 12.dp
     val arSideFab44: Dp = 44.dp
     val arPoiCardHeight: Dp = 51.dp
@@ -303,7 +303,7 @@ object ScanPangDimens {
     val arNavNextStepHeight: Dp = 38.dp
     val arNavNextStepOffsetStart: Dp = 5.dp
     val arNavNextStepTop: Dp = 66.dp
-    val arNavActionClusterTop: Dp = 113.dp
+    val arNavActionClusterTop: Dp = 95.dp
     val arNavActionClusterStart: Dp = 16.dp
     val arNavTurnBadgeSize: Dp = 72.dp
     val arNavTurnBadgeIcon: Dp = 50.dp

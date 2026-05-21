@@ -176,7 +176,7 @@ fun ArNavDestinationPill(
 ) {
     val m = if (onClick != null) modifier.clickable(onClick = onClick) else modifier
     Surface(
-        modifier = m.heightIn(min = ScanPangDimens.arStatusPillHeight).fillMaxWidth(),
+        modifier = m.heightIn(min = ScanPangDimens.arStatusPillHeight),
         shape = ScanPangShapes.filterChip,
         color = containerColor,
         shadowElevation = ScanPangDimens.arPoiCardShadowElevation,
@@ -203,7 +203,7 @@ fun ArNavDestinationPill(
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier
-                    .weight(1f)
+                    .weight(1f, fill = false)
                     .basicMarquee(repeatDelayMillis = 2000),
             )
             // "안내 중" / "도착" 등 상태 텍스트: 항상 고정
