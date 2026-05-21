@@ -454,7 +454,8 @@ private fun RestaurantMetaRow(place: Place) {
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Text(
-            text = "${place.subCategory.ifBlank { "한식" }} · ${place.distance}",
+            text = if (place.distance.isBlank()) place.subCategory
+                   else "${place.subCategory} · ${place.distance}",
             style = ScanPangType.detailMetaSubtitle13,
             color = ScanPangColors.OnSurfaceMuted,
         )
@@ -640,9 +641,16 @@ private fun PlaceDetailResponse.mergeOnto(fallback: Place?, categoryKey: String)
         .ifBlank { (details["intro"] as? String)?.trim().orEmpty() }
         .ifBlank { (details["notes"] as? String)?.trim().orEmpty() }
 
-    // cuisine_type → subCategory (예: "한식·해산물")
-    val cuisineList = (details["cuisine_type"] as? List<*>)?.filterIsInstance<String>() ?: emptyList()
-    val subCategory = cuisineList.joinToString("·").ifBlank { base.subCategory }
+    // subCategory 결정:
+    //  - 할랄 식당: details.cuisine_type ("한식·해산물" 같은 정제된 큐레이션 데이터)
+    //  - 그 외: backend.category 의 마지막 토큰 ("음식점 > 치킨,닭강정" → "치킨,닭강정",
+    //    단일 토큰이면 그대로 "치킨"). 일반 식당은 cuisine_type 이 비어 있다.
+    val subCategory = if (categoryKey == "halal_restaurant") {
+        val cuisineList = (details["cuisine_type"] as? List<*>)?.filterIsInstance<String>() ?: emptyList()
+        cuisineList.joinToString("·").ifBlank { base.subCategory }
+    } else {
+        (category ?: "").substringAfterLast(">").trim().ifBlank { base.subCategory }
+    }
 
     // 할랄 신뢰 태그 — details 에 있으면 덮어씀
     val halalTags = buildList {
