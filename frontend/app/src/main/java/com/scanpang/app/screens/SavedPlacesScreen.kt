@@ -51,9 +51,29 @@ import com.scanpang.app.ui.theme.ScanPangShapes
 import com.scanpang.app.ui.theme.ScanPangSpacing
 import com.scanpang.app.ui.theme.ScanPangType
 
-private val filterLabels = listOf(
-    "전체", "식당", "카페", "편의점", "쇼핑", "관광지", "기도실", "환전소", "은행", "ATM",
-    "병원", "약국", "지하철역", "화장실", "물품보관함",
+// 필터 chip 한국어 라벨 → 매칭할 target enum 집합.
+// SavedPlaceEntry.category 의 한국어 string contains 매칭은 표기 변동(예: "할랄 식당"
+// vs "식당") 에 약하므로 target enum (= category_key) 기반 정확 매칭으로 통일.
+// "식당" 탭은 일반 + 할랄 식당 둘 다 포함(SavedPlaceNavTarget.fromCategoryKey 에서
+// halal_restaurant 도 Restaurant 로 매핑됨).
+private data class SavedFilter(val label: String, val targets: Set<SavedPlaceNavTarget>)
+
+private val savedFilters = listOf(
+    SavedFilter("전체", emptySet()),  // 빈 set = 필터 안 함
+    SavedFilter("식당", setOf(SavedPlaceNavTarget.Restaurant)),
+    SavedFilter("카페", setOf(SavedPlaceNavTarget.Cafe)),
+    SavedFilter("편의점", setOf(SavedPlaceNavTarget.ConvenienceStore)),
+    SavedFilter("쇼핑", setOf(SavedPlaceNavTarget.Shopping)),
+    SavedFilter("관광지", setOf(SavedPlaceNavTarget.TouristSpot)),
+    SavedFilter("기도실", setOf(SavedPlaceNavTarget.PrayerRoom)),
+    SavedFilter("환전소", setOf(SavedPlaceNavTarget.Exchange)),
+    SavedFilter("은행", setOf(SavedPlaceNavTarget.Bank)),
+    SavedFilter("ATM", setOf(SavedPlaceNavTarget.Atm)),
+    SavedFilter("병원", setOf(SavedPlaceNavTarget.Hospital)),
+    SavedFilter("약국", setOf(SavedPlaceNavTarget.Pharmacy)),
+    SavedFilter("지하철역", setOf(SavedPlaceNavTarget.Subway)),
+    SavedFilter("화장실", setOf(SavedPlaceNavTarget.Restroom)),
+    SavedFilter("물품보관함", setOf(SavedPlaceNavTarget.Lockers)),
 )
 
 private enum class SavedSort {
@@ -127,13 +147,9 @@ fun SavedPlacesScreen(
 
     val rows = remember(entries, filterIndex) {
         val mapped = entries.map { it.toUiRow() }
-        if (filterIndex == 0) mapped
-        else {
-            val label = filterLabels[filterIndex]
-            mapped.filter { row ->
-                row.categoryLabel == label || row.categoryLabel.contains(label)
-            }
-        }
+        val filter = savedFilters[filterIndex]
+        if (filter.targets.isEmpty()) mapped   // "전체"
+        else mapped.filter { it.navTarget in filter.targets }
     }
 
     val sortedRows = remember(sort, rows) {
@@ -204,9 +220,9 @@ fun SavedPlacesScreen(
                     LazyRow(
                         horizontalArrangement = Arrangement.spacedBy(ScanPangSpacing.sm),
                     ) {
-                        itemsIndexed(filterLabels) { index, label ->
+                        itemsIndexed(savedFilters) { index, f ->
                             ScanPangFilterChip(
-                                label = label,
+                                label = f.label,
                                 selected = filterIndex == index,
                                 onClick = { filterIndex = index },
                             )
