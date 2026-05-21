@@ -78,8 +78,12 @@ class ScanPangViewModel : ViewModel() {
     private val _placeDetail = MutableStateFlow<PlaceDetailResponse?>(null)
     val placeDetail: StateFlow<PlaceDetailResponse?> = _placeDetail
 
-    /** 마지막으로 요청한 detail id — 같은 화면 진입 시 중복 호출 회피용. */
-    private var _lastPlaceDetailId: String? = null
+    /**
+     * 마지막으로 요청한 detail (id, lat, lng) — 같은 화면 진입 시 중복 호출 회피용.
+     * lat/lng 도 포함해야 첫 호출(userLoc=null) 후 GPS 가 collect 됐을 때 재호출이
+     * 캐시에 막히지 않음 — 그 케이스가 distance_m null 의 원인이었다.
+     */
+    private var _lastPlaceDetailKey: Triple<String, Double?, Double?>? = null
 
     // ── 사용자 위치 캐시 ──
     // 검색/AR/Convenience 등 위치 받는 함수가 호출될 때마다 업데이트.
@@ -298,11 +302,12 @@ class ScanPangViewModel : ViewModel() {
     fun loadPlaceDetail(id: String, userLat: Double? = null, userLng: Double? = null) {
         if (id.isBlank()) {
             _placeDetail.value = null
-            _lastPlaceDetailId = null
+            _lastPlaceDetailKey = null
             return
         }
-        if (id == _lastPlaceDetailId && _placeDetail.value != null) return
-        _lastPlaceDetailId = id
+        val key = Triple(id, userLat, userLng)
+        if (key == _lastPlaceDetailKey && _placeDetail.value != null) return
+        _lastPlaceDetailKey = key
         viewModelScope.launch {
             _loading.value = true
             Log.d("ScanPangVM", "loadPlaceDetail START (id=$id)")
@@ -322,7 +327,7 @@ class ScanPangViewModel : ViewModel() {
 
     fun clearPlaceDetail() {
         _placeDetail.value = null
-        _lastPlaceDetailId = null
+        _lastPlaceDetailKey = null
     }
 
     // ── Spatial API ──
