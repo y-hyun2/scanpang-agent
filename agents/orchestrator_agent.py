@@ -36,7 +36,8 @@ load_dotenv()
 # ── 상태 정의 ──────────────────────────────────────────────────────────────
 
 class OrchestratorState(TypedDict):
-    user_message: str
+    user_message: str             # 원본 — Redis 세션 저장용 (사용자 그대로 보존)
+    resolved_message: str         # 지시어 풀어쓴 버전 — sub-agent 호출용
     user_lat: float
     user_lng: float
     user_heading: float
@@ -51,9 +52,11 @@ class OrchestratorState(TypedDict):
 
 # ── Intent 분류 프롬프트 ────────────────────────────────────────────────────
 
-_INTENT_SYSTEM = """당신은 AR 관광 앱의 요청 라우터입니다. 사용자 메시지를 분석해 아래 4개 에이전트 중 하나를 선택하세요.
+_INTENT_SYSTEM = """당신은 AR 관광 앱의 요청 라우터입니다. 사용자 메시지를 분석해 두 가지를 동시에 출력하세요:
+1) 4개 에이전트 중 하나 선택 (selected_agent)
+2) 메시지 안의 지시어를 이전 대화 맥락으로 풀어쓰기 (resolved_message)
 
-응답은 반드시 JSON 형식 `{"selected_agent": "<agent_name>"}` 한 줄로만 출력하세요.
+응답은 반드시 JSON 형식 `{"selected_agent": "<agent>", "resolved_message": "<텍스트>"}` 한 줄로만 출력하세요.
 
 에이전트 설명:
 - place     : 현재 바라보는 건물/장소 정보 (건물명, 운영시간, 층별 매장, 도슨트 해설)
@@ -67,47 +70,43 @@ _INTENT_SYSTEM = """당신은 AR 관광 앱의 요청 라우터입니다. 사용
 - 일반 식당/카페는 "convenience"
 - 건물 자체에 대한 질문(이게 뭐야, 여기 몇 층이야)은 "place"
 - 어디로 가고 싶다는 내용은 "navigation"
-- 대화 이력이 있을 경우, "거기", "그곳", "저기서", "방금 말한 곳" 같은 지시어는 이전 대화에서 언급된 장소를 가리킨다.
+
+resolved_message 규칙:
+- 지시어("거기", "그곳", "저기", "여기", "방금 말한 곳", "그 건물" 등)가 있고 이전 대화에서 가리키는 장소가 명확하면 그 장소 이름으로 치환.
+  예: ctx="user: 눈스퀘어 뭐야?  assistant: ..." + 현재="거기 어떻게 가?"
+      → resolved_message = "눈스퀘어 어떻게 가?"
+- 지시어 없거나 가리키는 대상이 모호하면 원문 그대로.
+- 사용자가 명시적으로 장소를 말했으면(예: "명동성당까지 가") 원문 그대로.
 
 아래 예시를 참고하세요."""
 
 _FEW_SHOTS = [
     {"role": "user",      "content": '메시지: "이 건물 뭐야?"'},
-    {"role": "assistant", "content": '{"selected_agent": "place"}'},
-    {"role": "user",      "content": '메시지: "저기 어떤 건물이야?"'},
-    {"role": "assistant", "content": '{"selected_agent": "place"}'},
-    {"role": "user",      "content": '메시지: "여기 운영시간이 어때?"'},
-    {"role": "assistant", "content": '{"selected_agent": "place"}'},
+    {"role": "assistant", "content": '{"selected_agent": "place", "resolved_message": "이 건물 뭐야?"}'},
     {"role": "user",      "content": '메시지: "명동성당에 대해 설명해줘"'},
-    {"role": "assistant", "content": '{"selected_agent": "place"}'},
-    {"role": "user",      "content": '메시지: "거기 어떻게 가?"'},
-    {"role": "assistant", "content": '{"selected_agent": "navigation"}'},
+    {"role": "assistant", "content": '{"selected_agent": "place", "resolved_message": "명동성당에 대해 설명해줘"}'},
+    {"role": "user",      "content": '이전 대화:\nuser: 눈스퀘어 뭐야?\nassistant: 눈스퀘어는 명동 쇼핑몰입니다.\n\n메시지: "거기 어떻게 가?"'},
+    {"role": "assistant", "content": '{"selected_agent": "navigation", "resolved_message": "눈스퀘어 어떻게 가?"}'},
+    {"role": "user",      "content": '이전 대화:\nuser: 롯데백화점 본점 뭐야?\nassistant: ...\n\n메시지: "그곳까지 가는 길 알려줘"'},
+    {"role": "assistant", "content": '{"selected_agent": "navigation", "resolved_message": "롯데백화점 본점까지 가는 길 알려줘"}'},
     {"role": "user",      "content": '메시지: "명동역으로 길 안내해줘"'},
-    {"role": "assistant", "content": '{"selected_agent": "navigation"}'},
-    {"role": "user",      "content": '메시지: "롯데백화점까지 경로 알려줘"'},
-    {"role": "assistant", "content": '{"selected_agent": "navigation"}'},
+    {"role": "assistant", "content": '{"selected_agent": "navigation", "resolved_message": "명동역으로 길 안내해줘"}'},
     {"role": "user",      "content": '메시지: "기도 시간 알려줘"'},
-    {"role": "assistant", "content": '{"selected_agent": "halal"}'},
-    {"role": "user",      "content": '메시지: "지금 아스르 기도 시간이야?"'},
-    {"role": "assistant", "content": '{"selected_agent": "halal"}'},
+    {"role": "assistant", "content": '{"selected_agent": "halal", "resolved_message": "기도 시간 알려줘"}'},
     {"role": "user",      "content": '메시지: "키블라 방향이 어디야?"'},
-    {"role": "assistant", "content": '{"selected_agent": "halal"}'},
+    {"role": "assistant", "content": '{"selected_agent": "halal", "resolved_message": "키블라 방향이 어디야?"}'},
     {"role": "user",      "content": '메시지: "할랄 식당 어디 있어?"'},
-    {"role": "assistant", "content": '{"selected_agent": "halal"}'},
-    {"role": "user",      "content": '메시지: "무슬림 음식 먹을 수 있는 곳 추천해줘"'},
-    {"role": "assistant", "content": '{"selected_agent": "halal"}'},
+    {"role": "assistant", "content": '{"selected_agent": "halal", "resolved_message": "할랄 식당 어디 있어?"}'},
     {"role": "user",      "content": '메시지: "기도실 어디야?"'},
-    {"role": "assistant", "content": '{"selected_agent": "halal"}'},
+    {"role": "assistant", "content": '{"selected_agent": "halal", "resolved_message": "기도실 어디야?"}'},
     {"role": "user",      "content": '메시지: "근처 ATM 찾아줘"'},
-    {"role": "assistant", "content": '{"selected_agent": "convenience"}'},
-    {"role": "user",      "content": '메시지: "화장실 어디야?"'},
-    {"role": "assistant", "content": '{"selected_agent": "convenience"}'},
+    {"role": "assistant", "content": '{"selected_agent": "convenience", "resolved_message": "근처 ATM 찾아줘"}'},
     {"role": "user",      "content": '메시지: "카페 추천해줘"'},
-    {"role": "assistant", "content": '{"selected_agent": "convenience"}'},
+    {"role": "assistant", "content": '{"selected_agent": "convenience", "resolved_message": "카페 추천해줘"}'},
     {"role": "user",      "content": '메시지: "환전소 어디 있어?"'},
-    {"role": "assistant", "content": '{"selected_agent": "convenience"}'},
+    {"role": "assistant", "content": '{"selected_agent": "convenience", "resolved_message": "환전소 어디 있어?"}'},
     {"role": "user",      "content": '메시지: "약국 찾아줘"'},
-    {"role": "assistant", "content": '{"selected_agent": "convenience"}'},
+    {"role": "assistant", "content": '{"selected_agent": "convenience", "resolved_message": "약국 찾아줘"}'},
 ]
 
 _llm = ChatOpenAI(model="gpt-4o", temperature=0, response_format={"type": "json_object"})
@@ -118,8 +117,11 @@ _llm = ChatOpenAI(model="gpt-4o", temperature=0, response_format={"type": "json_
 async def classify_intent(
     message: str,
     session_context: str = "",
-) -> Literal["place", "navigation", "halal", "convenience"]:
-    """사용자 메시지 → 에이전트 종류 분류. 실패 시 convenience 반환."""
+) -> tuple[Literal["place", "navigation", "halal", "convenience"], str]:
+    """
+    사용자 메시지 → (에이전트, 지시어 resolve 된 메시지) 튜플.
+    실패 시 (convenience, message) 반환.
+    """
     user_content = f'메시지: "{message}"'
     if session_context:
         user_content = f"{session_context}\n\n{user_content}"
@@ -134,20 +136,32 @@ async def classify_intent(
         data = json.loads(response.content)
         agent = data.get("selected_agent", "convenience")
         if agent not in ("place", "navigation", "halal", "convenience"):
-            return "convenience"
-        return agent
+            agent = "convenience"
+        resolved = (data.get("resolved_message") or message).strip() or message
+        return agent, resolved
     except Exception:
-        return "convenience"
+        return "convenience", message
 
 
 # ── LangGraph 노드 ────────────────────────────────────────────────────────
 
 async def _intent_classifier_node(state: OrchestratorState) -> dict:
-    selected = await classify_intent(
+    selected, resolved = await classify_intent(
         state["user_message"],
         session_context=state.get("session_context", ""),
     )
-    return {"selected_agent": selected, "source_agent": selected}
+    if resolved != state["user_message"]:
+        print(f"[orchestrator] 지시어 resolve: {state['user_message']!r} → {resolved!r}")
+    return {
+        "selected_agent":   selected,
+        "source_agent":     selected,
+        "resolved_message": resolved,
+    }
+
+
+def _sub_message(state: OrchestratorState) -> str:
+    """sub-agent 에 전달할 메시지 — 지시어 resolve 된 버전 우선, 없으면 원본."""
+    return state.get("resolved_message") or state["user_message"]
 
 
 async def _call_place_node(state: OrchestratorState) -> dict:
@@ -155,7 +169,7 @@ async def _call_place_node(state: OrchestratorState) -> dict:
         heading=state.get("user_heading", 0.0),
         user_lat=state["user_lat"],
         user_lng=state["user_lng"],
-        user_message=state["user_message"],
+        user_message=_sub_message(state),
         language=state.get("language", "ko"),
     )
     result = await run_place_insight_agent(req)
@@ -164,7 +178,7 @@ async def _call_place_node(state: OrchestratorState) -> dict:
 
 async def _call_navigation_node(state: OrchestratorState) -> dict:
     req = NavRequest(
-        message=state["user_message"],
+        message=_sub_message(state),
         lat=state["user_lat"],
         lng=state["user_lng"],
     )
@@ -174,7 +188,7 @@ async def _call_navigation_node(state: OrchestratorState) -> dict:
 
 async def _call_halal_node(state: OrchestratorState) -> dict:
     req = HalalRequest(
-        message=state["user_message"],
+        message=_sub_message(state),
         lat=state["user_lat"],
         lng=state["user_lng"],
         language=state.get("language", "ko"),
@@ -185,7 +199,7 @@ async def _call_halal_node(state: OrchestratorState) -> dict:
 
 async def _call_convenience_node(state: OrchestratorState) -> dict:
     req = ConvenienceRequest(
-        message=state["user_message"],
+        message=_sub_message(state),
         lat=state["user_lat"],
         lng=state["user_lng"],
         language=state.get("language", "ko"),
@@ -285,6 +299,7 @@ async def run_orchestrator(
         "session_id":      sid,
         "session_context": session_context,
         "selected_agent":  "convenience",
+        "resolved_message": message,
         "sub_agent_response": {},
         "final_speech":    "",
         "source_agent":    "",
