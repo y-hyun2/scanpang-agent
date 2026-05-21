@@ -135,7 +135,7 @@ Scanpang_agent/
 │   └── ...
 │
 ├── tools/                      # 외부 API 래퍼
-│   ├── building_raycast.py     # VWorld STRtree Ray Casting
+│   ├── building_raycast.py     # ufid → buildings 테이블 lookup
 │   ├── navigation_tools.py     # TMAP POI + 보행자 경로
 │   ├── convenience_tools.py    # Kakao + 서울시 Open API
 │   ├── halal_tools.py          # Aladhan + 자체 JSON
@@ -143,9 +143,7 @@ Scanpang_agent/
 │
 ├── rag/
 │   ├── build_place_db.py       # 5단계 API 파이프라인 → ChromaDB 구축
-│   ├── build_vworld_buildings.py
 │   └── data/
-│       ├── vworld_buildings.json         # 명동 2km 29,831개 건물
 │       ├── myeongdong_restaurants.json   # 할랄 식당 20개
 │       └── prayer_rooms.json            # 기도실 10개
 │
@@ -172,7 +170,7 @@ Scanpang_agent/
 | LLM | OpenAI GPT-4o |
 | 오케스트레이션 | LangGraph StateGraph (intent_classifier → 4 sub-agents) |
 | 세션 | Redis 7 (대화 맥락 유지, TTL 24h) |
-| 건물 인식 | VWorld WFS 폴리곤 + Shapely STRtree Ray Casting |
+| 건물 인식 | Frontend ARCore + 건물 핀 탭 → ufid 백엔드 lookup |
 | 길찾기 | TMAP 보행자 경로 + 꺾임 직접 계산 + LLM 턴별 TTS |
 | 장소 정보 | Kakao Local, TourAPI, 소상공인 API, Juso API |
 | 편의시설 | Kakao 카테고리/키워드, 서울시 Open API |
@@ -198,12 +196,11 @@ adb reverse tcp:6379 tcp:6379  # 실기기 연결 시
 python -m venv venv && source venv/bin/activate
 pip install -r requirements.txt
 
-# 최초 1회: ChromaDB + VWorld 폴리곤 DB 구축
+# 최초 1회: ChromaDB 구축 (buildings 폴리곤은 Supabase PostGIS 에 이미 적재됨)
 python -m rag.build_place_db
-python -m rag.build_vworld_buildings
 
-# 서버 실행
-python -m uvicorn main:app --host 0.0.0.0 --port 8000 --timeout-keep-alive 120
+# 서버 실행 (--reload: .py 파일 변경 시 자동 재시작 — git pull 즉시 반영)
+python -m uvicorn main:app --host 0.0.0.0 --port 8000 --timeout-keep-alive 120 --reload
 ```
 
 Swagger UI: http://localhost:8000/docs

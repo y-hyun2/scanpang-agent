@@ -23,7 +23,7 @@ from tools.open_hours_parser import is_open_now_combined as _is_open_now_combine
 import json as _json
 from datetime import datetime, timedelta, timezone
 from rag.automation.worker import start_worker, stop_worker
-from core.db import get_pool, get_building_pool, close_pool
+from core.db import get_pool, close_pool
 from api.h3_buildings import router as h3_buildings_router
 
 app = FastAPI(title="ScanPang Navigation API")
@@ -35,7 +35,6 @@ app.include_router(h3_buildings_router)
 async def _startup():
     await get_session_store().connect()
     await get_pool()
-    await get_building_pool()
     await start_worker()
 
 
@@ -212,7 +211,13 @@ async def restaurant_detail(req: RestaurantDetailRequest):
     return result
 
 
-_OUTDOOR_CATEGORIES = {"restroom", "subway", "locker", "prayer_room", "halal_restaurant", "vegan_restaurant"}
+_OUTDOOR_CATEGORIES = {"restroom", "subway", "locker", "prayer_room", "halal_restaurant", "vegan_restaurant", "vegan_cafe"}
+
+
+def _vegan_category_label(vegan_level: str, category_key: str) -> str:
+    """'채식전문 · 음식점' 또는 '채식가능 · 카페' 형식의 카테고리 레이블 반환."""
+    type_label = "카페" if category_key == "vegan_cafe" else "음식점"
+    return f"{vegan_level} · {type_label}" if vegan_level else type_label
 
 
 async def _outdoor_search(category_key: str, req: SearchRequest) -> SearchResponse:
@@ -253,8 +258,9 @@ async def _outdoor_search(category_key: str, req: SearchRequest) -> SearchRespon
             }
             for r in raw
         ]
-    elif category_key == "vegan_restaurant":
-        raw = await vegan_restaurant_search(lat, lng, radius=0)
+    elif category_key in ("vegan_restaurant", "vegan_cafe"):
+        src_key = "restaurant" if category_key == "vegan_restaurant" else "cafe"
+        raw = await vegan_restaurant_search(lat, lng, radius=0, category_key=src_key)
         rows = [
             {
                 "name":         r.get("name", ""),
@@ -281,7 +287,7 @@ async def _outdoor_search(category_key: str, req: SearchRequest) -> SearchRespon
             return f"restroom__{r['mng_no']}"
         if category == "halal_restaurant" and r.get("halal_id"):
             return f"halal__{r['halal_id']}"
-        if category == "vegan_restaurant" and r.get("vegan_id"):
+        if category in ("vegan_restaurant", "vegan_cafe") and r.get("vegan_id"):
             return f"vegan__{r['vegan_id']}"
         if category == "prayer_room" and r.get("room_id"):
             return f"prayer__{r['room_id']}"
@@ -291,14 +297,16 @@ async def _outdoor_search(category_key: str, req: SearchRequest) -> SearchRespon
     LABEL = {
         "restroom": "화장실", "subway": "지하철역", "locker": "물품보관함",
         "prayer_room": "기도실", "halal_restaurant": "할랄 식당",
-        "vegan_restaurant": "비건 식당",
+        "vegan_restaurant": "비건 식당", "vegan_cafe": "비건 카페",
     }
 
     results = [
         SearchResultItem(
             id=_outdoor_id(category_key, r),
             store_name=r.get("name", ""),
-            category=LABEL.get(category_key, category_key),
+            category=(_vegan_category_label(r.get("vegan_level", ""), category_key)
+                      if category_key in ("vegan_restaurant", "vegan_cafe")
+                      else LABEL.get(category_key, category_key)),
             category_key=category_key,
             addr=r.get("address", ""),
             phone=r.get("phone", ""),
@@ -306,6 +314,7 @@ async def _outdoor_search(category_key: str, req: SearchRequest) -> SearchRespon
             lng=r.get("lng"),
             distance_m=r.get("distance_m"),
             is_open_now=_is_open_now_combined(r.get("open_hours") or "", None),
+            halal_type=r.get("halal_type") or None,
         )
         for r in rows_sorted
     ]
@@ -546,7 +555,7 @@ async def _vegan_detail(vegan_id: str) -> PlaceDetailResponse:
     async with pool.acquire() as conn:
         row = await conn.fetchrow(
             """
-            SELECT id, store_name, category, addr, phone,
+            SELECT id, store_name, category, category_key, addr, phone,
                    details::text AS details,
                    open_hours, closed_days, homepage,
                    image_urls::text AS image_urls,
@@ -564,6 +573,10 @@ async def _vegan_detail(vegan_id: str) -> PlaceDetailResponse:
         except Exception: return None
 
     d = _j(row["details"]) or {}
+    src_category_key = row["category_key"] or "restaurant"
+    resp_category_key = "vegan_cafe" if src_category_key == "cafe" else "vegan_restaurant"
+    vegan_level = d.get("vegan_level", "")
+    resp_category = _vegan_category_label(vegan_level, resp_category_key)
     open_hours = row["open_hours"] or ""
     return PlaceDetailResponse(
         id=f"vegan__{row['id']}",
@@ -571,8 +584,8 @@ async def _vegan_detail(vegan_id: str) -> PlaceDetailResponse:
         place_id=None,
         lat=float(row["lat"]) if row["lat"] is not None else None,
         lng=float(row["lng"]) if row["lng"] is not None else None,
-        category="비건 식당",
-        category_key="vegan_restaurant",
+        category=resp_category,
+        category_key=resp_category_key,
         addr=row["addr"] or "",
         phone=row["phone"] or "",
         floor=row["floor"] or None,

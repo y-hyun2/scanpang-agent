@@ -1,4 +1,4 @@
-package com.scanpang.app.components.ar
+﻿package com.scanpang.app.components.ar
 
 import android.Manifest
 import android.content.pm.PackageManager
@@ -59,7 +59,7 @@ import io.github.sceneview.rememberViewNodeManager
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
-private data class NavBuildingPin(val id: String, val name: String, val lat: Double, val lng: Double, val bdMgtSn: String?)
+private data class NavBuildingPin(val id: String, val name: String, val lat: Double, val lng: Double, val ufid: String?)
 
 private data class NavBuildingCandidate(
     val building: Building,
@@ -117,7 +117,7 @@ fun ArRealSceneView(
     onRouteAvailable: (routePoints: List<Pair<Double, Double>>, destinationLat: Double, destinationLng: Double) -> Unit = { _, _, _ -> },
     voiceOn: Boolean = true,
     buildingsCache: Map<String, Building> = emptyMap(),
-    onBuildingPinClick: (pinName: String, bdMgtSn: String?) -> Unit = { _, _ -> },
+    onBuildingPinClick: (pinName: String, ufid: String?) -> Unit = { _, _ -> },
 ) {
     val context = LocalContext.current
     val engine = rememberEngine()
@@ -213,6 +213,7 @@ fun ArRealSceneView(
     val anchorCreationAltitudes = remember { mutableMapOf<Int, Double>() }
     val turnDirectionMap = remember { mutableMapOf<Int, Boolean>() }
     var lastChunkRenderTime by remember { mutableStateOf(0L) }
+    var routeStartTime by remember { mutableStateOf(0L) }
 
     // 라우트 응답 도착 → 노드 파싱 + 미니맵용 좌표 전달
     LaunchedEffect(routeData) {
@@ -228,6 +229,7 @@ fun ArRealSceneView(
                 nodes.forEachIndexed { i, n -> if (n.type != NodeType.PATH_POINT) majorPointIndices.add(i) }
                 currentTargetPointIndex = 1
                 lastChunkRenderTime = 0L
+                routeStartTime = System.currentTimeMillis()
 
                 // 라우트 도착 시 모든 major point의 좌/우 방향을 사전 계산.
                 // turnDirectionMap에 키=major index, 값=true(우)/false(좌)/없음(직진)으로 저장.
@@ -371,7 +373,7 @@ fun ArRealSceneView(
             val isLookingDown = poseMatrix[9] > 0.5f
 
             // ── 건물 PIN: 300ms 스로틀로 FOV+Occlusion+FrontEdge 계산 (탐색모드 동일 로직) ──
-            if (buildingsCache.isNotEmpty() && now - lastNavBuildingVisibilityTime > 300) {
+            if (buildingsCache.isNotEmpty() && pose.horizontalAccuracy < 3.0 && now - lastNavBuildingVisibilityTime > 300) {
                 lastNavBuildingVisibilityTime = now
 
                 val fov = buildFovPolygon(lat, lng, pose.heading)
@@ -429,7 +431,7 @@ fun ArRealSceneView(
                             val anchor = earth.createAnchor(entry.markerPos.first, entry.markerPos.second, labelAlt, 0f, 0f, 0f, 1f)
                             if (anchor != null) {
                                 navBuildingAnchors[id] = anchor
-                                navBuildingPins.add(NavBuildingPin(id, entry.b.bld_nm ?: "건물", entry.markerPos.first, entry.markerPos.second, entry.b.bd_mgt_sn))
+                                navBuildingPins.add(NavBuildingPin(id, entry.b.bld_nm ?: "건물", entry.markerPos.first, entry.markerPos.second, entry.b.ufid.ifEmpty { null }))
                             }
                         }
                     } else {
@@ -649,7 +651,8 @@ fun ArRealSceneView(
                 }
 
                 // 20m 이내 → 해당 배지 X축 180° 회전 + 120°에서 초록 swap, 다음 턴으로 진행
-                if (dist <= 20.0f) {
+                // 라우트 시작 후 2초 유예: 출발 직후 첫 포인트가 이미 20m 이내인 경우 즉시 스킵 방지
+                if (dist <= 20.0f && (now - routeStartTime) >= 2000L) {
                     if (tn.type == NodeType.TURN_POINT) {
                         val animKey = majorPointIndices[currentTargetPointIndex]
                         val animFront = activeChildNodes[animKey] as? ViewNode2
@@ -722,7 +725,7 @@ fun ArRealSceneView(
                     title = pin.name,
                     subtitle = "건물",
                     modifier = Modifier.offset(x = xDp - 60.dp, y = yDp - 32.dp),
-                    onClick = { onBuildingPinClick(pin.name, pin.bdMgtSn) },
+                    onClick = { onBuildingPinClick(pin.name, pin.ufid) },
                 )
             }
         }
@@ -792,7 +795,13 @@ private fun renderNearbyArrows(
             renderedIndices.add(i)
             continue
         }
-        // END 배지는 50m 이내에서만 렌더 — 그 밖이면 스킵하고 다음 사이클에 재확인
+        // TURN_POINT 배지는 80m 이내에서만 렌더 — 멀리서 VPS 오차로 엉뚱한 곳에 박히는 문제 방지
+        if (node.type == NodeType.TURN_POINT) {
+            val d = FloatArray(1)
+            Location.distanceBetween(cameraPose.latitude, cameraPose.longitude, node.lat, node.lng, d)
+            if (d[0] > 80f) continue
+        }
+        // END 배지는 60m 이내에서만 렌더 — 그 밖이면 스킵하고 다음 사이클에 재확인
         if (node.type == NodeType.END) {
             val d = FloatArray(1)
             Location.distanceBetween(cameraPose.latitude, cameraPose.longitude, node.lat, node.lng, d)

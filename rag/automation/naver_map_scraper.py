@@ -298,7 +298,7 @@ async def fetch_place_detail(
                             first_anchor = search_frame.locator("li a").first
                             if await first_anchor.count() > 0:
                                 try:
-                                    await first_anchor.click(timeout=3_000)
+                                    await first_anchor.click(timeout=8_000)
                                     await page.wait_for_timeout(4_000)
                                 except Exception as click_e:
                                     print(f"[naver_map_scraper] 검색결과 클릭 실패 ({query!r}): {click_e}")

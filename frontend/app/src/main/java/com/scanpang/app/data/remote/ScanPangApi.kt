@@ -161,7 +161,7 @@ data class PlaceQueryRequest(
     val user_lng: Double = 0.0,
     val user_alt: Double = 0.0,
     val pitch: Double = 0.0,
-    val bd_mgt_sn: String? = null,
+    val ufid: String? = null,
     val user_message: String = "",
     val language: String = "ko",
 )
@@ -418,6 +418,7 @@ data class SearchResultItem(
     val image_url: String? = null,
     val is_open_now: Boolean? = null,
     val distance_m: Double? = null,  // outdoor 카테고리 검색 시 거리(m). 그 외 null
+    val halal_type: String? = null,  // 할랄 식당 전용 (HALAL MEAT / SEAFOOD / VEGGIE / SALAM SEOUL)
 )
 
 data class SearchResponse(
@@ -465,7 +466,6 @@ data class GeoJsonMultiPolygon(
 
 data class Building(
     val ufid: String = "",
-    val bd_mgt_sn: String?,
     val bld_nm: String? = null,
     val render_height: Double = 0.0,
     val h3_index_10: String = "",
