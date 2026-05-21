@@ -266,8 +266,10 @@ async def run_orchestrator(
     store = get_session_store()
 
     # ── 세션 컨텍스트 조회 ────────────────────────────────────────────────
+    # get_recent_turns 자체가 _ensure_connected 로 lazy reconnect 하므로
+    # available 가드는 session_id 유무만 본다.
     session_context = ""
-    if store.available and session_id:
+    if session_id:
         raw_turns = await store.get_recent_turns(sid, n=5)
         turns = [ConversationTurn(**t) for t in raw_turns]
         ctx = SessionContext(session_id=sid, turns=turns)

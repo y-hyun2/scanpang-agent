@@ -65,14 +65,26 @@ class SessionStore:
                 socket_timeout=2,
             )
             await self._client.ping()
-            logger.info("Redis 연결 성공: %s", self._redis_url)
+            # uvicorn 콘솔에서 보이도록 print (logger.info 가 가려지는 환경 대응).
+            print(f"[SessionStore] Redis 연결 성공: {self._redis_url}")
         except Exception as e:
-            logger.warning("Redis 연결 실패 (세션 비활성화): %s", e)
+            print(f"[SessionStore] Redis 연결 실패: {e}")
             self._client = None
 
     async def close(self) -> None:
         if self._client:
             await self._client.aclose()
+
+    async def _ensure_connected(self) -> bool:
+        """
+        호출 시점에 _client 가 None 이면 connect 한 번 더 시도.
+        uvicorn --reload 등으로 startup hook 시점에 Redis 가 아직 안 떠 있던
+        케이스를 자동 회복.
+        """
+        if self._client is not None:
+            return True
+        await self.connect()
+        return self._client is not None
 
     @property
     def available(self) -> bool:
@@ -88,7 +100,7 @@ class SessionStore:
         agent_name: str = "",
         mask_pii: bool = True,
     ) -> None:
-        if not self.available:
+        if not await self._ensure_connected():
             return
         try:
             if mask_pii:
@@ -109,7 +121,7 @@ class SessionStore:
             pipe.expire(mkey, _TTL)
             await pipe.execute()
         except Exception as e:
-            logger.warning("save_turn 실패 (무시): %s", e)
+            print(f"[SessionStore] save_turn 실패 (무시): {e}")
 
     # ── 세션 조회 ─────────────────────────────────────────────────────────
 
@@ -119,7 +131,7 @@ class SessionStore:
         n: int = 5,
     ) -> list[dict]:
         """최근 n턴을 오래된 순으로 반환 (index 0 = 가장 오래된 것)."""
-        if not self.available:
+        if not await self._ensure_connected():
             return []
         try:
             tkey = _TURN_KEY.format(sid=session_id)
@@ -132,7 +144,7 @@ class SessionStore:
             return []
 
     async def get_meta(self, session_id: str) -> dict:
-        if not self.available:
+        if not await self._ensure_connected():
             return {}
         try:
             mkey = _META_KEY.format(sid=session_id)
