@@ -725,6 +725,10 @@ fun ArFloorStoreGuideOverlay(
             modifier = Modifier
                 .align(Alignment.BottomCenter)
                 .fillMaxWidth()
+                // 콘텐츠(사진/소개/메타/chip)가 길어지면 BottomCenter Surface 가 화면
+                // 위로 넘쳐 콘텐츠 대부분이 가려진다. 화면 65% 까지만 차지하고 내부
+                // verticalScroll 로 콘텐츠 스크롤.
+                .fillMaxHeight(0.65f)
                 .padding(ScanPangSpacing.lg)
                 .clickable(enabled = false) { },
             shape = ScanPangShapes.radius16,
@@ -733,6 +737,7 @@ fun ArFloorStoreGuideOverlay(
         ) {
             Column(
                 modifier = Modifier
+                    .fillMaxSize()
                     .padding(ScanPangSpacing.lg)
                     .verticalScroll(rememberScrollState()),
             ) {

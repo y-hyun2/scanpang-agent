@@ -318,7 +318,12 @@ fun ArNavigationMapScreen(
                     selectedStore = null
                     activeDetailTab = ArPoiTabBuilding
                 },
-                onFloorStoreClick = { selectedStore = it },
+                onFloorStoreClick = {
+                    // 건물 패널 닫고 매장 패널 표시 — 두 fillMaxSize 패널 동시 표시 시
+                    // 매장 카드 잘려보임 방지.
+                    selectedStore = it
+                    selectedBuildingPoi = null
+                },
                 onSave = {},
                 modifier = Modifier.fillMaxSize(),
                 arOverlay = placeResult?.ar_overlay,

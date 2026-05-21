@@ -1016,7 +1016,12 @@ fun ArExploreScreen(
                         selectedStore = null
                         activeDetailTab = ArPoiTabBuilding
                     },
-                    onFloorStoreClick = { selectedStore = it },
+                    onFloorStoreClick = {
+                        // 건물 패널 닫고 매장 floating 으로 전환 — 두 fillMaxSize 패널이
+                        // 동시에 그려지면 겹쳐서 매장 카드가 잘려보임.
+                        selectedStore = it
+                        selectedPoi = null
+                    },
                     onSave = {
                         scope.launch { snackbarHostState.showSnackbar("저장되었습니다") }
                     },
