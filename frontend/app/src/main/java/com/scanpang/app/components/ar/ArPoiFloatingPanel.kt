@@ -738,7 +738,7 @@ fun ArFloorStoreGuideOverlay(
             ) {
                 // 매장 메인 사진 1장 — image_urls[0]. 없으면 행 자체 생략.
                 if (imageUrl != null) {
-                    coil3.compose.AsyncImage(
+                    coil.compose.AsyncImage(
                         model = imageUrl,
                         contentDescription = storeName,
                         modifier = Modifier

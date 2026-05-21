@@ -322,7 +322,6 @@ fun ArNavigationMapScreen(
                 onSave = {},
                 modifier = Modifier.fillMaxSize(),
                 arOverlay = placeResult?.ar_overlay,
-                docent = placeResult?.docent,
             )
         }
 
