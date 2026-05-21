@@ -321,15 +321,16 @@ async def process_one_building(ufid: str) -> dict:
     except Exception as e:
         print(f"[pipeline] naver_reverse_geocode 실패: {e}")
 
-    # 건물명 우선순위: 1) VWorld(buildings 테이블, 행정 표준) → 2) Naver fallback
-    # Naver reverse geocode 의 addition.type=="building" 은 좌표 위치의 대표 시설/
-    # 입주사명을 줄 때가 많아(예: 한국은행 소공별관 좌표 → '프리즈마111' 식당,
-    # 부영그룹 빌딩 → '하나금융그룹 명동사옥'). 행정 표준인 VWorld 를 우선.
-    bld_nm  = vworld_bld_nm or naver_geo.get("bld_nm", "")
+    # 건물명 우선순위: 1) Naver 공식 → 2) VWorld → 3) 빈 문자열
+    # Naver 가 사용자 친화적 정식 명칭을 더 잘 줌(예: VWorld '롯데호텔 및 백화점'
+    # 통합명 vs Naver '롯데백화점 본점'/'롯데영플라자'/'하나금융그룹 명동사옥').
+    # 단, 한국은행 소공별관 → '프리즈마111' 처럼 입주 매장명을 주는 케이스가
+    # 가끔 있으니 그건 운영 중 수동 보정.
+    bld_nm  = naver_geo.get("bld_nm", "") or vworld_bld_nm
     name_ko = bld_nm
     result["name_ko"] = name_ko
     print(f"[pipeline] 건물: {name_ko!r}  ({lat:.5f}, {lng:.5f})  "
-          f"[vworld={vworld_bld_nm!r}, naver={naver_geo.get('bld_nm', '')!r}]")
+          f"[naver={naver_geo.get('bld_nm', '')!r}, vworld={vworld_bld_nm!r}]")
 
     # 주소 우선순위: Naver reverse geocode 결과를 1순위로 채택
     addr = naver_geo.get("addr", "")
