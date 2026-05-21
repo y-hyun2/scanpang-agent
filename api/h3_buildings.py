@@ -18,7 +18,6 @@ _response_cache: TTLCache = TTLCache(maxsize=CACHE_MAX_ENTRIES, ttl=CACHE_TTL_SE
 
 class BuildingDto(BaseModel):
     ufid: Optional[str]
-    bd_mgt_sn: Optional[str]
     bld_nm: Optional[str]
     render_height: float
     h3_index_10: str
@@ -65,7 +64,6 @@ async def get_buildings_chunk(
     query = """
         SELECT
             ufid,
-            bd_mgt_sn,
             bld_nm,
             COALESCE(NULLIF(height, 0), estimated_height) AS render_height,
             h3_index_10,
@@ -80,7 +78,6 @@ async def get_buildings_chunk(
     buildings = [
         BuildingDto(
             ufid=r["ufid"],
-            bd_mgt_sn=r["bd_mgt_sn"],
             bld_nm=r["bld_nm"] or None,
             render_height=float(r["render_height"] or 0),
             h3_index_10=r["h3_index_10"],

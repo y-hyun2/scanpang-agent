@@ -1,4 +1,4 @@
-package com.scanpang.app.screens.ar
+﻿package com.scanpang.app.screens.ar
 
 import android.Manifest
 import android.content.pm.PackageManager
@@ -153,7 +153,7 @@ private data class DynamicPoi(
     val isPending: Boolean = false,
     val storeCount: Int = 0,
     val matchingStores: List<SearchResultItem> = emptyList(),
-    val bdMgtSn: String? = null,
+    val ufid: String? = null,
 )
 
 private data class BuildingCandidate(
@@ -602,7 +602,7 @@ fun ArExploreScreen(
                                                 distance = cand.dist,
                                                 latitude = markerPos.first,
                                                 longitude = markerPos.second,
-                                                bdMgtSn = cand.b.bd_mgt_sn,
+                                                ufid = cand.b.ufid.ifEmpty { null },
                                             )
                                         } else {
                                             val nearby = filterStores.filter { store ->
@@ -843,12 +843,12 @@ fun ArExploreScreen(
                             selectedPoiOverlay = poi.arOverlay
                             selectedPoiDocent = null
                             activeDetailTab = ArPoiTabBuilding
-                            if (poi.bdMgtSn != null) {
+                            if (poi.ufid != null) {
                                 viewModel.queryPlace(
                                     heading = currentHeading,
                                     lat = currentLat,
                                     lng = currentLng,
-                                    bdMgtSn = poi.bdMgtSn,
+                                    ufid = poi.ufid,
                                 )
                             }
                         }

@@ -1,4 +1,4 @@
-"""
+﻿"""
 building_raycast.py
 사전 적재된 VWorld 건물 폴리곤(JSON)에 3D 레이캐스팅을 수행.
 
@@ -210,9 +210,9 @@ def find_building_by_raycast(
         _print_debug_geojson(user_lat, user_lng, user_lng + dlng, user_lat + dlat, None)
     return best
 
-def fetch_building_by_bd_mgt_sn(bd_mgt_sn: str) -> Optional[dict]:
+def fetch_building_by_ufid(ufid: str) -> Optional[dict]:
     """
-    raycasting 대신 bd_mgt_sn으로 직접 JSON 인덱스 검색.
+    raycasting 대신 ufid로 직접 JSON 인덱스 검색.
     클라이언트가 이미 정면 건물을 식별한 경우 사용 (옵션 B 경로).
     반환 형식은 find_building_by_raycast와 동일.
     """
@@ -221,12 +221,12 @@ def fetch_building_by_bd_mgt_sn(bd_mgt_sn: str) -> Optional[dict]:
         return None
 
     for entry in _buildings:
-        if entry["meta"].get("bd_mgt_sn") == bd_mgt_sn:
+        if entry["meta"].get("ufid") == ufid:
             name = entry["meta"].get("bld_nm") or "(이름 없음)"
-            print(f"[BdMgtSnLookup] 매칭: {name!r} bd_mgt_sn={bd_mgt_sn}")
+            print(f"[UfidLookup] 매칭: {name!r} ufid={ufid}")
             return entry["meta"]
 
-    print(f"[BdMgtSnLookup] 매칭 실패: bd_mgt_sn={bd_mgt_sn}")
+    print(f"[UfidLookup] 매칭 실패: ufid={ufid}")
     return None
 
 def _print_debug_geojson(
