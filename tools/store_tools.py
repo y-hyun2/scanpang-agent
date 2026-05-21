@@ -299,9 +299,12 @@ async def get_store_detail(
             cache_id, place_id, display_name,
             category_name, category_key,
             addr, phone, lat, lng, kakao.get("place_url", ""),
-            json.dumps(details, ensure_ascii=False),
+            # core/db.py 의 jsonb codec 이 dict/list 를 자동 json.dumps 해줌.
+            # 여기서 또 dumps 하면 더블 인코딩(top_type=string)돼서 jsonb 연산자
+            # (예: details ? 'rates_today') 가 작동 안 함.
+            details,
             open_hours, closed_days, homepage,
-            json.dumps(image_urls, ensure_ascii=False),
+            image_urls,
             floor, source, datetime.now(timezone.utc),
         )
 

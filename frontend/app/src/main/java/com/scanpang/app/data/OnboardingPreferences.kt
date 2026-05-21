@@ -85,6 +85,18 @@ class OnboardingPreferences(context: Context) {
     }
 
     /**
+     * 서버 pull 결과로 로컬 SharedPreferences 적용. syncToBackend 안 호출 — pull → push
+     * 무한 loop 방지. null 인 필드는 로컬 유지.
+     */
+    fun applyFromBackend(displayName: String?, language: String?, valueAdded: String?) {
+        prefs.edit().apply {
+            if (!displayName.isNullOrBlank()) putString(KEY_DISPLAY_NAME, displayName)
+            if (!language.isNullOrBlank()) putString(KEY_LANGUAGE, language)
+            if (!valueAdded.isNullOrBlank()) putString(KEY_VALUE_ADDED, valueAdded)
+        }.apply()
+    }
+
+    /**
      * 현재 SharedPreferences 값을 backend `user_preferences` 테이블에 upsert.
      * - Supabase Auth 로그인 안 돼 있으면 skip (FK 위반 방지).
      * - 별도 IO scope 에서 fire & forget — 호출자는 await 불필요.

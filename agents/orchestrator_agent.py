@@ -53,6 +53,8 @@ class OrchestratorState(TypedDict):
 
 _INTENT_SYSTEM = """당신은 AR 관광 앱의 요청 라우터입니다. 사용자 메시지를 분석해 아래 4개 에이전트 중 하나를 선택하세요.
 
+응답은 반드시 JSON 형식 `{"selected_agent": "<agent_name>"}` 한 줄로만 출력하세요.
+
 에이전트 설명:
 - place     : 현재 바라보는 건물/장소 정보 (건물명, 운영시간, 층별 매장, 도슨트 해설)
 - navigation: 특정 목적지로 이동 (경로 안내, 길 찾기)

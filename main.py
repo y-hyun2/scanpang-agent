@@ -18,7 +18,10 @@ from schemas.restaurant import RestaurantDetailRequest
 from tools.restaurant_tools import get_restaurant_detail
 from schemas.search import SearchRequest, SearchResponse, SearchResultItem
 from schemas.place_detail import PlaceDetailRequest, PlaceDetailResponse
-from schemas.user import UserPreferencesUpsertRequest, UserPreferencesResponse
+from schemas.user import (
+    UserPreferencesUpsertRequest, UserPreferencesResponse,
+    SavedPlacesUpdateRequest, SearchHistoryUpdateRequest,
+)
 from tools.open_hours_parser import is_open_now_combined as _is_open_now_combined
 import json as _json
 from datetime import datetime, timedelta, timezone
@@ -163,6 +166,44 @@ async def user_preferences_get(user_id: str):
         saved_places=_json.loads(row["saved_places"] or "[]"),
         search_history=_json.loads(row["search_history"] or "[]"),
     )
+
+
+@app.put("/user/preferences/{user_id}/saved-places")
+async def user_saved_places_update(user_id: str, req: SavedPlacesUpdateRequest):
+    """SavedPlacesStore 변경 시 호출. 전체 list 교체 (delta sync 가 아닌 full replace)."""
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        # core/db.py 의 jsonb codec 이 list 를 자동 직렬화. _json.dumps + ::jsonb
+        # 하면 더블 인코딩(jsonb_typeof=string)돼서 GET 시 list 가 아닌 string 으로 디코드.
+        await conn.execute(
+            """
+            INSERT INTO user_preferences (user_id, saved_places, created_at, updated_at)
+            VALUES ($1, $2, NOW(), NOW())
+            ON CONFLICT (user_id) DO UPDATE SET
+                saved_places = EXCLUDED.saved_places,
+                updated_at   = NOW()
+            """,
+            user_id, req.items,
+        )
+    return {"user_id": user_id, "count": len(req.items)}
+
+
+@app.put("/user/preferences/{user_id}/search-history")
+async def user_search_history_update(user_id: str, req: SearchHistoryUpdateRequest):
+    """SearchHistoryPreferences 변경 시 호출. 최근 검색어 list 전체 교체."""
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        await conn.execute(
+            """
+            INSERT INTO user_preferences (user_id, search_history, created_at, updated_at)
+            VALUES ($1, $2, NOW(), NOW())
+            ON CONFLICT (user_id) DO UPDATE SET
+                search_history = EXCLUDED.search_history,
+                updated_at     = NOW()
+            """,
+            user_id, req.items,
+        )
+    return {"user_id": user_id, "count": len(req.items)}
 
 
 @app.post("/convenience/query")

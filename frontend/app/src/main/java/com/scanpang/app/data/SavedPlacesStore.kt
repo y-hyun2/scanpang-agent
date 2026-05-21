@@ -1,8 +1,18 @@
 package com.scanpang.app.data
 
 import android.content.Context
+import com.scanpang.app.auth.AuthRepository
+import com.scanpang.app.data.remote.RetrofitClient
+import com.scanpang.app.data.remote.SavedPlacesUpdateRequest
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
 import org.json.JSONArray
 import org.json.JSONObject
+
+// SavedPlacesStore.syncToBackend() 용 fire-and-forget IO scope.
+private val savedPlacesSyncScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
 data class SavedPlaceEntry(
     val id: String,
@@ -103,16 +113,28 @@ class SavedPlacesStore(context: Context) {
 
     fun isSaved(id: String): Boolean = getAll().any { it.id == id }
 
+    /**
+     * 서버 pull 결과로 로컬 list 를 완전히 교체. syncToBackend 안 호출 — pull → write
+     * loop 방지. 빈 list 가 들어오면 로컬도 비움.
+     */
+    fun replaceAll(list: List<SavedPlaceEntry>) {
+        saveList(list)
+    }
+
     fun save(entry: SavedPlaceEntry) {
         val list = getAll().toMutableList()
         list.removeAll { it.id == entry.id }
         list.add(0, entry.copy(savedOrder = System.currentTimeMillis()))
         saveList(list)
+        syncToBackend(list)
     }
 
     fun remove(id: String) {
         val list = getAll().toMutableList()
-        if (list.removeAll { it.id == id }) saveList(list)
+        if (list.removeAll { it.id == id }) {
+            saveList(list)
+            syncToBackend(list)
+        }
     }
 
     private fun saveList(list: List<SavedPlaceEntry>) {
@@ -131,6 +153,33 @@ class SavedPlacesStore(context: Context) {
             )
         }
         prefs.edit().putString(KEY_PLACES, arr.toString()).apply()
+    }
+
+    /**
+     * 전체 list 를 backend `user_preferences.saved_places` 로 전송.
+     * Supabase Auth 안 돼 있으면 skip (FK 위반 방지). 실패해도 로컬은 유지.
+     */
+    private fun syncToBackend(list: List<SavedPlaceEntry>) {
+        val userId = AuthRepository.currentUserId() ?: return
+        val items = list.map { e ->
+            mapOf(
+                "id" to e.id,
+                "name" to e.name,
+                "category" to e.category,
+                "distanceLine" to e.distanceLine,
+                "tags" to e.tags,
+                "target" to e.target.name,
+                "savedOrder" to e.savedOrder,
+            )
+        }
+        savedPlacesSyncScope.launch {
+            try {
+                RetrofitClient.api.updateSavedPlaces(userId, SavedPlacesUpdateRequest(items = items))
+                android.util.Log.d("SavedPlacesStore", "syncToBackend OK: ${items.size}건")
+            } catch (e: Exception) {
+                android.util.Log.e("SavedPlacesStore", "syncToBackend FAILED", e)
+            }
+        }
     }
 
     private fun JSONArray.toStringList(): List<String> = buildList {

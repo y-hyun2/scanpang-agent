@@ -386,6 +386,55 @@ fun DetailTitleBookmarkRow(
     }
 }
 
+// ── 카테고리 표시 공유 로직 ────────────────────────────────────────────────────
+
+val PLACE_CATEGORY_KO = mapOf(
+    "cafe"              to "카페",
+    "restaurant"        to "식당",
+    "shopping"          to "쇼핑",
+    "convenience_store" to "편의점",
+    "pharmacy"          to "약국",
+    "hospital"          to "병원",
+    "bank"              to "은행",
+    "atm"               to "ATM",
+    "exchange"          to "환전소",
+    "subway"            to "지하철역",
+    "subway_station"    to "지하철역",
+    "restroom"          to "화장실",
+    "public_restroom"   to "화장실",
+    "locker"            to "물품보관함",
+    "lockers"           to "물품보관함",
+    "prayer_room"       to "기도실",
+    "accommodation"     to "호텔",
+    "cultural"          to "문화시설",
+    "tourist"           to "관광지",
+    "tourist_spot"      to "관광지",
+    "halal_restaurant"  to "할랄 식당",
+    "vegan_restaurant"  to "비건 식당",
+    "vegan_cafe"        to "비건 카페",
+)
+
+val PLACE_USE_RAW_CATEGORY = setOf(
+    "restaurant", "shopping", "hospital", "cultural", "accommodation",
+)
+
+/**
+ * categoryKey + rawCategory + (옵션) veganLevel → 화면 표시 레이블.
+ * PlaceDetailScreen / SearchDefaultScreen / ArPoiFloatingPanel 에서 공통 사용.
+ */
+fun resolveCategoryLabel(
+    categoryKey: String,
+    rawCategory: String,
+    veganLevel: String = "",
+): String = when {
+    categoryKey == "vegan_restaurant" ->
+        if (veganLevel == "채식가능") "채식가능" else "비건 식당"
+    categoryKey in PLACE_USE_RAW_CATEGORY ->
+        rawCategory.substringAfterLast(">").trim().ifBlank { PLACE_CATEGORY_KO[categoryKey] ?: categoryKey }
+    else ->
+        PLACE_CATEGORY_KO[categoryKey] ?: rawCategory.substringAfterLast(">").trim().ifBlank { "—" }
+}
+
 @Composable
 fun DetailCategoryDistanceLine(
     text: String,

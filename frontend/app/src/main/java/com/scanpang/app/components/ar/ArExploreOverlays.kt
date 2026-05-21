@@ -57,6 +57,7 @@ import androidx.compose.material.icons.rounded.DirectionsTransit
 import androidx.compose.material.icons.rounded.FilterList
 import androidx.compose.material.icons.rounded.History
 import androidx.compose.material.icons.rounded.Home
+import androidx.compose.material.icons.rounded.Hotel
 import androidx.compose.material.icons.rounded.LocalAtm
 import androidx.compose.material.icons.rounded.LocalHospital
 import androidx.compose.material.icons.rounded.LocalMall
@@ -393,6 +394,7 @@ fun categoryIcon(category: String): ImageVector = when {
     category.contains("지하철") -> Icons.Rounded.DirectionsTransit
     category.contains("화장실") -> Icons.Rounded.Wc
     category.contains("물품") || category.contains("보관") -> Icons.Rounded.Luggage
+    category.contains("숙박") || category.contains("호텔") || category.contains("accommodation") -> Icons.Rounded.Hotel
     else -> Icons.Rounded.Place
 }
 
@@ -409,6 +411,7 @@ fun categoryIconTint(category: String): Color = when {
     category.contains("약국") -> ScanPangColors.CategoryMedical
     category.contains("지하철") -> ScanPangColors.Success
     category.contains("화장실") || category.contains("물품") || category.contains("보관") -> Color(0xFF0D9488)
+    category.contains("숙박") || category.contains("호텔") || category.contains("accommodation") -> Color(0xFFF59E0B)
     else -> ScanPangColors.Primary
 }
 
