@@ -85,15 +85,6 @@ class ScanPangViewModel : ViewModel() {
      */
     private var _lastPlaceDetailKey: Triple<String, Double?, Double?>? = null
 
-    // ── 사용자 위치 캐시 ──
-    // 검색/AR/Convenience 등 위치 받는 함수가 호출될 때마다 업데이트.
-    // PlaceDetailScreen 등 lat/lng 직접 안 받는 화면이 거리 계산용으로 재사용.
-    private val _userLocation = MutableStateFlow<Pair<Double, Double>?>(null)
-    val userLocation: StateFlow<Pair<Double, Double>?> = _userLocation
-
-    private fun rememberUserLocation(lat: Double?, lng: Double?) {
-        if (lat != null && lng != null) _userLocation.value = lat to lng
-    }
 
     // ── Spatial: H3 청크 ──
     private val _buildingsChunk = MutableStateFlow<List<Building>>(emptyList())
@@ -213,7 +204,7 @@ class ScanPangViewModel : ViewModel() {
     // ── Place Insight API ──
 
     fun queryPlace(heading: Double, lat: Double, lng: Double, alt: Double = 0.0, pitch: Double = 0.0, message: String = "", ufid: String? = null) {
-        rememberUserLocation(lat, lng)
+        setUserLocation(lat, lng)
         viewModelScope.launch {
             try {
                 _placeResult.value = api.queryPlace(
@@ -267,7 +258,7 @@ class ScanPangViewModel : ViewModel() {
         limit: Int = 50,
     ) {
         _searchQuery.value = query
-        rememberUserLocation(lat, lng)
+        if (lat != null && lng != null) setUserLocation(lat, lng)
         val trimmed = query.trim()
         if (trimmed.isEmpty()) {
             _searchResults.value = emptyList()
@@ -336,7 +327,7 @@ class ScanPangViewModel : ViewModel() {
     private var lastFetchLng: Double = 0.0
 
     fun updateLocationForChunk(lat: Double, lng: Double) {
-        rememberUserLocation(lat, lng)
+        setUserLocation(lat, lng)
         // 50m 미만 이동 시 페치 스킵 (네트워크 절약)
         if (lastFetchLat != 0.0) {
             val r = FloatArray(1)

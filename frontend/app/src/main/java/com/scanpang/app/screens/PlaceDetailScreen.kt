@@ -103,12 +103,38 @@ fun PlaceDetailScreen(
     modifier: Modifier = Modifier,
     viewModel: ScanPangViewModel = viewModel(),
 ) {
-    // 1) 백엔드 store_details 조회 — placeId 가 있으면 자동, 비면 skip.
-    //    화면 떠날 때 placeDetail 상태 초기화해서 다음 진입 시 stale 데이터 방지.
-    //    userLocation 은 검색/AR 화면이 이미 채워둔 값 — 거리 표시용.
-    val userLoc by viewModel.userLocation.collectAsState()
-    LaunchedEffect(placeId, userLoc) {
-        viewModel.loadPlaceDetail(placeId, userLat = userLoc?.first, userLng = userLoc?.second)
+    val context = LocalContext.current
+    // GPS — NavHost destination 마다 viewModel() 인스턴스가 달라 다른 화면의
+    // setUserLocation 이 이 화면 인스턴스에 안 닿음. SearchDefaultScreen 처럼
+    // 자체적으로 lastLocation 받아 백엔드 거리 계산에 사용.
+    var userLat by remember { mutableStateOf<Double?>(null) }
+    var userLng by remember { mutableStateOf<Double?>(null) }
+    LaunchedEffect(Unit) {
+        val hasPermission =
+            android.content.pm.PackageManager.PERMISSION_GRANTED ==
+                androidx.core.content.ContextCompat.checkSelfPermission(
+                    context, android.Manifest.permission.ACCESS_FINE_LOCATION
+                ) ||
+            android.content.pm.PackageManager.PERMISSION_GRANTED ==
+                androidx.core.content.ContextCompat.checkSelfPermission(
+                    context, android.Manifest.permission.ACCESS_COARSE_LOCATION
+                )
+        if (!hasPermission) return@LaunchedEffect
+        com.google.android.gms.location.LocationServices
+            .getFusedLocationProviderClient(context)
+            .lastLocation
+            .addOnSuccessListener { loc ->
+                if (loc != null) {
+                    userLat = loc.latitude
+                    userLng = loc.longitude
+                }
+            }
+    }
+
+    // 1) 백엔드 store_details 조회 — placeId/userLat/userLng 변경 시 재호출
+    //    (캐시 키에 lat/lng 포함). 화면 떠날 때 placeDetail 초기화로 stale 방지.
+    LaunchedEffect(placeId, userLat, userLng) {
+        viewModel.loadPlaceDetail(placeId, userLat = userLat, userLng = userLng)
     }
     DisposableEffect(Unit) {
         onDispose { viewModel.clearPlaceDetail() }
@@ -129,8 +155,6 @@ fun PlaceDetailScreen(
         }
         return
     }
-
-    val context = LocalContext.current
 
     val restaurantExtra = remember(categoryKey, placeId, backend) {
         // dummy id 가 정확히 일치할 때만 매칭. 매칭 실패 시 backend details 로 fallback.
