@@ -26,20 +26,16 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.AccessTime
 import androidx.compose.material.icons.rounded.BookmarkBorder
-import androidx.compose.material.icons.rounded.CameraAlt
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.ExpandLess
 import androidx.compose.material.icons.rounded.ExpandMore
 import androidx.compose.material.icons.rounded.Info
 import androidx.compose.material.icons.rounded.Language
-import androidx.compose.material.icons.rounded.Lightbulb
 import androidx.compose.material.icons.rounded.LocalParking
 import androidx.compose.material.icons.rounded.LocalPhone
 import androidx.compose.material.icons.rounded.OpenInFull
 import androidx.compose.material.icons.rounded.Place
 import androidx.compose.material.icons.rounded.Restaurant
-import androidx.compose.material.icons.rounded.ShoppingBag
-import androidx.compose.material.icons.rounded.SmartToy
 import androidx.compose.material.icons.rounded.Stairs
 import androidx.compose.material.icons.rounded.ConfirmationNumber
 import androidx.compose.material3.Button
@@ -64,7 +60,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import com.scanpang.app.data.remote.ArOverlay
-import com.scanpang.app.data.remote.Docent
 import com.scanpang.app.data.remote.FloorInfo
 import com.scanpang.app.ui.theme.ScanPangColors
 import com.scanpang.app.ui.theme.ScanPangDimens
@@ -74,13 +69,9 @@ import com.scanpang.app.ui.theme.ScanPangType
 
 const val ArPoiTabBuilding = "building"
 const val ArPoiTabFloors = "floors"
-const val ArPoiTabAi = "ai"
 
 private val DetailTabTrackGray = Color(0xFFEBEBEB)
 private val DetailChipBg = Color(0xFFF3F4F6)
-private val DetailAiSummaryBg = Color(0xFFE8F1FF)
-private val DetailAiTipBg = Color(0xFFFFF4E5)
-private val DetailAiTipFg = Color(0xFFB45309)
 private val DetailHalalChipBg = Color(0xFFE8F5E9)
 private val DetailHalalChipFg = Color(0xFF2E7D32)
 
@@ -91,28 +82,6 @@ private data class ArFloorSectionUi(
     val storeCount: Int,
     val categoryLabel: String,
     val stores: List<ArFloorStoreLine>,
-)
-
-private fun noonSquareFloorSections(): List<ArFloorSectionUi> = listOf(
-    ArFloorSectionUi("B2", 6, "식음료", emptyList()),
-    ArFloorSectionUi(
-        "B1",
-        8,
-        "식음료",
-        listOf(
-            ArFloorStoreLine("무궁화식당", "한식", false),
-            ArFloorStoreLine("알리바바 케밥", "할랄", true),
-            ArFloorStoreLine("올리브영", "뷰티", false),
-        ),
-    ),
-    ArFloorSectionUi("1F", 12, "패션·잡화", emptyList()),
-    ArFloorSectionUi("2F", 10, "뷰티·라이프", emptyList()),
-    ArFloorSectionUi("3F", 9, "패션", emptyList()),
-    ArFloorSectionUi("4F", 7, "잡화", emptyList()),
-    ArFloorSectionUi("5F", 6, "F&B", emptyList()),
-    ArFloorSectionUi("6F", 5, "문화", emptyList()),
-    ArFloorSectionUi("7F", 4, "전망", emptyList()),
-    ArFloorSectionUi("8F", 3, "루프탑", emptyList()),
 )
 
 /**
@@ -128,7 +97,6 @@ fun ArPoiFloatingDetailOverlay(
     modifier: Modifier = Modifier,
     onSave: () -> Unit = {},
     arOverlay: ArOverlay? = null,
-    docent: Docent? = null,
 ) {
     var expandedFloors by remember { mutableStateOf(setOf("B1")) }
     val floorData = remember(arOverlay) {
@@ -233,7 +201,6 @@ fun ArPoiFloatingDetailOverlay(
                             },
                             onStoreClick = onFloorStoreClick,
                         )
-                        ArPoiTabAi -> ArPoiAiGuideTabBody(docent = docent)
                     }
                 }
             }
@@ -314,7 +281,6 @@ private fun ArPoiDetailSegmentedTabs(
     val tabs = listOf(
         ArPoiTabBuilding to "건물 정보",
         ArPoiTabFloors to "층별 정보",
-        ArPoiTabAi to "AI 가이드",
     )
     Surface(
         modifier = Modifier.fillMaxWidth(),
@@ -693,131 +659,6 @@ private fun ArPoiFloorsTabBody(
                         }
                     }
                 }
-            }
-        }
-    }
-}
-
-@Composable
-private fun ArPoiAiGuideTabBody(docent: Docent? = null) {
-    val speechText = docent?.speech?.ifEmpty { null }
-        ?: "명동의 랜드마크 쇼핑몰이에요. 혼자 여행하기 좋고, B1층에 할랄 인증 식당이 있어 식사도 편리합니다."
-    val suggestions = docent?.follow_up_suggestions ?: listOf(
-        "B1 할랄 식당 정보",
-        "1F 외국인 할인 안내",
-        "8F 루프탑 전망",
-    )
-
-    Surface(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(12.dp),
-        color = DetailAiSummaryBg,
-    ) {
-        Row(
-            modifier = Modifier.padding(12.dp),
-            horizontalArrangement = Arrangement.spacedBy(10.dp),
-            verticalAlignment = Alignment.Top,
-        ) {
-            Icon(
-                imageVector = Icons.Rounded.SmartToy,
-                contentDescription = null,
-                tint = ScanPangColors.Primary,
-                modifier = Modifier.size(22.dp),
-            )
-            Text(
-                text = speechText,
-                style = ScanPangType.body14Regular,
-                color = ScanPangColors.OnSurfaceStrong,
-            )
-        }
-    }
-    Spacer(modifier = Modifier.height(ScanPangSpacing.md))
-    if (suggestions.isNotEmpty()) {
-        Text(
-            text = "추천 질문",
-            style = ScanPangType.title14,
-            color = ScanPangColors.OnSurfaceStrong,
-        )
-        Spacer(modifier = Modifier.height(8.dp))
-        suggestions.forEachIndexed { index, suggestion ->
-            val icon = when (index % 3) {
-                0 -> Icons.Rounded.Restaurant
-                1 -> Icons.Rounded.ShoppingBag
-                else -> Icons.Rounded.CameraAlt
-            }
-            ArPoiAiPointCard(icon = icon, title = suggestion, subtitle = "")
-            Spacer(modifier = Modifier.height(8.dp))
-        }
-    }
-    Spacer(modifier = Modifier.height(ScanPangSpacing.md))
-    Surface(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(12.dp),
-        color = DetailAiTipBg,
-    ) {
-        Row(
-            modifier = Modifier.padding(12.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            verticalAlignment = Alignment.Top,
-        ) {
-            Icon(
-                imageVector = Icons.Rounded.Lightbulb,
-                contentDescription = null,
-                tint = Color(0xFFF59E0B),
-                modifier = Modifier.size(20.dp),
-            )
-            Text(
-                text = "혼자 여행 팁: 2F~3F 뷰티 매장은 평일 오전이 한적해요",
-                style = ScanPangType.caption12Medium,
-                color = DetailAiTipFg,
-            )
-        }
-    }
-    Spacer(modifier = Modifier.height(8.dp))
-}
-
-@Composable
-private fun ArPoiAiPointCard(
-    icon: ImageVector,
-    title: String,
-    subtitle: String,
-) {
-    Surface(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(12.dp),
-        color = DetailChipBg,
-    ) {
-        Row(
-            modifier = Modifier.padding(12.dp),
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Surface(
-                shape = CircleShape,
-                color = ScanPangColors.PrimarySoft,
-                modifier = Modifier.size(40.dp),
-            ) {
-                Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
-                    Icon(
-                        imageVector = icon,
-                        contentDescription = null,
-                        tint = ScanPangColors.Primary,
-                        modifier = Modifier.size(22.dp),
-                    )
-                }
-            }
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = title,
-                    style = ScanPangType.title14,
-                    color = ScanPangColors.OnSurfaceStrong,
-                )
-                Spacer(modifier = Modifier.height(2.dp))
-                Text(
-                    text = subtitle,
-                    style = ScanPangType.caption12Medium,
-                    color = ScanPangColors.OnSurfaceMuted,
-                )
             }
         }
     }

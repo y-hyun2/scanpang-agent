@@ -99,6 +99,7 @@ fun ArNavTopHud(
                 ),
             )
             .statusBarsPadding()
+            .padding(top = 8.dp)
             .padding(horizontal = ScanPangDimens.arTopBarHorizontal)
             .padding(bottom = ScanPangDimens.arTopBarBottomPadding),
     ) {
