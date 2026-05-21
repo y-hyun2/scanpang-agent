@@ -1,5 +1,6 @@
 package com.scanpang.app.components.ar
 
+import androidx.compose.foundation.basicMarquee
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.clickable
@@ -103,7 +104,7 @@ fun ArNavTopHud(
             .padding(horizontal = ScanPangDimens.arTopBarHorizontal)
             .padding(bottom = ScanPangDimens.arTopBarBottomPadding),
     ) {
-        Box(
+        Row(
             modifier = Modifier
                 .fillMaxWidth()
                 .heightIn(
@@ -112,22 +113,26 @@ fun ArNavTopHud(
                         ScanPangDimens.arStatusPillHeight,
                     ),
                 ),
+            verticalAlignment = Alignment.CenterVertically,
         ) {
             ArNavWhiteFab(
                 icon = Icons.Rounded.CameraAlt,
                 contentDescription = "화면 캡처",
                 onClick = onCameraClick,
                 isActive = isCameraFrozen,
-                modifier = Modifier.align(Alignment.CenterStart),
             )
-            Box(Modifier.align(Alignment.Center)) {
+            Box(
+                modifier = Modifier
+                    .weight(1f)
+                    .padding(horizontal = 8.dp),
+                contentAlignment = Alignment.Center,
+            ) {
                 destinationPill()
             }
             ArNavWhiteFab(
                 icon = Icons.Rounded.Search,
                 contentDescription = "검색",
                 onClick = onSearchClick,
-                modifier = Modifier.align(Alignment.CenterEnd),
             )
         }
     }
@@ -166,11 +171,12 @@ fun ArNavDestinationPill(
     text: String,
     containerColor: Color,
     modifier: Modifier = Modifier,
+    suffix: String = "",
     onClick: (() -> Unit)? = null,
 ) {
     val m = if (onClick != null) modifier.clickable(onClick = onClick) else modifier
     Surface(
-        modifier = m.heightIn(min = ScanPangDimens.arStatusPillHeight),
+        modifier = m.heightIn(min = ScanPangDimens.arStatusPillHeight).fillMaxWidth(),
         shape = ScanPangShapes.filterChip,
         color = containerColor,
         shadowElevation = ScanPangDimens.arPoiCardShadowElevation,
@@ -189,13 +195,26 @@ fun ArNavDestinationPill(
                 modifier = Modifier.size(ScanPangDimens.arNavDestinationFlagIcon),
                 tint = Color.White,
             )
+            // 목적지명: 넘칠 때만 좌→우 스크롤, 완주 후 2초 대기 반복
             Text(
                 text = text,
                 style = ScanPangType.arStatusPill15,
                 color = Color.White,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
+                modifier = Modifier
+                    .weight(1f)
+                    .basicMarquee(repeatDelayMillis = 2000),
             )
+            // "안내 중" / "도착" 등 상태 텍스트: 항상 고정
+            if (suffix.isNotEmpty()) {
+                Text(
+                    text = suffix,
+                    style = ScanPangType.arStatusPill15,
+                    color = Color.White,
+                    maxLines = 1,
+                )
+            }
             Icon(
                 imageVector = Icons.Rounded.KeyboardArrowDown,
                 contentDescription = null,
