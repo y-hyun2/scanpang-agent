@@ -11,6 +11,9 @@ from typing import List, Optional, Any
 
 class PlaceDetailRequest(BaseModel):
     id: str   # store_details.id (place_id__store_name)
+    # 사용자 좌표 — 매장까지 거리 표시용. None 이면 distance_m 응답도 None.
+    user_lat: Optional[float] = None
+    user_lng: Optional[float] = None
 
 
 class PlaceDetailResponse(BaseModel):
@@ -20,6 +23,8 @@ class PlaceDetailResponse(BaseModel):
     place_id: Optional[str] = None
     lat: Optional[float] = None
     lng: Optional[float] = None
+    # 사용자 좌표 기준 거리(m). request 에 user_lat/lng 없으면 None.
+    distance_m: Optional[float] = None
 
     # ── 화면 표시 메타 ──
     category: Optional[str] = None          # Kakao raw category_name ("음식점 > 한식")

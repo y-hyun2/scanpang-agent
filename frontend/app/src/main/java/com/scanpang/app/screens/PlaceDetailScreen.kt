@@ -105,8 +105,10 @@ fun PlaceDetailScreen(
 ) {
     // 1) 백엔드 store_details 조회 — placeId 가 있으면 자동, 비면 skip.
     //    화면 떠날 때 placeDetail 상태 초기화해서 다음 진입 시 stale 데이터 방지.
-    LaunchedEffect(placeId) {
-        viewModel.loadPlaceDetail(placeId)
+    //    userLocation 은 검색/AR 화면이 이미 채워둔 값 — 거리 표시용.
+    val userLoc by viewModel.userLocation.collectAsState()
+    LaunchedEffect(placeId, userLoc) {
+        viewModel.loadPlaceDetail(placeId, userLat = userLoc?.first, userLng = userLoc?.second)
     }
     DisposableEffect(Unit) {
         onDispose { viewModel.clearPlaceDetail() }
@@ -595,12 +597,19 @@ private fun ExchangeRateRow(row: ExchangeRate) {
  * categoryKey 는 백엔드 응답의 category_key 보다 항상 우선 — 라우트에서 들어온 값이
  * 화면 분기의 기준이기 때문.
  */
+private fun formatDistanceMeters(m: Double?): String = when {
+    m == null -> ""
+    m < 1000  -> "${m.toInt()}m"
+    else      -> "%.1fkm".format(m / 1000.0)
+}
+
 private fun PlaceDetailResponse.mergeOnto(fallback: Place?, categoryKey: String): Place {
+    val backendDistance = formatDistanceMeters(distance_m)
     val base = fallback ?: Place(
         id = id,
         name = store_name,
         category = category.orEmpty(),
-        distance = "",
+        distance = backendDistance,
         address = addr.orEmpty(),
     )
 
@@ -646,6 +655,8 @@ private fun PlaceDetailResponse.mergeOnto(fallback: Place?, categoryKey: String)
         name = store_name.ifBlank { base.name },
         category = category ?: base.category,
         subCategory = subCategory,
+        // 백엔드가 거리 계산해 보내면 그걸 우선 (request 에 user_lat/lng 있을 때만).
+        distance = backendDistance.ifBlank { base.distance },
         address = addr ?: base.address,
         phone = phone ?: base.phone,
         openHours = open_hours ?: base.openHours,
@@ -719,7 +730,7 @@ private fun PlaceDetailResponse.toRestaurantPlaceOrNull(): RestaurantPlace? {
         category = category.orEmpty(),
         subCategory = cuisineList.joinToString("·"),
         categoryKey = category_key.orEmpty(),
-        distance = "",
+        distance = formatDistanceMeters(distance_m),
         address = addr.orEmpty(),
         phone = phone.orEmpty(),
         openHours = open_hours.orEmpty(),

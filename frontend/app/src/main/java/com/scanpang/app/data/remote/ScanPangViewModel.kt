@@ -81,6 +81,16 @@ class ScanPangViewModel : ViewModel() {
     /** 마지막으로 요청한 detail id — 같은 화면 진입 시 중복 호출 회피용. */
     private var _lastPlaceDetailId: String? = null
 
+    // ── 사용자 위치 캐시 ──
+    // 검색/AR/Convenience 등 위치 받는 함수가 호출될 때마다 업데이트.
+    // PlaceDetailScreen 등 lat/lng 직접 안 받는 화면이 거리 계산용으로 재사용.
+    private val _userLocation = MutableStateFlow<Pair<Double, Double>?>(null)
+    val userLocation: StateFlow<Pair<Double, Double>?> = _userLocation
+
+    private fun rememberUserLocation(lat: Double?, lng: Double?) {
+        if (lat != null && lng != null) _userLocation.value = lat to lng
+    }
+
     // ── Spatial: H3 청크 ──
     private val _buildingsChunk = MutableStateFlow<List<Building>>(emptyList())
     val buildingsChunk: StateFlow<List<Building>> = _buildingsChunk
@@ -199,6 +209,7 @@ class ScanPangViewModel : ViewModel() {
     // ── Place Insight API ──
 
     fun queryPlace(heading: Double, lat: Double, lng: Double, alt: Double = 0.0, pitch: Double = 0.0, message: String = "", ufid: String? = null) {
+        rememberUserLocation(lat, lng)
         viewModelScope.launch {
             try {
                 _placeResult.value = api.queryPlace(
@@ -252,6 +263,7 @@ class ScanPangViewModel : ViewModel() {
         limit: Int = 50,
     ) {
         _searchQuery.value = query
+        rememberUserLocation(lat, lng)
         val trimmed = query.trim()
         if (trimmed.isEmpty()) {
             _searchResults.value = emptyList()
@@ -283,7 +295,7 @@ class ScanPangViewModel : ViewModel() {
      * 빈 id 면 호출 안 함 — Phase A 시절 NearbyHalal 등에서 id 없이 진입한 경우
      * 화면이 DummyData 폴백으로 동작.
      */
-    fun loadPlaceDetail(id: String) {
+    fun loadPlaceDetail(id: String, userLat: Double? = null, userLng: Double? = null) {
         if (id.isBlank()) {
             _placeDetail.value = null
             _lastPlaceDetailId = null
@@ -295,7 +307,9 @@ class ScanPangViewModel : ViewModel() {
             _loading.value = true
             Log.d("ScanPangVM", "loadPlaceDetail START (id=$id)")
             try {
-                _placeDetail.value = api.getPlaceDetail(PlaceDetailRequest(id = id))
+                _placeDetail.value = api.getPlaceDetail(
+                    PlaceDetailRequest(id = id, user_lat = userLat, user_lng = userLng)
+                )
                 Log.d("ScanPangVM", "loadPlaceDetail OK: ${_placeDetail.value?.store_name}")
             } catch (e: Exception) {
                 Log.e("ScanPangVM", "loadPlaceDetail FAILED for id=$id", e)
@@ -317,6 +331,7 @@ class ScanPangViewModel : ViewModel() {
     private var lastFetchLng: Double = 0.0
 
     fun updateLocationForChunk(lat: Double, lng: Double) {
+        rememberUserLocation(lat, lng)
         // 50m 미만 이동 시 페치 스킵 (네트워크 절약)
         if (lastFetchLat != 0.0) {
             val r = FloatArray(1)
