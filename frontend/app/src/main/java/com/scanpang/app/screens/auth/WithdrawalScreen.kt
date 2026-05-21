@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -42,10 +43,10 @@ import com.scanpang.app.ui.theme.ScanPangTheme
 import com.scanpang.app.ui.theme.ScanPangType
 
 private val DeleteItems = listOf(
-    "프로필 및 계정 정보",
-    "저장된 장소 및 즐겨찾기",
-    "여행 기록 및 리뷰",
-    "할랄 인증 스캔 이력",
+    "프로필 및 계정 정보 (이름, 프로필 사진)",
+    "저장한 장소 목록",
+    "최근 검색어 및 방문 기록",
+    "여행 선호 설정 (할랄 · 비건 · 언어)",
 )
 
 @Composable
@@ -71,6 +72,7 @@ fun WithdrawalScreen(
             Column(
                 modifier = Modifier
                     .fillMaxSize()
+                    .navigationBarsPadding()
                     .padding(horizontal = ScanPangSpacing.lg)
                     .padding(top = 24.dp, bottom = 24.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,

@@ -22,7 +22,6 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
-import com.scanpang.app.components.auth.LogoMark
 import com.scanpang.app.data.AuthProvider
 import com.scanpang.app.data.OnboardingPreferences
 import com.scanpang.app.data.auth.AuthRepository
@@ -107,8 +106,6 @@ fun OAuthLoadingScreen(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center,
         ) {
-            LogoMark(size = 60.dp)
-            Spacer(modifier = Modifier.height(24.dp))
             CircularProgressIndicator(
                 modifier = Modifier.size(40.dp),
                 color = ScanPangColors.Primary,

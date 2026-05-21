@@ -171,6 +171,7 @@ fun SearchDefaultScreen(
         query = ""
     }
     val backendResults by viewModel.searchResults.collectAsState()
+    val isLoading by viewModel.loading.collectAsState()
     // NavHost destination 마다 viewModel() 이 다른 인스턴스를 주므로 HomeScreen 의
     // setUserLocation 이 SearchDefaultScreen 에 안 닿음. SearchDefaultScreen 도 자체적으로
     // GPS 받아서 outdoor 카테고리 검색 시 거리 정렬용으로 사용.
@@ -311,6 +312,13 @@ fun SearchDefaultScreen(
 
             // weight(1f) 로 남은 세로 공간을 모두 차지 → 내부 LazyColumn 이 bounded height 를 얻음.
             if (isResultsMode) {
+                if (isLoading && resultRows.isEmpty()) {
+                    PlaceLoadingScreen(
+                        modifier = Modifier
+                            .weight(1f)
+                            .fillMaxWidth(),
+                    )
+                } else {
                 SearchResultsBody(
                     modifier = Modifier
                         .weight(1f)
@@ -323,6 +331,7 @@ fun SearchDefaultScreen(
                         navController.navigate(row.detailRoute) { launchSingleTop = true }
                     },
                 )
+                }
             } else {
                 SearchDefaultBody(
                     modifier = Modifier

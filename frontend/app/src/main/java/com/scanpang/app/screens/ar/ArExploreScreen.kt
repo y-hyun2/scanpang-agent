@@ -117,7 +117,9 @@ import com.scanpang.app.components.ar.ArExploreSideColumn
 import com.scanpang.app.components.ar.arExploreCategoryChipSpecs
 import com.scanpang.app.components.ar.ArCategoryIconBadge
 import com.scanpang.app.components.ar.ArPoiCard
+import com.scanpang.app.data.AppSettingsPreferences
 import com.scanpang.app.data.SearchHistoryPreferences
+import com.scanpang.app.data.TtsState
 import com.scanpang.app.navigation.AppRoutes
 import com.scanpang.app.ui.theme.ScanPangColors
 import com.scanpang.app.ui.theme.ScanPangDimens
@@ -194,6 +196,7 @@ fun ArExploreScreen(
     val context = LocalContext.current
 
     val appContext = context.applicationContext
+    val appSettingsPrefs = remember { AppSettingsPreferences(appContext) }
     val snackbarHostState = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
     val chatListState = rememberLazyListState()
@@ -243,7 +246,8 @@ fun ArExploreScreen(
         }
     }
 
-    var isTtsOn by remember { mutableStateOf(true) }
+    LaunchedEffect(Unit) { TtsState.init(appSettingsPrefs) }
+    val isTtsOn by TtsState.enabled.collectAsState()
 
     var isSttListening by remember { mutableStateOf(false) }
     val ttsPlayingState = remember { mutableStateOf(false) }
@@ -915,8 +919,8 @@ fun ArExploreScreen(
 
                 ArExploreSideColumn(
                     onTtsClick = {
-                        isTtsOn = !isTtsOn
-                        val msg = if (isTtsOn) "음성 안내 켜짐" else "음성 안내 꺼짐"
+                        TtsState.toggle(appSettingsPrefs)
+                        val msg = if (isTtsOn) "음성 안내 꺼짐" else "음성 안내 켜짐"
                         scope.launch { snackbarHostState.showSnackbar(msg) }
                     },
                     isTtsOn = isTtsOn,
