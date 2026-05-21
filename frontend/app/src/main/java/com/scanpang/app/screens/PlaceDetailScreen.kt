@@ -103,10 +103,38 @@ fun PlaceDetailScreen(
     modifier: Modifier = Modifier,
     viewModel: ScanPangViewModel = viewModel(),
 ) {
-    // 1) 백엔드 store_details 조회 — placeId 가 있으면 자동, 비면 skip.
-    //    화면 떠날 때 placeDetail 상태 초기화해서 다음 진입 시 stale 데이터 방지.
-    LaunchedEffect(placeId) {
-        viewModel.loadPlaceDetail(placeId)
+    val context = LocalContext.current
+    // GPS — NavHost destination 마다 viewModel() 인스턴스가 달라 다른 화면의
+    // setUserLocation 이 이 화면 인스턴스에 안 닿음. SearchDefaultScreen 처럼
+    // 자체적으로 lastLocation 받아 백엔드 거리 계산에 사용.
+    var userLat by remember { mutableStateOf<Double?>(null) }
+    var userLng by remember { mutableStateOf<Double?>(null) }
+    LaunchedEffect(Unit) {
+        val hasPermission =
+            android.content.pm.PackageManager.PERMISSION_GRANTED ==
+                androidx.core.content.ContextCompat.checkSelfPermission(
+                    context, android.Manifest.permission.ACCESS_FINE_LOCATION
+                ) ||
+            android.content.pm.PackageManager.PERMISSION_GRANTED ==
+                androidx.core.content.ContextCompat.checkSelfPermission(
+                    context, android.Manifest.permission.ACCESS_COARSE_LOCATION
+                )
+        if (!hasPermission) return@LaunchedEffect
+        com.google.android.gms.location.LocationServices
+            .getFusedLocationProviderClient(context)
+            .lastLocation
+            .addOnSuccessListener { loc ->
+                if (loc != null) {
+                    userLat = loc.latitude
+                    userLng = loc.longitude
+                }
+            }
+    }
+
+    // 1) 백엔드 store_details 조회 — placeId/userLat/userLng 변경 시 재호출
+    //    (캐시 키에 lat/lng 포함). 화면 떠날 때 placeDetail 초기화로 stale 방지.
+    LaunchedEffect(placeId, userLat, userLng) {
+        viewModel.loadPlaceDetail(placeId, userLat = userLat, userLng = userLng)
     }
     DisposableEffect(Unit) {
         onDispose { viewModel.clearPlaceDetail() }
@@ -128,8 +156,6 @@ fun PlaceDetailScreen(
         return
     }
 
-    val context = LocalContext.current
-
     val restaurantExtra = remember(categoryKey, placeId, backend) {
         // dummy id 가 정확히 일치할 때만 매칭. 매칭 실패 시 backend details 로 fallback.
         if (categoryKey !in setOf("restaurant", "halal_restaurant")) return@remember null
@@ -147,8 +173,12 @@ fun PlaceDetailScreen(
             else -> emptyList()
         }
     }
-    val exchangeRates = remember(categoryKey) {
-        if (categoryKey in setOf("exchange", "atm", "bank")) DummyData.exchangeRates else emptyList()
+    // 환율: 백엔드 details.rates_today (한국수출입은행 OpenAPI 일일 캐시) 1순위,
+    //       비면 DummyData 폴백. backend rates_today = [{ccy, name, flag, base_rate}].
+    val exchangeRates = remember(categoryKey, backend) {
+        if (categoryKey !in setOf("exchange", "atm", "bank")) return@remember emptyList()
+        val backendRates = backend?.extractExchangeRates().orEmpty()
+        if (backendRates.isNotEmpty()) backendRates else DummyData.exchangeRates
     }
 
     // 지하철 카테고리는 백엔드 details(exits/schedule/fast_alights)에서 추출
@@ -452,7 +482,8 @@ private fun RestaurantMetaRow(place: Place) {
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Text(
-            text = "${place.subCategory.ifBlank { "한식" }} · ${place.distance}",
+            text = if (place.distance.isBlank()) place.subCategory
+                   else "${place.subCategory} · ${place.distance}",
             style = ScanPangType.detailMetaSubtitle13,
             color = ScanPangColors.OnSurfaceMuted,
         )
@@ -595,12 +626,19 @@ private fun ExchangeRateRow(row: ExchangeRate) {
  * categoryKey 는 백엔드 응답의 category_key 보다 항상 우선 — 라우트에서 들어온 값이
  * 화면 분기의 기준이기 때문.
  */
+private fun formatDistanceMeters(m: Double?): String = when {
+    m == null -> ""
+    m < 1000  -> "${m.toInt()}m"
+    else      -> "%.1fkm".format(m / 1000.0)
+}
+
 private fun PlaceDetailResponse.mergeOnto(fallback: Place?, categoryKey: String): Place {
+    val backendDistance = formatDistanceMeters(distance_m)
     val base = fallback ?: Place(
         id = id,
         name = store_name,
         category = category.orEmpty(),
-        distance = "",
+        distance = backendDistance,
         address = addr.orEmpty(),
     )
 
@@ -631,9 +669,16 @@ private fun PlaceDetailResponse.mergeOnto(fallback: Place?, categoryKey: String)
         .ifBlank { (details["intro"] as? String)?.trim().orEmpty() }
         .ifBlank { (details["notes"] as? String)?.trim().orEmpty() }
 
-    // cuisine_type → subCategory (예: "한식·해산물")
-    val cuisineList = (details["cuisine_type"] as? List<*>)?.filterIsInstance<String>() ?: emptyList()
-    val subCategory = cuisineList.joinToString("·").ifBlank { base.subCategory }
+    // subCategory 결정:
+    //  - 할랄 식당: details.cuisine_type ("한식·해산물" 같은 정제된 큐레이션 데이터)
+    //  - 그 외: backend.category 의 마지막 토큰 ("음식점 > 치킨,닭강정" → "치킨,닭강정",
+    //    단일 토큰이면 그대로 "치킨"). 일반 식당은 cuisine_type 이 비어 있다.
+    val subCategory = if (categoryKey == "halal_restaurant") {
+        val cuisineList = (details["cuisine_type"] as? List<*>)?.filterIsInstance<String>() ?: emptyList()
+        cuisineList.joinToString("·").ifBlank { base.subCategory }
+    } else {
+        (category ?: "").substringAfterLast(">").trim().ifBlank { base.subCategory }
+    }
 
     // 할랄 신뢰 태그 — details 에 있으면 덮어씀
     val halalTags = buildList {
@@ -646,6 +691,8 @@ private fun PlaceDetailResponse.mergeOnto(fallback: Place?, categoryKey: String)
         name = store_name.ifBlank { base.name },
         category = category ?: base.category,
         subCategory = subCategory,
+        // 백엔드가 거리 계산해 보내면 그걸 우선 (request 에 user_lat/lng 있을 때만).
+        distance = backendDistance.ifBlank { base.distance },
         address = addr ?: base.address,
         phone = phone ?: base.phone,
         openHours = open_hours ?: base.openHours,
@@ -664,6 +711,28 @@ private fun PlaceDetailResponse.mergeOnto(fallback: Place?, categoryKey: String)
         safetyTags   = if (safetyList.isNotEmpty())   safetyList.joinToString(", ")   else base.safetyTags,
         parking      = parkingValue.ifBlank { base.parking },
     )
+}
+
+/**
+/**
+ * details.rates_today (한국수출입은행 OpenAPI) → 화면용 [ExchangeRate] 리스트.
+ * 백엔드 format: [{ccy, name, flag, base_rate, ...}]. base_rate 는 매매기준율
+ * 문자열 ("1320.50") — "1,320원" 으로 천 단위 콤마 + 정수 변환.
+ */
+private fun PlaceDetailResponse.extractExchangeRates(): List<ExchangeRate> {
+    val raw = details["rates_today"] as? List<*> ?: return emptyList()
+    return raw.mapNotNull { entry ->
+        val m = entry as? Map<*, *> ?: return@mapNotNull null
+        val ccy = (m["ccy"] as? String)?.trim().orEmpty()
+        val flag = (m["flag"] as? String).orEmpty()
+        val baseRate = (m["base_rate"] as? String)?.trim().orEmpty()
+        if (ccy.isBlank() || baseRate.isBlank()) return@mapNotNull null
+        // "1,320.50" 같은 문자열 → 천 단위 콤마 제거 후 Double → 정수 + "원"
+        val rateText = baseRate.replace(",", "").toDoubleOrNull()
+            ?.let { "%,d원".format(it.toInt()) }
+            ?: "${baseRate}원"
+        ExchangeRate(currency = ccy, rate = rateText, flag = flag)
+    }
 }
 
 /**
@@ -719,7 +788,7 @@ private fun PlaceDetailResponse.toRestaurantPlaceOrNull(): RestaurantPlace? {
         category = category.orEmpty(),
         subCategory = cuisineList.joinToString("·"),
         categoryKey = category_key.orEmpty(),
-        distance = "",
+        distance = formatDistanceMeters(distance_m),
         address = addr.orEmpty(),
         phone = phone.orEmpty(),
         openHours = open_hours.orEmpty(),

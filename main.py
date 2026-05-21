@@ -757,12 +757,26 @@ async def place_detail(req: PlaceDetailRequest):
     last_updated = row["last_updated"]
     last_updated_iso = last_updated.isoformat() if last_updated else None
 
+    # 사용자-매장 거리(m) — Haversine. user_lat/lng 와 row.lat/lng 모두 있을 때만.
+    distance_m: float | None = None
+    if (req.user_lat is not None and req.user_lng is not None
+            and row["lat"] is not None and row["lng"] is not None):
+        import math as _math
+        R = 6371000.0  # 지구 반지름(m)
+        lat1 = _math.radians(req.user_lat)
+        lat2 = _math.radians(float(row["lat"]))
+        dlat = lat2 - lat1
+        dlng = _math.radians(float(row["lng"]) - req.user_lng)
+        a = _math.sin(dlat/2)**2 + _math.cos(lat1) * _math.cos(lat2) * _math.sin(dlng/2)**2
+        distance_m = round(2 * R * _math.asin(_math.sqrt(a)), 1)
+
     return PlaceDetailResponse(
         id=row["id"],
         store_name=row["store_name"],
         place_id=row["place_id"],
         lat=row["lat"],
         lng=row["lng"],
+        distance_m=distance_m,
         category=row["category"],
         category_key=row["category_key"],
         addr=row["addr"],

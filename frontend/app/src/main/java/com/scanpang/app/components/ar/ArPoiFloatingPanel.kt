@@ -189,6 +189,7 @@ fun ArPoiFloatingDetailOverlay(
                     category = arOverlay?.category ?: "",
                     openHours = arOverlay?.open_hours ?: "",
                     isEstimated = arOverlay?.is_estimated ?: false,
+                    distanceM = arOverlay?.distance_m,
                 )
                 Spacer(modifier = Modifier.height(ScanPangSpacing.sm))
                 ArPoiDetailSegmentedTabs(
@@ -220,11 +221,18 @@ fun ArPoiFloatingDetailOverlay(
     }
 }
 
+private fun formatArDistance(m: Double?): String = when {
+    m == null -> ""
+    m < 1000  -> "${m.toInt()}m"
+    else      -> "%.1fkm".format(m / 1000.0)
+}
+
 @Composable
 private fun ArPoiStatusMetaRow(
     category: String = "",
     openHours: String = "",
     isEstimated: Boolean = false,
+    distanceM: Double? = null,
 ) {
     Row(
         modifier = Modifier.fillMaxWidth(),
@@ -243,6 +251,14 @@ private fun ArPoiStatusMetaRow(
                     color = ScanPangColors.Primary,
                 )
             }
+        }
+        val distanceText = formatArDistance(distanceM)
+        if (distanceText.isNotBlank()) {
+            Text(
+                text = distanceText,
+                style = ScanPangType.body14Regular,
+                color = ScanPangColors.OnSurfaceMuted,
+            )
         }
         if (isEstimated) {
             Surface(
