@@ -35,6 +35,9 @@ class ArOverlay(BaseModel):
     closed_days: str
     parking_info: str
     admission_fee: str
+    # AR 건물 floating 패널의 chip 표시용. 비건/할랄 정보처럼 단순 문자열.
+    address: str = ""
+    phone: str = ""
     is_estimated: bool = False
     status: Literal["partial", "ready"] = "ready"
     floor_info_loading: bool = False
