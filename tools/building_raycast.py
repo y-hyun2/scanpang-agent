@@ -212,19 +212,71 @@ def find_building_by_raycast(
 
 def fetch_building_by_bd_mgt_sn(bd_mgt_sn: str) -> Optional[dict]:
     """
-    raycasting 대신 bd_mgt_sn으로 직접 JSON 인덱스 검색.
-    클라이언트가 이미 정면 건물을 식별한 경우 사용 (옵션 B 경로).
-    반환 형식은 find_building_by_raycast와 동일.
-    """
-    _load_index()
-    if not _buildings:
-        return None
+    bd_mgt_sn으로 buildings DB 직접 조회 — JSON 인덱스는 명동 2km 범위만 커버해서
+    외대 등 다른 지역 bd_mgt_sn 매칭 실패. DB 는 전국 615+ 건물 인덱싱돼 있음.
 
-    for entry in _buildings:
-        if entry["meta"].get("bd_mgt_sn") == bd_mgt_sn:
-            name = entry["meta"].get("bld_nm") or "(이름 없음)"
-            print(f"[BdMgtSnLookup] 매칭: {name!r} bd_mgt_sn={bd_mgt_sn}")
-            return entry["meta"]
+    클라이언트가 이미 정면 건물을 식별한 경우 사용 (옵션 B 경로).
+    반환 형식은 find_building_by_raycast 와 호환 — meta dict 만.
+    """
+    # 1) JSON 인덱스 hot path (명동 영역) — 빠른 in-memory 매칭
+    _load_index()
+    if _buildings:
+        for entry in _buildings:
+            if entry["meta"].get("bd_mgt_sn") == bd_mgt_sn:
+                name = entry["meta"].get("bld_nm") or "(이름 없음)"
+                print(f"[BdMgtSnLookup] JSON 매칭: {name!r} bd_mgt_sn={bd_mgt_sn}")
+                return entry["meta"]
+
+    # 2) DB fallback — JSON 미커버 지역(외대 등)
+    try:
+        import asyncio
+        import asyncpg
+        import os
+        from dotenv import load_dotenv
+        load_dotenv()
+        url = os.getenv("SUPABASE_DATABASE_URL", "")
+        if not url:
+            print(f"[BdMgtSnLookup] DB URL 없음 — 매칭 실패: bd_mgt_sn={bd_mgt_sn}")
+            return None
+
+        async def _query():
+            conn = await asyncpg.connect(url, statement_cache_size=0)
+            try:
+                return await conn.fetchrow(
+                    "SELECT ufid, bld_nm, center_lat, center_lng, bd_mgt_sn "
+                    "FROM buildings WHERE bd_mgt_sn = $1",
+                    bd_mgt_sn,
+                )
+            finally:
+                await conn.close()
+
+        try:
+            loop = asyncio.get_event_loop()
+            if loop.is_running():
+                # 이미 비동기 컨텍스트면 nest_asyncio 또는 동기 wrap 필요. 단순화:
+                # event loop 안에서는 asyncio.run 못 씀 → 빈 결과로 처리.
+                # 호출자(place_insight_agent) 자체가 async 이므로 보통 여기 도달.
+                import concurrent.futures
+                with concurrent.futures.ThreadPoolExecutor() as ex:
+                    row = ex.submit(asyncio.run, _query()).result()
+            else:
+                row = asyncio.run(_query())
+        except RuntimeError:
+            row = asyncio.run(_query())
+
+        if row:
+            meta = {
+                "ufid":       row["ufid"],
+                "bld_nm":     row["bld_nm"] or "",
+                "center_lat": float(row["center_lat"]) if row["center_lat"] is not None else None,
+                "center_lng": float(row["center_lng"]) if row["center_lng"] is not None else None,
+                "bd_mgt_sn":  row["bd_mgt_sn"] or "",
+            }
+            name = meta["bld_nm"] or "(이름 없음)"
+            print(f"[BdMgtSnLookup] DB 매칭: {name!r} bd_mgt_sn={bd_mgt_sn}")
+            return meta
+    except Exception as e:
+        print(f"[BdMgtSnLookup] DB lookup 에러: {e}")
 
     print(f"[BdMgtSnLookup] 매칭 실패: bd_mgt_sn={bd_mgt_sn}")
     return None

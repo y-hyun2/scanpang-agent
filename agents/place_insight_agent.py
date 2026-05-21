@@ -201,7 +201,7 @@ async def run_place_insight_agent(req: PlaceRequest) -> dict:
         # 3) cache miss → 백그라운드 파이프라인 트리거
         if not place_data and ufid:
             _trigger_background_pipeline(ufid)
-            return _partial_response(bld_name_from_vworld)
+            return _partial_response(bld_name_from_vworld, ufid)
 
         # 4) cache hit — 오래된 데이터면 백그라운드 갱신 예약
         if place_data and ufid and _is_stale(place_data.get("last_updated")):
@@ -228,8 +228,19 @@ async def run_place_insight_agent(req: PlaceRequest) -> dict:
             },
         }
 
-    # asyncpg JSONB → 이미 Python list, json.loads 불필요
-    floor_info = place_data.get("floor_info") or []
+    # JSONB 컬럼 — asyncpg 가 환경(statement_cache_size=0 + jsonb codec 미설정)에
+    # 따라 list 가 아니라 raw JSON 문자열로 반환할 때가 있다. 그대로 응답에 넣으면
+    # frontend(List<FloorInfo> 기대)가 deserialize 실패해 빈 list 로 처리해 층별
+    # 정보가 텅 빈 채 표시됨. str 면 json.loads 로 dict/list 복원.
+    import json as _json_safe
+    raw_floor = place_data.get("floor_info")
+    if isinstance(raw_floor, str):
+        try:
+            floor_info = _json_safe.loads(raw_floor) or []
+        except (ValueError, TypeError):
+            floor_info = []
+    else:
+        floor_info = raw_floor or []
     halal_info = place_data.get("halal_info", "")
 
     # last_updated: asyncpg가 datetime 객체로 반환
@@ -249,6 +260,7 @@ async def run_place_insight_agent(req: PlaceRequest) -> dict:
         "admission_fee":     place_data.get("admission_fee", ""),
         "address":           place_data.get("addr", ""),
         "phone":             place_data.get("phone", ""),
+        "ufid":              place_data.get("ufid", "") or (vworld_meta.get("ufid", "") if vworld_meta else ""),
         "is_estimated":      False,
         "status":            "ready",
         "floor_info_loading": False,
@@ -294,7 +306,7 @@ def _trigger_background_pipeline(ufid: str) -> None:
         print(f"[place_insight] worker enqueue 실패 (무시): {e}")
 
 
-def _partial_response(name: str) -> dict:
+def _partial_response(name: str, ufid: str = "") -> dict:
     return {
         "ar_overlay": {
             "name":              name,
@@ -309,6 +321,7 @@ def _partial_response(name: str) -> dict:
             "admission_fee":     "",
             "address":           "",
             "phone":             "",
+            "ufid":              ufid,
             "is_estimated":      True,
             "status":            "partial",
             "floor_info_loading": True,

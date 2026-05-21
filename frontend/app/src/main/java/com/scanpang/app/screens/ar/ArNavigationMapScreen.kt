@@ -318,7 +318,12 @@ fun ArNavigationMapScreen(
                     selectedStore = null
                     activeDetailTab = ArPoiTabBuilding
                 },
-                onFloorStoreClick = { selectedStore = it },
+                onFloorStoreClick = {
+                    // 건물 패널 닫고 매장 패널 표시 — 두 fillMaxSize 패널 동시 표시 시
+                    // 매장 카드 잘려보임 방지.
+                    selectedStore = it
+                    selectedBuildingPoi = null
+                },
                 onSave = {},
                 modifier = Modifier.fillMaxSize(),
                 arOverlay = buildingInfo?.takeIf { it.found }?.toArOverlay()
@@ -328,7 +333,10 @@ fun ArNavigationMapScreen(
         }
 
         selectedStore?.let { store ->
-            LaunchedEffect(store) { viewModel.queryStore(placeId = "", storeName = store) }
+            // place_id 에 건물 ufid 전달 — store_details cache key 일관성 유지.
+            // ufid 없으면(raycast 실패 등) 빈 문자열 fallback (outdoor 시나리오).
+            val placeUfid = placeResult?.ar_overlay?.ufid.orEmpty()
+            LaunchedEffect(store) { viewModel.queryStore(placeId = placeUfid, storeName = store) }
             val s = storeResult?.takeIf { it.store_name == store }
             ArFloorStoreGuideOverlay(
                 storeName = store,
