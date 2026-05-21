@@ -83,6 +83,36 @@ import com.scanpang.app.ui.theme.ScanPangType
 private val INFO_ROW_SPACING = 14.dp
 private val SECTION_INNER_SPACING = 12.dp
 
+private val CATEGORY_KO = mapOf(
+    "cafe"              to "카페",
+    "restaurant"        to "식당",
+    "shopping"          to "쇼핑",
+    "convenience_store" to "편의점",
+    "pharmacy"          to "약국",
+    "hospital"          to "병원",
+    "bank"              to "은행",
+    "atm"               to "ATM",
+    "exchange"          to "환전소",
+    "subway"            to "지하철역",
+    "subway_station"    to "지하철역",
+    "restroom"          to "화장실",
+    "public_restroom"   to "화장실",
+    "locker"            to "물품보관함",
+    "lockers"           to "물품보관함",
+    "prayer_room"       to "기도실",
+    "accommodation"     to "호텔",
+    "cultural"          to "문화시설",
+    "tourist"           to "관광지",
+    "tourist_spot"      to "관광지",
+    "halal_restaurant"  to "할랄 식당",
+    "vegan_restaurant"  to "비건 식당",
+    "vegan_cafe"        to "비건 카페",
+)
+
+// 이 카테고리들은 raw Kakao 소분류("한식", "의류", "의원")를 그대로 표시.
+// 나머지는 CATEGORY_KO 고정 ("관광지", "환전소", "카페" 등).
+private val USE_RAW_CATEGORY = setOf("restaurant", "shopping", "hospital", "cultural", "accommodation")
+
 /**
  * 카테고리 14종을 한 화면에서 처리하는 통합 상세 화면.
  *
@@ -147,11 +177,23 @@ fun PlaceDetailScreen(
         return
     }
 
+    val displayCategory = when {
+        categoryKey == "vegan_restaurant" -> {
+            val veganLevel = (backend?.details?.get("vegan_level") as? String).orEmpty()
+            if (veganLevel == "채식가능") "채식가능" else "비건 식당"
+        }
+        categoryKey in USE_RAW_CATEGORY ->
+            place.category.substringAfterLast(">").trim().ifBlank { CATEGORY_KO[categoryKey] ?: categoryKey }
+        else ->
+            CATEGORY_KO[categoryKey] ?: place.category.substringAfterLast(">").trim().ifBlank { "—" }
+    }
+
     val restaurantExtra = remember(categoryKey, backend) {
         if (categoryKey !in setOf("restaurant", "halal_restaurant")) return@remember null
         backend?.toRestaurantPlaceOrNull()
     }
     val menuItems = remember(backend, categoryKey) {
+        if (categoryKey !in setOf("restaurant", "halal_restaurant", "cafe", "vegan_restaurant", "vegan_cafe")) return@remember emptyList()
         val backendMenu = backend?.extractMenuItems().orEmpty()
         if (backendMenu.isNotEmpty()) backendMenu
         else when (categoryKey) {
@@ -183,8 +225,8 @@ fun PlaceDetailScreen(
     val bookmark = rememberDetailBookmark(
         placeId = place.id,
         placeName = place.name,
-        category = place.category,
-        distanceLine = "${place.category} · ${place.distance}",
+        category = displayCategory,
+        distanceLine = "${displayCategory} · ${place.distance}",
         tags = place.tags,
         categoryKey = categoryKey,
     )
@@ -248,19 +290,23 @@ fun PlaceDetailScreen(
             )
 
             when (categoryKey) {
-                "restaurant", "halal_restaurant" -> RestaurantMetaRow(place)
+                "restaurant", "halal_restaurant" -> DetailCategoryTagDistanceRow(
+                    categoryLabel = displayCategory,
+                    distanceText = place.distance,
+                    isOpen = if (place.openHours.isNotBlank()) place.isOpen else null,
+                )
                 "atm" -> DetailCategoryTagDistanceRow(
-                    categoryLabel = place.category,
+                    categoryLabel = displayCategory,
                     distanceText = place.distance,
                     trailing = { AtmOperationBadge(place) },
                 )
                 "lockers", "locker", "restroom", "public_restroom" -> DetailCategoryTagDistanceRow(
-                    categoryLabel = place.category,
+                    categoryLabel = displayCategory,
                     distanceText = place.distance,
                     isOpen = null,
                 )
                 else -> DetailCategoryTagDistanceRow(
-                    categoryLabel = place.category,
+                    categoryLabel = displayCategory,
                     distanceText = place.distance,
                     isOpen = if (place.openHours.isNotBlank()) place.isOpen else null,
                 )
@@ -457,31 +503,6 @@ private fun DetailInfoLine(icon: ImageVector, label: String, value: String) {
     }
 }
 
-@Composable
-private fun RestaurantMetaRow(place: Place) {
-    Row(
-        horizontalArrangement = Arrangement.spacedBy(ScanPangSpacing.sm),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Text(
-            text = if (place.distance.isBlank()) place.subCategory
-                   else "${place.subCategory} · ${place.distance}",
-            style = ScanPangType.detailMetaSubtitle13,
-            color = ScanPangColors.OnSurfaceMuted,
-        )
-        Box(
-            modifier = Modifier
-                .size(ScanPangDimens.icon5)
-                .clip(CircleShape)
-                .background(if (place.isOpen) ScanPangColors.StatusOpen else ScanPangColors.Error),
-        )
-        Text(
-            text = if (place.isOpen) "영업 중" else "영업 종료",
-            style = ScanPangType.meta11SemiBold,
-            color = if (place.isOpen) ScanPangColors.StatusOpen else ScanPangColors.Error,
-        )
-    }
-}
 
 @Composable
 private fun AtmOperationBadge(place: Place) {
@@ -642,9 +663,10 @@ private fun PlaceDetailResponse.mergeOnto(fallback: Place?, categoryKey: String)
         if (details["has_emergency_bell"] as? Boolean == true) add("비상벨")
     }
 
-    // conveniences 배열에 "주차" 포함 시 → "가능"
+    // conveniences 배열 — 주차 여부 + 편의시설 텍스트
     val conveniences = (details["conveniences"] as? List<*>)?.filterIsInstance<String>() ?: emptyList()
     val parkingValue = if (conveniences.any { it.contains("주차") }) "가능" else ""
+    val convenienceServicesValue = conveniences.filter { !it.contains("주차") }.joinToString(", ")
 
     // 소개 — 할랄 식당: short_description_ko / naver scraper: intro / 기도실: notes.
     val backendDesc = (details["short_description_ko"] as? String)?.trim().orEmpty()
@@ -691,7 +713,8 @@ private fun PlaceDetailResponse.mergeOnto(fallback: Place?, categoryKey: String)
         toiletFemale = toiletFemale.ifBlank { base.toiletFemale },
         facilityTags = if (facilityList.isNotEmpty()) facilityList.joinToString(", ") else base.facilityTags,
         safetyTags   = if (safetyList.isNotEmpty())   safetyList.joinToString(", ")   else base.safetyTags,
-        parking      = parkingValue.ifBlank { base.parking },
+        parking            = parkingValue.ifBlank { base.parking },
+        convenienceServices = convenienceServicesValue.ifBlank { base.convenienceServices },
     )
 }
 

@@ -542,31 +542,35 @@ private fun SearchHalalCategoryChip(label: String) {
     }
 }
 
-// category_key (영어) → 화면 표시용 한국어 라벨. 백엔드가 한국어 category 를 같이 보내주면
-// 그걸 우선 쓰고, 비었을 때 이 맵으로 fallback.
 private val CATEGORY_KO = mapOf(
-    "cafe" to "카페",
-    "restaurant" to "식당",
-    "shopping" to "쇼핑",
+    "cafe"              to "카페",
+    "restaurant"        to "식당",
+    "shopping"          to "쇼핑",
     "convenience_store" to "편의점",
-    "pharmacy" to "약국",
-    "hospital" to "병원",
-    "bank" to "은행",
-    "atm" to "ATM",
-    "exchange" to "환전소",
-    "subway" to "지하철역",
-    "subway_station" to "지하철역",
-    "restroom" to "화장실",
-    "public_restroom" to "화장실",
-    "locker" to "물품보관함",
-    "lockers" to "물품보관함",
-    "prayer_room" to "기도실",
-    "accommodation" to "호텔",
-    "cultural" to "문화시설",
-    "tourist" to "관광지",
-    "tourist_spot" to "관광지",
-    "halal_restaurant" to "할랄 식당",
+    "pharmacy"          to "약국",
+    "hospital"          to "병원",
+    "bank"              to "은행",
+    "atm"               to "ATM",
+    "exchange"          to "환전소",
+    "subway"            to "지하철역",
+    "subway_station"    to "지하철역",
+    "restroom"          to "화장실",
+    "public_restroom"   to "화장실",
+    "locker"            to "물품보관함",
+    "lockers"           to "물품보관함",
+    "prayer_room"       to "기도실",
+    "accommodation"     to "호텔",
+    "cultural"          to "문화시설",
+    "tourist"           to "관광지",
+    "tourist_spot"      to "관광지",
+    "halal_restaurant"  to "할랄 식당",
+    "vegan_restaurant"  to "비건 식당",
+    "vegan_cafe"        to "비건 카페",
 )
+
+// 이 카테고리들은 raw Kakao 소분류("한식", "의류", "의원")를 그대로 표시.
+// 나머지는 CATEGORY_KO 고정 ("관광지", "환전소", "카페" 등).
+private val USE_RAW_CATEGORY = setOf("restaurant", "shopping", "hospital", "cultural", "accommodation")
 
 private fun formatDistance(m: Double?): String = when {
     m == null            -> ""
@@ -574,17 +578,15 @@ private fun formatDistance(m: Double?): String = when {
     else                 -> "%.1fkm".format(m / 1000.0)
 }
 
-/**
- * 백엔드 검색 결과 → 화면 표시용 [ResultRow] 로 변환.
- * - category 우선순위: category(백엔드 한국어/Kakao 원문) → category_key 한국어 매핑 → "—"
- * - distance: 백엔드 distance_m (outdoor 카테고리에만 채워짐) 을 km/m 라벨로.
- * - isOpen: 백엔드 is_open_now=true 일 때만 영업중. null/false 는 false.
- */
 private fun SearchResultItem.toResultRow(): ResultRow {
+    val rawLeaf = category?.substringAfterLast(">")?.trim().orEmpty()
     val secondary = when {
-        !category.isNullOrBlank() -> category
-        !category_key.isNullOrBlank() -> CATEGORY_KO[category_key] ?: category_key
-        else -> "—"
+        category_key == "vegan_restaurant" ->
+            if (category?.contains("채식가능") == true) "채식가능" else "비건 식당"
+        category_key in USE_RAW_CATEGORY ->
+            rawLeaf.ifBlank { CATEGORY_KO[category_key] ?: category_key.orEmpty() }
+        else ->
+            CATEGORY_KO[category_key] ?: rawLeaf.ifBlank { "—" }
     }
     return ResultRow(
         id = "${category_key ?: "etc"}:$id",
