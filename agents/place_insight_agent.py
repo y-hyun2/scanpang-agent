@@ -1,13 +1,13 @@
-import json
+﻿import json
 import os
 from datetime import datetime, timezone
 
 from openai import AsyncOpenAI
 from dotenv import load_dotenv
 
-from core.db import get_pool, get_building_pool
+from core.db import get_pool
 from schemas.place import PlaceRequest
-from tools.building_raycast import find_building_by_raycast, fetch_building_by_bd_mgt_sn
+from tools.building_raycast import find_building_by_raycast, fetch_building_by_ufid
 
 load_dotenv()
 
@@ -57,63 +57,6 @@ async def _fetch_place_info(ufid: str) -> dict:
     except Exception as e:
         print(f"[place_insight] Supabase 조회 실패: {e}")
         return {}
-
-
-async def _fetch_building_meta_by_bd_mgt_sn(bd_mgt_sn: str) -> tuple[str, str]:
-    """bd_mgt_sn → VWorld ufid (place_info와 동일 체계) 조회.
-
-    building pool(정부DB ufid)과 main pool(VWorld ufid)은 ufid 체계가 달라
-    직접 매칭 불가. 대신:
-      1) building pool: bd_mgt_sn → geom 중심 좌표
-      2) main pool buildings: 좌표 근접(≈50m) 검색 → VWorld ufid
-    """
-    try:
-        # ── 1) building pool: bd_mgt_sn → 좌표 ──────────────────────────────
-        bld_pool = await get_building_pool()
-        async with bld_pool.acquire() as conn:
-            b_row = await conn.fetchrow(
-                """
-                SELECT bld_nm,
-                       ST_Y(ST_Centroid(geom)) AS lat,
-                       ST_X(ST_Centroid(geom)) AS lng
-                FROM buildings
-                WHERE bd_mgt_sn = $1 LIMIT 1
-                """,
-                bd_mgt_sn,
-            )
-        if not b_row:
-            print(f"[place_insight] bd_mgt_sn={bd_mgt_sn} building pool 미매칭")
-            return "", ""
-
-        bld_nm = b_row["bld_nm"] or ""
-        lat = float(b_row["lat"])
-        lng = float(b_row["lng"])
-
-        # ── 2) main pool buildings: 좌표 근접 → VWorld ufid ─────────────────
-        pool = await get_pool()
-        async with pool.acquire() as conn:
-            m_row = await conn.fetchrow(
-                """
-                SELECT ufid, bld_nm
-                FROM buildings
-                WHERE ABS(center_lat - $1) < 0.0005
-                  AND ABS(center_lng - $2) < 0.0005
-                ORDER BY (center_lat - $1)^2 + (center_lng - $2)^2
-                LIMIT 1
-                """,
-                lat, lng,
-            )
-        if m_row:
-            ufid = m_row["ufid"] or ""
-            name = m_row["bld_nm"] or bld_nm
-            print(f"[place_insight] bd_mgt_sn={bd_mgt_sn} → ufid={ufid} (좌표 근접 매칭)")
-            return ufid, name
-
-        print(f"[place_insight] bd_mgt_sn={bd_mgt_sn} main pool 근접 건물 없음 (lat={lat:.5f}, lng={lng:.5f})")
-        return "", bld_nm
-    except Exception as e:
-        print(f"[place_insight] buildings 조회 실패: {e}")
-        return "", ""
 
 
 # ── LLM: docent 해설 생성 ──────────────────────────────────────────────────────
@@ -166,15 +109,9 @@ def generate_follow_ups(user_message: str, place_data: dict) -> list[str]:
 # ── Main agent ────────────────────────────────────────────────────────────────
 
 async def run_place_insight_agent(req: PlaceRequest) -> dict:
-    # 1) 바라보는 건물 식별 — bd_mgt_sn 있으면 vworld JSON lookup, 없으면 raycasting
-    if req.bd_mgt_sn:
-        vworld_meta = fetch_building_by_bd_mgt_sn(req.bd_mgt_sn)
-        # vworld JSON 미스(파일 없거나 bd_mgt_sn 미저장) → buildings 테이블 직접 조회
-        if not vworld_meta:
-            ufid_db, bld_nm_db = await _fetch_building_meta_by_bd_mgt_sn(req.bd_mgt_sn)
-            if ufid_db:
-                print(f"[place_insight] buildings 테이블 폴백: bd_mgt_sn={req.bd_mgt_sn} → ufid={ufid_db}")
-                vworld_meta = {"ufid": ufid_db, "bld_nm": bld_nm_db}
+    # 1) 바라보는 건물 식별 — ufid 있으면 DB lookup, 없으면 raycasting
+    if req.ufid:
+        vworld_meta = fetch_building_by_ufid(req.ufid)
     else:
         vworld_meta = find_building_by_raycast(
             user_lat=req.user_lat,

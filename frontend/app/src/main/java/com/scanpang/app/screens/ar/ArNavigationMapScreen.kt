@@ -1,4 +1,4 @@
-package com.scanpang.app.screens.ar
+﻿package com.scanpang.app.screens.ar
 
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -158,16 +158,16 @@ fun ArNavigationMapScreen(
             },
             voiceOn = isTtsOn,
             buildingsCache = buildingsCache,
-            onBuildingPinClick = { name, bdMgtSn ->
+            onBuildingPinClick = { name, ufid ->
                 selectedBuildingPoi = name
                 activeDetailTab = ArPoiTabBuilding
                 selectedStore = null
-                if (bdMgtSn != null) {
+                if (ufid != null) {
                     viewModel.queryPlace(
                         heading = userHeading,
                         lat = userLat,
                         lng = userLng,
-                        bdMgtSn = bdMgtSn,
+                        ufid = ufid,
                     )
                 }
             },

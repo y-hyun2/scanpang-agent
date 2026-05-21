@@ -1,4 +1,4 @@
-package com.scanpang.app.components.ar
+﻿package com.scanpang.app.components.ar
 
 import android.Manifest
 import android.content.pm.PackageManager
@@ -59,7 +59,7 @@ import io.github.sceneview.rememberViewNodeManager
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
-private data class NavBuildingPin(val id: String, val name: String, val lat: Double, val lng: Double, val bdMgtSn: String?)
+private data class NavBuildingPin(val id: String, val name: String, val lat: Double, val lng: Double, val ufid: String?)
 
 private data class NavBuildingCandidate(
     val building: Building,
@@ -117,7 +117,7 @@ fun ArRealSceneView(
     onRouteAvailable: (routePoints: List<Pair<Double, Double>>, destinationLat: Double, destinationLng: Double) -> Unit = { _, _, _ -> },
     voiceOn: Boolean = true,
     buildingsCache: Map<String, Building> = emptyMap(),
-    onBuildingPinClick: (pinName: String, bdMgtSn: String?) -> Unit = { _, _ -> },
+    onBuildingPinClick: (pinName: String, ufid: String?) -> Unit = { _, _ -> },
 ) {
     val context = LocalContext.current
     val engine = rememberEngine()
@@ -431,7 +431,7 @@ fun ArRealSceneView(
                             val anchor = earth.createAnchor(entry.markerPos.first, entry.markerPos.second, labelAlt, 0f, 0f, 0f, 1f)
                             if (anchor != null) {
                                 navBuildingAnchors[id] = anchor
-                                navBuildingPins.add(NavBuildingPin(id, entry.b.bld_nm ?: "건물", entry.markerPos.first, entry.markerPos.second, entry.b.bd_mgt_sn))
+                                navBuildingPins.add(NavBuildingPin(id, entry.b.bld_nm ?: "건물", entry.markerPos.first, entry.markerPos.second, entry.b.ufid.ifEmpty { null }))
                             }
                         }
                     } else {
@@ -725,7 +725,7 @@ fun ArRealSceneView(
                     title = pin.name,
                     subtitle = "건물",
                     modifier = Modifier.offset(x = xDp - 60.dp, y = yDp - 32.dp),
-                    onClick = { onBuildingPinClick(pin.name, pin.bdMgtSn) },
+                    onClick = { onBuildingPinClick(pin.name, pin.ufid) },
                 )
             }
         }
