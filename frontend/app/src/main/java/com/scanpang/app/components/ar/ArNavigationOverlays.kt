@@ -24,8 +24,8 @@ import androidx.compose.ui.zIndex
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.Send
-import androidx.compose.material.icons.automirrored.rounded.VolumeOff
-import androidx.compose.material.icons.automirrored.rounded.VolumeUp
+import androidx.compose.material.icons.rounded.Headset
+import androidx.compose.material.icons.rounded.HeadsetOff
 import androidx.compose.material.icons.rounded.ArrowUpward
 import androidx.compose.material.icons.rounded.CameraAlt
 import androidx.compose.material.icons.rounded.CheckCircle
@@ -241,7 +241,7 @@ fun BoxScope.ArNavSideVolumeCamera(
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         ArNavWhiteFab(
-            icon = if (isTtsOn) Icons.AutoMirrored.Rounded.VolumeUp else Icons.AutoMirrored.Rounded.VolumeOff,
+            icon = if (isTtsOn) Icons.Rounded.Headset else Icons.Rounded.HeadsetOff,
             contentDescription = if (isTtsOn) "음성 안내 켜짐" else "음성 안내 꺼짐",
             onClick = onVolumeClick,
         )

@@ -21,6 +21,7 @@ import com.scanpang.app.screens.auth.LoginErrorScreen
 import com.scanpang.app.screens.auth.LoginScreen
 import com.scanpang.app.screens.auth.OAuthLoadingScreen
 import com.scanpang.app.screens.auth.TermsAgreementScreen
+import com.scanpang.app.screens.auth.TermsDetailScreen
 import com.scanpang.app.screens.auth.WithdrawalScreen
 import com.scanpang.app.screens.onboarding.OnboardingLanguageScreen
 import com.scanpang.app.screens.onboarding.OnboardingNameScreen
@@ -89,6 +90,8 @@ object AppRoutes {
 
     const val Login = "login"
     const val TermsAgreement = "terms_agreement"
+    const val TermsDetail = "terms_detail/{termId}"
+    fun termsDetailRoute(termId: String) = "terms_detail/$termId"
     /** 라우트 패턴 — 호출 시 [oauthLoadingRoute] 사용 */
     const val OAuthLoading = "oauth_loading?provider={provider}"
     const val OAuthLoadingArgProvider = "provider"
@@ -179,11 +182,28 @@ fun AppNavHost(
         }
         composable(AppRoutes.TermsAgreement) {
             TermsAgreementScreen(
-                onBack = { navController.popBackStack() },
+                onBack = {
+                    navController.navigate(AppRoutes.Login) {
+                        popUpTo(AppRoutes.TermsAgreement) { inclusive = true }
+                        launchSingleTop = true
+                    }
+                },
                 onAllAgreedAndContinue = {
                     navController.navigate(AppRoutes.OnboardingLanguage)
                 },
-                onTermDetailClick = { /* TODO: 약관 전문 보기 */ },
+                onTermDetailClick = { termId ->
+                    navController.navigate(AppRoutes.termsDetailRoute(termId))
+                },
+            )
+        }
+        composable(
+            route = AppRoutes.TermsDetail,
+            arguments = listOf(navArgument("termId") { type = NavType.StringType }),
+        ) { entry ->
+            val termId = entry.arguments?.getString("termId").orEmpty()
+            TermsDetailScreen(
+                termId = termId,
+                onBack = { navController.popBackStack() },
             )
         }
         composable(

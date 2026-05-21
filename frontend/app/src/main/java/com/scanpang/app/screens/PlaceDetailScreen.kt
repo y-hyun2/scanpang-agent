@@ -157,6 +157,8 @@ fun PlaceDetailScreen(
     if (place == null) {
         if (backend != null) {
             LaunchedEffect(Unit) { navController.popBackStack() }
+        } else {
+            PlaceLoadingScreen()
         }
         return
     }
