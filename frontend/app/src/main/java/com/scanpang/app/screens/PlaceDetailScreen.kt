@@ -153,20 +153,16 @@ fun PlaceDetailScreen(
     // 지하철 카테고리는 백엔드 details(exits/schedule/fast_alights)에서 추출
     val subwayDetail: SubwayDetail? = remember(backend) { backend?.toSubwayDetail() }
 
-    val hasHeroPhoto = categoryKey !in setOf("atm", "subway", "subway_station", "restroom", "public_restroom", "lockers", "locker")
+    val heroPhotoAllowed = categoryKey !in setOf("atm", "subway", "subway_station", "restroom", "public_restroom", "lockers", "locker")
     val canFullscreen = categoryKey in setOf("restaurant", "halal_restaurant", "tourist", "tourist_spot", "attraction")
 
-    // 갤러리: 백엔드 image_urls (HTTP URL) 가 있으면 그걸 Coil 모델로 노출.
-    // 비면 DummyData galleryModels (drawable Int → URL 폴백 순) 으로 대체.
-    val imageModels = remember(backend, place.id, hasHeroPhoto) {
-        if (!hasHeroPhoto) emptyList<Any>()
-        else {
-            val urls = backend?.image_urls.orEmpty().filter { it.isNotBlank() }
-            if (urls.isNotEmpty()) urls
-            else place.galleryModels(defaultPlaceDetailGallery())
-        }
+    // 갤러리: 백엔드 image_urls 가 1개 이상 있을 때만 표시. URL 없으면 사진 영역 자체를 숨김.
+    val imageModels = remember(backend, place.id, heroPhotoAllowed) {
+        if (!heroPhotoAllowed) emptyList<Any>()
+        else backend?.image_urls.orEmpty().filter { it.isNotBlank() }
     }
-    val pagerState = if (hasHeroPhoto) rememberPagerState(pageCount = { imageModels.size.coerceAtLeast(1) }) else null
+    val hasHeroPhoto = heroPhotoAllowed && imageModels.isNotEmpty()
+    val pagerState = if (hasHeroPhoto) rememberPagerState(pageCount = { imageModels.size }) else null
     var fullscreenOpen by remember { mutableStateOf(false) }
 
     val bookmark = rememberDetailBookmark(
