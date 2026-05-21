@@ -354,7 +354,9 @@ private fun PlaceDetailContent(
             if (place.phone.isNotBlank()) DetailInfoLine(Icons.Rounded.Phone, "전화", place.phone)
             if (!isRestroom && place.floor.isNotBlank())
                 DetailInfoLine(Icons.Rounded.Store, "매장 층수", place.floor)
-            if (place.parking.isNotBlank()) DetailInfoLine(Icons.Rounded.LocalParking, "주차 가능 여부", place.parking)
+            val showParking = place.parking.isNotBlank() &&
+                categoryKey !in setOf("prayer_room", "prayer", "lockers", "locker", "restroom", "public_restroom", "subway", "subway_station")
+            if (showParking) DetailInfoLine(Icons.Rounded.LocalParking, "주차 가능 여부", place.parking)
             if (!isSubway && !isRestroom && place.website.isNotBlank())
                 DetailInfoLine(Icons.Rounded.Language, "웹사이트", place.website)
             // 화장실 카테고리 — 칸 수 / 편의시설 / 안전시설 (피그마 상세-매장(화장실))
@@ -620,6 +622,10 @@ private fun PlaceDetailResponse.mergeOnto(fallback: Place?, categoryKey: String)
         if (details["has_emergency_bell"] as? Boolean == true) add("비상벨")
     }
 
+    // conveniences 배열에 "주차" 포함 시 → "가능"
+    val conveniences = (details["conveniences"] as? List<*>)?.filterIsInstance<String>() ?: emptyList()
+    val parkingValue = if (conveniences.any { it.contains("주차") }) "가능" else ""
+
     // 소개 — 할랄 식당: short_description_ko / naver scraper: intro / 기도실: notes.
     val backendDesc = (details["short_description_ko"] as? String)?.trim().orEmpty()
         .ifBlank { (details["intro"] as? String)?.trim().orEmpty() }
@@ -656,6 +662,7 @@ private fun PlaceDetailResponse.mergeOnto(fallback: Place?, categoryKey: String)
         toiletFemale = toiletFemale.ifBlank { base.toiletFemale },
         facilityTags = if (facilityList.isNotEmpty()) facilityList.joinToString(", ") else base.facilityTags,
         safetyTags   = if (safetyList.isNotEmpty())   safetyList.joinToString(", ")   else base.safetyTags,
+        parking      = parkingValue.ifBlank { base.parking },
     )
 }
 
