@@ -9,11 +9,12 @@ DEFAULT_RADIUS = 50000  # meters
 
 
 async def vegan_restaurant_search(
-    lat: float, lng: float, radius: int = 0, vegan_level: str = ""
+    lat: float, lng: float, radius: int = 0, vegan_level: str = "", category_key: str = ""
 ) -> list:
     """
     vegan_restaurants 테이블(PostGIS) 거리 검색.
-    vegan_level: "채식전문" / "채식가능" / "" (전체)
+    vegan_level:  "채식전문" / "채식가능" / "" (전체)
+    category_key: "restaurant" / "cafe" / "" (전체)
     Returns: 거리순 상위 20개 list[dict]
     """
     from core.db import get_pool
@@ -25,7 +26,7 @@ async def vegan_restaurant_search(
     async with pool.acquire() as conn:
         rows = await conn.fetch(
             """
-            SELECT id, store_name, category, addr, phone,
+            SELECT id, store_name, category, category_key, addr, phone,
                    details::text AS details,
                    open_hours, floor,
                    lat, lng,
@@ -33,10 +34,11 @@ async def vegan_restaurant_search(
             FROM vegan_restaurants
             WHERE ST_DWithin(geom, ST_SetSRID(ST_MakePoint($2, $1), 4326)::geography, $3)
               AND ($4 = '' OR details->>'vegan_level' = $4)
+              AND ($5 = '' OR category_key = $5)
             ORDER BY dist
             LIMIT 20
             """,
-            float(lat), float(lng), float(radius), vegan_level,
+            float(lat), float(lng), float(radius), vegan_level, category_key,
         )
 
     results = []
@@ -46,6 +48,7 @@ async def vegan_restaurant_search(
             "vegan_id":    r["id"],
             "name":        r["store_name"] or "",
             "category":    r["category"] or "",
+            "category_key": r["category_key"] or "",
             "address":     r["addr"] or "",
             "phone":       r["phone"] or "",
             "lat":         float(r["lat"]) if r["lat"] is not None else None,

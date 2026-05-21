@@ -192,10 +192,8 @@ fun ArNavigationMapScreen(
             destinationPill = {
                 // 도착 시: 파란 "X 안내 중" → 초록 "X 도착" (Figma 디자인)
                 ArNavDestinationPill(
-                    text = if (navUiState.isArrived)
-                        "$displayDestinationName 도착"
-                    else
-                        "$displayDestinationName 안내 중",
+                    text = displayDestinationName,
+                    suffix = if (navUiState.isArrived) "도착" else "안내 중",
                     containerColor = if (navUiState.isArrived)
                         ScanPangColors.Success
                     else

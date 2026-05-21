@@ -486,6 +486,7 @@ private fun SearchResultsBody(
                     category = r.category,
                     distance = r.distance,
                     isOpen = r.isOpen,
+                    halalType = r.halalType,
                     onClick = { onRowClick(row) },
                 )
             }
@@ -503,6 +504,7 @@ private data class ResultItem(
     val category: String,
     val distance: String,
     val isOpen: Boolean,
+    val halalType: String? = null,
 )
 
 private data class ResultRow(
@@ -510,6 +512,35 @@ private data class ResultRow(
     val item: ResultItem,
     val detailRoute: String,
 )
+
+@Composable
+private fun SearchHalalCategoryChip(label: String) {
+    val (bg, fg) = when (label) {
+        "HALAL MEAT"  -> ScanPangColors.HalalMeatBadgeBackground  to ScanPangColors.HalalMeatBadgeText
+        "SEAFOOD"     -> ScanPangColors.SeafoodBadgeBackground     to ScanPangColors.Primary
+        "VEGGIE"      -> ScanPangColors.VeggieBadgeBackground      to ScanPangColors.VeggieBadgeText
+        "SALAM SEOUL" -> ScanPangColors.SalamSeoulBadgeBackground  to ScanPangColors.SalamSeoulBadgeText
+        else          -> ScanPangColors.HalalMeatBadgeBackground   to ScanPangColors.HalalMeatBadgeText
+    }
+    Box(
+        modifier = Modifier
+            .clip(ScanPangShapes.badge6)
+            .border(ScanPangDimens.borderHairline, ScanPangColors.OutlineSubtle, ScanPangShapes.badge6)
+            .background(bg)
+            .padding(
+                horizontal = ScanPangDimens.trustChipHorizontal,
+                vertical   = ScanPangDimens.trustChipVertical,
+            ),
+    ) {
+        Text(
+            text = label,
+            style = ScanPangType.badge9SemiBold,
+            color = fg,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+    }
+}
 
 // category_key (영어) → 화면 표시용 한국어 라벨. 백엔드가 한국어 category 를 같이 보내주면
 // 그걸 우선 쓰고, 비었을 때 이 맵으로 fallback.
@@ -563,6 +594,7 @@ private fun SearchResultItem.toResultRow(): ResultRow {
             category = secondary,
             distance = formatDistance(distance_m),
             isOpen = is_open_now == true,
+            halalType = halal_type?.takeIf { it.isNotBlank() },
         ),
         detailRoute = AppRoutes.placeDetailRoute(category_key ?: "", id),
     )
@@ -576,6 +608,7 @@ private fun SearchResultSimpleCard(
     isOpen: Boolean,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
+    halalType: String? = null,
 ) {
     Row(
         modifier = modifier
@@ -603,22 +636,26 @@ private fun SearchResultSimpleCard(
                 horizontalArrangement = Arrangement.spacedBy(ScanPangDimens.stackGap6),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Box(
-                    modifier = Modifier
-                        .clip(ScanPangShapes.badge6)
-                        .background(ScanPangColors.PrimarySoft)
-                        .padding(
-                            horizontal = ScanPangDimens.cuisineBadgeHorizontal,
-                            vertical = ScanPangDimens.badgePadVertical,
-                        ),
-                ) {
-                    Text(
-                        text = category,
-                        style = ScanPangType.badge9SemiBold,
-                        color = ScanPangColors.Primary,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
+                if (!halalType.isNullOrBlank()) {
+                    SearchHalalCategoryChip(label = halalType)
+                } else {
+                    Box(
+                        modifier = Modifier
+                            .clip(ScanPangShapes.badge6)
+                            .background(ScanPangColors.PrimarySoft)
+                            .padding(
+                                horizontal = ScanPangDimens.cuisineBadgeHorizontal,
+                                vertical = ScanPangDimens.badgePadVertical,
+                            ),
+                    ) {
+                        Text(
+                            text = category,
+                            style = ScanPangType.badge9SemiBold,
+                            color = ScanPangColors.Primary,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
                 }
                 Text(
                     text = distance,

@@ -199,8 +199,8 @@ pip install -r requirements.txt
 # 최초 1회: ChromaDB 구축 (buildings 폴리곤은 Supabase PostGIS 에 이미 적재됨)
 python -m rag.build_place_db
 
-# 서버 실행
-python -m uvicorn main:app --host 0.0.0.0 --port 8000 --timeout-keep-alive 120
+# 서버 실행 (--reload: .py 파일 변경 시 자동 재시작 — git pull 즉시 반영)
+python -m uvicorn main:app --host 0.0.0.0 --port 8000 --timeout-keep-alive 120 --reload
 ```
 
 Swagger UI: http://localhost:8000/docs
