@@ -1032,8 +1032,10 @@ fun ArExploreScreen(
 
             selectedStore?.let { store ->
                 // 매장 선택 시 백엔드 풀필드(category·is_open_now·...) 받아오기.
-                // place_id 미상이라 빈 문자열 — 백엔드 outdoor 시나리오로 처리됨.
-                LaunchedEffect(store) { viewModel.queryStore(placeId = "", storeName = store) }
+                // 건물 ufid 를 place_id 로 전달 — store_details cache key 일관성.
+                // selectedPoiOverlay 가 우선(층별탭 시나리오), 없으면 placeResult.
+                val placeUfid = (selectedPoiOverlay?.ufid ?: placeResult?.ar_overlay?.ufid).orEmpty()
+                LaunchedEffect(store) { viewModel.queryStore(placeId = placeUfid, storeName = store) }
                 val s = storeResult?.takeIf { it.store_name == store }
                 ArFloorStoreGuideOverlay(
                     storeName = store,

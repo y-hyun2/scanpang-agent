@@ -38,6 +38,10 @@ class ArOverlay(BaseModel):
     # AR 건물 floating 패널의 chip 표시용. 비건/할랄 정보처럼 단순 문자열.
     address: str = ""
     phone: str = ""
+    # store_details cache key 의 building 파트. frontend 가 층별 매장 탭 시
+    # /place/store(place_id=ufid) 호출 → store_details row 의 place_id 가
+    # 일관되게 채워져 fetcher 결과가 동일 행에 누적된다.
+    ufid: str = ""
     is_estimated: bool = False
     status: Literal["partial", "ready"] = "ready"
     floor_info_loading: bool = False

@@ -331,7 +331,10 @@ fun ArNavigationMapScreen(
         }
 
         selectedStore?.let { store ->
-            LaunchedEffect(store) { viewModel.queryStore(placeId = "", storeName = store) }
+            // place_id 에 건물 ufid 전달 — store_details cache key 일관성 유지.
+            // ufid 없으면(raycast 실패 등) 빈 문자열 fallback (outdoor 시나리오).
+            val placeUfid = placeResult?.ar_overlay?.ufid.orEmpty()
+            LaunchedEffect(store) { viewModel.queryStore(placeId = placeUfid, storeName = store) }
             val s = storeResult?.takeIf { it.store_name == store }
             ArFloorStoreGuideOverlay(
                 storeName = store,

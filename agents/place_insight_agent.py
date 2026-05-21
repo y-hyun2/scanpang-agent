@@ -138,7 +138,7 @@ async def run_place_insight_agent(req: PlaceRequest) -> dict:
         # 3) cache miss → 백그라운드 파이프라인 트리거
         if not place_data and ufid:
             _trigger_background_pipeline(ufid)
-            return _partial_response(bld_name_from_vworld)
+            return _partial_response(bld_name_from_vworld, ufid)
 
         # 4) cache hit — 오래된 데이터면 백그라운드 갱신 예약
         if place_data and ufid and _is_stale(place_data.get("last_updated")):
@@ -197,6 +197,7 @@ async def run_place_insight_agent(req: PlaceRequest) -> dict:
         "admission_fee":     place_data.get("admission_fee", ""),
         "address":           place_data.get("addr", ""),
         "phone":             place_data.get("phone", ""),
+        "ufid":              place_data.get("ufid", "") or (vworld_meta.get("ufid", "") if vworld_meta else ""),
         "is_estimated":      False,
         "status":            "ready",
         "floor_info_loading": False,
@@ -242,7 +243,7 @@ def _trigger_background_pipeline(ufid: str) -> None:
         print(f"[place_insight] worker enqueue 실패 (무시): {e}")
 
 
-def _partial_response(name: str) -> dict:
+def _partial_response(name: str, ufid: str = "") -> dict:
     return {
         "ar_overlay": {
             "name":              name,
@@ -257,6 +258,7 @@ def _partial_response(name: str) -> dict:
             "admission_fee":     "",
             "address":           "",
             "phone":             "",
+            "ufid":              ufid,
             "is_estimated":      True,
             "status":            "partial",
             "floor_info_loading": True,

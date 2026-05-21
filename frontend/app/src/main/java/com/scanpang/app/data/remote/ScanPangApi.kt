@@ -185,6 +185,9 @@ data class ArOverlay(
     // AR 건물 floating 패널의 chip 표시용 — 주소·전화 chip 렌더링.
     val address: String = "",
     val phone: String = "",
+    // store_details cache key 의 building 파트. 층별 매장 탭 → /place/store
+    // 호출 시 place_id 로 전달해야 store_details row 의 place_id 가 일관됨.
+    val ufid: String = "",
     val is_estimated: Boolean = false,
 )
 

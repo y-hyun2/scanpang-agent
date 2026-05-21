@@ -196,6 +196,11 @@ async def get_store_detail(
     # fetcher 결과가 비어있으면 Kakao 1차 메타로 fallback
     phone      = fetched.get("phone")      or kakao.get("phone", "")
     addr       = fetched.get("addr")       or kakao.get("addr", "")
+    # Kakao 1차에서 매장이 안 잡혀 category_name 이 빈 경우, fetcher(naver_place)
+    # 결과의 category 로 보강. 안 보강하면 store_details.category 가 영구히 빈
+    # 채로 캐싱돼서 AR overlay 칩이 사라짐.
+    if not category_name:
+        category_name = fetched.get("category", "") or ""
     # homepage 소셜 URL 필터 — 인스타·블로그는 제외.
     # fetcher 결과가 없거나 소셜이면 빈 값으로 둔다 (Kakao place_url 은 매장 공식
     # 홈페이지가 아니라 Kakao 자체 매장 페이지라 의미 없음 → fallback 제거).
