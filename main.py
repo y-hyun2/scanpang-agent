@@ -26,6 +26,15 @@ from schemas.user import (
 from tools.open_hours_parser import is_open_now_combined as _is_open_now_combined
 import json as _json
 from datetime import datetime, timedelta, timezone
+
+
+def _parse_jsonb_list(val) -> list:
+    if val is None:
+        return []
+    if isinstance(val, list):
+        return val
+    parsed = _json.loads(val)
+    return _json.loads(parsed) if isinstance(parsed, str) else parsed
 from rag.automation.worker import start_worker, stop_worker
 from core.db import get_pool, close_pool
 from api.h3_buildings import router as h3_buildings_router
@@ -138,8 +147,8 @@ async def user_preferences_upsert(req: UserPreferencesUpsertRequest):
         display_name=row["display_name"],
         language=row["language"],
         value_added=row["value_added"],
-        saved_places=_json.loads(row["saved_places"] or "[]"),
-        search_history=_json.loads(row["search_history"] or "[]"),
+        saved_places=_parse_jsonb_list(row["saved_places"]),
+        search_history=_parse_jsonb_list(row["search_history"]),
     )
 
 
@@ -164,8 +173,8 @@ async def user_preferences_get(user_id: str):
         display_name=row["display_name"],
         language=row["language"],
         value_added=row["value_added"],
-        saved_places=_json.loads(row["saved_places"] or "[]"),
-        search_history=_json.loads(row["search_history"] or "[]"),
+        saved_places=_parse_jsonb_list(row["saved_places"]),
+        search_history=_parse_jsonb_list(row["search_history"]),
     )
 
 
@@ -277,7 +286,7 @@ async def restaurant_detail(req: RestaurantDetailRequest):
     return result
 
 
-_OUTDOOR_CATEGORIES = {"restroom", "subway", "locker", "prayer_room", "halal_restaurant", "vegan_restaurant", "vegan_cafe"}
+_OUTDOOR_CATEGORIES = {"restroom", "subway", "locker", "prayer_room", "halal_restaurant", "vegan_restaurant", "vegan_cafe", "accommodation", "tourist", "cultural"}
 
 
 def _vegan_category_label(vegan_level: str, category_key: str) -> str:
@@ -342,6 +351,10 @@ async def _outdoor_search(category_key: str, req: SearchRequest) -> SearchRespon
             }
             for r in raw
         ]
+    elif category_key == "accommodation":
+        return await _accommodation_search(req, lat, lng)
+    elif category_key in ("tourist", "cultural"):
+        return await _tourist_search(req, lat, lng)
     else:
         rows = []
 
@@ -729,6 +742,181 @@ async def _prayer_detail(room_id: str) -> PlaceDetailResponse:
     )
 
 
+async def _accommodation_search(req: SearchRequest, lat: float, lng: float) -> SearchResponse:
+    """accommodation_places 테이블 거리 정렬 검색."""
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        rows = await conn.fetch(
+            """
+            SELECT id, name_ko, category, addr, phone, lat, lng, open_hours, image_url,
+                   CASE
+                     WHEN lat IS NOT NULL AND lng IS NOT NULL THEN
+                       ST_Distance(
+                         ST_SetSRID(ST_MakePoint(lng, lat), 4326)::geography,
+                         ST_SetSRID(ST_MakePoint($2::float, $3::float), 4326)::geography
+                       )
+                     ELSE NULL
+                   END AS dist_m
+            FROM accommodation_places
+            ORDER BY dist_m NULLS LAST, last_updated DESC NULLS LAST
+            LIMIT $1
+            """,
+            req.limit, lng, lat,
+        )
+    results = [
+        SearchResultItem(
+            id=r["id"],
+            store_name=r["name_ko"] or "",
+            category=r["category"] or "숙박",
+            category_key="accommodation",
+            addr=r["addr"] or "",
+            phone=r["phone"] or "",
+            lat=r["lat"],
+            lng=r["lng"],
+            image_url=r["image_url"] or None,
+            distance_m=round(float(r["dist_m"]), 1) if r["dist_m"] is not None else None,
+            is_open_now=_is_open_now_combined(r["open_hours"] or "", None),
+        )
+        for r in rows
+    ]
+    return SearchResponse(query=req.query, count=len(results), results=results)
+
+
+async def _tourist_search(req: SearchRequest, lat: float, lng: float) -> SearchResponse:
+    """tourist_places 테이블 거리 정렬 검색 (관광지 + 문화시설 통합)."""
+    from tools.category_classifier import classify_category
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        rows = await conn.fetch(
+            """
+            SELECT id, name_ko, category, addr, phone, lat, lng, open_hours, image_url,
+                   CASE
+                     WHEN lat IS NOT NULL AND lng IS NOT NULL THEN
+                       ST_Distance(
+                         ST_SetSRID(ST_MakePoint(lng, lat), 4326)::geography,
+                         ST_SetSRID(ST_MakePoint($2::float, $3::float), 4326)::geography
+                       )
+                     ELSE NULL
+                   END AS dist_m
+            FROM tourist_places
+            ORDER BY dist_m NULLS LAST, last_updated DESC NULLS LAST
+            LIMIT $1
+            """,
+            req.limit, lng, lat,
+        )
+    results = []
+    for r in rows:
+        key = classify_category(r["category"] or "", r["name_ko"] or "")
+        if key not in ("tourist", "cultural"):
+            key = "tourist"
+        results.append(
+            SearchResultItem(
+                id=r["id"],
+                store_name=r["name_ko"] or "",
+                category=r["category"] or "관광지",
+                category_key=key,
+                addr=r["addr"] or "",
+                phone=r["phone"] or "",
+                lat=r["lat"],
+                lng=r["lng"],
+                image_url=r["image_url"] or None,
+                distance_m=round(float(r["dist_m"]), 1) if r["dist_m"] is not None else None,
+                is_open_now=_is_open_now_combined(r["open_hours"] or "", None),
+            )
+        )
+    return SearchResponse(query=req.query, count=len(results), results=results)
+
+
+async def _accommodation_detail(acc_id: str) -> PlaceDetailResponse:
+    """accommodation_places 테이블 1건 → PlaceDetailResponse."""
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        row = await conn.fetchrow(
+            """
+            SELECT id, kakao_id, name_ko, lat, lng, addr, phone, category,
+                   overview, image_url, homepage, open_hours, closed_days,
+                   parking_info, admission_fee, place_url, source, last_updated
+            FROM accommodation_places WHERE id = $1
+            """,
+            acc_id,
+        )
+    if row is None:
+        raise HTTPException(status_code=404, detail=f"숙박업소 '{acc_id}' 없음")
+    open_hours = row["open_hours"] or ""
+    return PlaceDetailResponse(
+        id=row["id"],
+        store_name=row["name_ko"] or "",
+        place_id=row["kakao_id"] or None,
+        lat=float(row["lat"]) if row["lat"] is not None else None,
+        lng=float(row["lng"]) if row["lng"] is not None else None,
+        category=row["category"] or "숙박",
+        category_key="accommodation",
+        addr=row["addr"] or "",
+        phone=row["phone"] or "",
+        floor=None,
+        homepage=row["homepage"] or None,
+        place_url=row["place_url"] or None,
+        open_hours=open_hours,
+        closed_days=row["closed_days"] or None,
+        is_open_now=_is_open_now_combined(open_hours, None),
+        image_urls=[row["image_url"]] if row["image_url"] else [],
+        details={
+            "overview":      row["overview"] or "",
+            "parking_info":  row["parking_info"] or "",
+            "admission_fee": row["admission_fee"] or "",
+        },
+        source=row["source"] or "accommodation_places",
+        last_updated=row["last_updated"].isoformat() if row["last_updated"] else None,
+    )
+
+
+async def _tourist_detail(tourist_id: str) -> PlaceDetailResponse:
+    """tourist_places 테이블 1건 → PlaceDetailResponse."""
+    from tools.category_classifier import classify_category
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        row = await conn.fetchrow(
+            """
+            SELECT id, kakao_id, name_ko, lat, lng, addr, phone, category,
+                   overview, image_url, homepage, open_hours, closed_days,
+                   parking_info, admission_fee, place_url, source, last_updated
+            FROM tourist_places WHERE id = $1
+            """,
+            tourist_id,
+        )
+    if row is None:
+        raise HTTPException(status_code=404, detail=f"관광지/문화시설 '{tourist_id}' 없음")
+    key = classify_category(row["category"] or "", row["name_ko"] or "")
+    if key not in ("tourist", "cultural"):
+        key = "tourist"
+    open_hours = row["open_hours"] or ""
+    return PlaceDetailResponse(
+        id=row["id"],
+        store_name=row["name_ko"] or "",
+        place_id=row["kakao_id"] or None,
+        lat=float(row["lat"]) if row["lat"] is not None else None,
+        lng=float(row["lng"]) if row["lng"] is not None else None,
+        category=row["category"] or "관광지",
+        category_key=key,
+        addr=row["addr"] or "",
+        phone=row["phone"] or "",
+        floor=None,
+        homepage=row["homepage"] or None,
+        place_url=row["place_url"] or None,
+        open_hours=open_hours,
+        closed_days=row["closed_days"] or None,
+        is_open_now=_is_open_now_combined(open_hours, None),
+        image_urls=[row["image_url"]] if row["image_url"] else [],
+        details={
+            "overview":      row["overview"] or "",
+            "parking_info":  row["parking_info"] or "",
+            "admission_fee": row["admission_fee"] or "",
+        },
+        source=row["source"] or "tourist_places",
+        last_updated=row["last_updated"].isoformat() if row["last_updated"] else None,
+    )
+
+
 @app.post("/place/detail", response_model=PlaceDetailResponse)
 async def place_detail(req: PlaceDetailRequest):
     """
@@ -736,7 +924,8 @@ async def place_detail(req: PlaceDetailRequest):
     - `restroom__{mng_no}` → public_restrooms 테이블
     - `halal__{restaurant_id}` → halal_restaurants 테이블
     - `prayer__{room_id}` → prayer_rooms 테이블
-    - `tourist__{ufid}` → store_details 테이블 (import_tourist_places.py 배치 적재)
+    - `accommodation__{kakao_id}` → accommodation_places 테이블
+    - `tourist__{kakao_id}` → tourist_places 테이블
     - 그 외 → store_details 테이블 (건물 내 매장 캐시)
     """
     # outdoor 라우팅
@@ -748,6 +937,10 @@ async def place_detail(req: PlaceDetailRequest):
         return await _vegan_detail(req.id[len("vegan__"):])
     if req.id.startswith("prayer__"):
         return await _prayer_detail(req.id[len("prayer__"):])
+    if req.id.startswith("accommodation__"):
+        return await _accommodation_detail(req.id)
+    if req.id.startswith("tourist__"):
+        return await _tourist_detail(req.id)
 
     pool = await get_pool()
     async with pool.acquire() as conn:

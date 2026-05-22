@@ -1197,10 +1197,9 @@ fun ArExploreScreen(
                             ArFilteredStoreListOverlay(
                                 poi = poi,
                                 onStoreClick = { store ->
+                                    selectedPoiOverlay = poi.arOverlay
+                                    selectedStore = store.store_name
                                     storeListPoi = null
-                                    navController.navigate(
-                                        AppRoutes.placeDetailRoute(store.category_key ?: "other", store.id)
-                                    )
                                 },
                                 onDismiss = { storeListPoi = null },
                                 modifier = Modifier.fillMaxSize(),
