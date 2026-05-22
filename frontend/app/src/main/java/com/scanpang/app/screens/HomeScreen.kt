@@ -212,6 +212,8 @@ fun HomeScreen(
                 quickActions = quickActions,
                 recentlyViewed = recentlyViewed,
                 showMoreRecent = hasMoreRecent,
+                userLat = userLat,
+                userLng = userLng,
             )
         }
     }
@@ -228,6 +230,8 @@ private fun HomeTopSection(
     quickActions: List<HomeQuickAction>,
     recentlyViewed: List<RecentlyViewedEntry>,
     showMoreRecent: Boolean,
+    userLat: Double?,
+    userLng: Double?,
 ) {
     val greetingLine = if (!displayName.isNullOrBlank()) {
         "안녕하세요, ${displayName}님!"
