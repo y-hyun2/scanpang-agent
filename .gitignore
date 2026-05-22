@@ -14,3 +14,6 @@ rag/data/exchange_rates_cache.json
 
 # 런타임 로그 (스캔 이벤트, seed 결과 등)
 logs/
+
+# Claude Code 내부 상태 파일
+.claude/
