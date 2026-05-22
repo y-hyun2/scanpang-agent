@@ -30,6 +30,7 @@ import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
@@ -995,7 +996,7 @@ fun ArExploreScreen(
             // ── 하단 채팅 섹션 ──
             // 키보드가 올라와 있으면 imePadding() 이 이미 키보드 위로 위치를 맞춰주므로
             // 탭 바 여유분 padding 은 추가하지 않는다.
-            val imeVisible = WindowInsets.isImeVisible
+            val imeVisible = WindowInsets.ime.getBottom(LocalDensity.current) > 0
             Column(
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
