@@ -774,9 +774,7 @@ fun ArFloorStoreGuideOverlay(
     val heroPhotoAllowed = categoryKey !in setOf(
         "atm", "subway", "subway_station", "restroom", "public_restroom", "lockers", "locker",
     )
-    val canFullscreen = categoryKey in setOf(
-        "restaurant", "halal_restaurant", "tourist", "tourist_spot", "attraction",
-    )
+    val canFullscreen = heroPhotoAllowed
     val imageUrls = if (heroPhotoAllowed)
         (storeResult?.image_urls ?: emptyList()).filter { it.isNotBlank() }.take(6)
     else emptyList()

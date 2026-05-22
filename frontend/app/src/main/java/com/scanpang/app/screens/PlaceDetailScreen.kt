@@ -191,7 +191,7 @@ fun PlaceDetailScreen(
     val subwayDetail: SubwayDetail? = remember(backend) { backend?.toSubwayDetail() }
 
     val heroPhotoAllowed = categoryKey !in setOf("atm", "subway", "subway_station", "restroom", "public_restroom", "lockers", "locker")
-    val canFullscreen = categoryKey in setOf("restaurant", "halal_restaurant", "tourist", "tourist_spot", "attraction")
+    val canFullscreen = hasHeroPhoto
 
     // 갤러리: 백엔드 image_urls 가 1개 이상 있을 때만 표시. URL 없으면 사진 영역 자체를 숨김.
     val imageModels = remember(backend, place.id, heroPhotoAllowed) {
