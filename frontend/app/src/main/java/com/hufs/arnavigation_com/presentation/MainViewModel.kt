@@ -32,6 +32,47 @@ class MainViewModel(private val repository: RouteRepository) : ViewModel() {
     }
 
     /**
+     * Supabase 좌표를 이미 알고 있을 때 /navigation/search 를 건너뛰고 직접 경로 탐색.
+     * destLat/destLng 는 store_details 에 저장된 정확한 좌표.
+     */
+    fun fetchRouteWithCoords(
+        currentLng: String,
+        currentLat: String,
+        destination: String,
+        destLat: Double,
+        destLng: Double,
+    ) {
+        viewModelScope.launch {
+            val lat = currentLat.toDoubleOrNull() ?: return@launch
+            val lng = currentLng.toDoubleOrNull() ?: return@launch
+
+            Log.d("ScanPang_API", "🎯 좌표 직접 경로 탐색: [$destination] (${destLat}, ${destLng})")
+
+            val routeResult = repository.getRoute(
+                lat = lat,
+                lng = lng,
+                destination = DestinationInput(
+                    poi_id = "",
+                    pns_lat = destLat,
+                    pns_lon = destLng,
+                    name = destination,
+                ),
+                language = "ko",
+            )
+
+            val routeData = (routeResult as? NetworkResult.Success)?.data
+            if (routeData != null && routeData.ar_command != null) {
+                Log.d("ScanPang_API", "✅ 경로 수신: ${routeData.ar_command.total_distance_m}m")
+                _routeData.value = routeData
+            } else {
+                val errorMsg = (routeResult as? NetworkResult.Error)?.message ?: "경로 탐색 실패"
+                updateState(NavigationState.LOCALIZING)
+                _uiEvent.emit("경로 탐색 실패: $errorMsg")
+            }
+        }
+    }
+
+    /**
      * ScanPang 백엔드를 통한 경로 탐색.
      * 1단계: /navigation/search → LLM이 의도 파악 + 후보 추출
      * 2단계: /navigation/route → TMAP 경로 + LLM TTS 음성 안내

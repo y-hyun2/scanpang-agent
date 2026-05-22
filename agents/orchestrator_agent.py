@@ -20,15 +20,14 @@ from langchain_openai import ChatOpenAI
 from langgraph.graph import StateGraph, START, END
 from typing_extensions import TypedDict
 
-from agents.convenience_agent import run_convenience_agent
 from agents.halal_agent import run_halal_agent
-from agents.navigation_agent import run_search_agent, run_nav_guide_agent
-from agents.place_insight_agent import run_place_insight_agent
+from agents.navigation_agent import run_route_search, run_nav_guide_agent
+from agents.search_agent import run_search_agent
+from agents.place_insight_agent import run_place_chat_agent
 from core.session_store import get_session_store
 from schemas.convenience import ConvenienceRequest
 from schemas.halal import HalalRequest
 from schemas.navigation import NavRequest
-from schemas.place import PlaceRequest
 from schemas.session import ConversationTurn, SessionContext
 
 load_dotenv()
@@ -64,26 +63,33 @@ _INTENT_SYSTEM = """당신은 AR 관광 앱의 요청 라우터입니다. 사용
 한 줄로만 출력하세요.
 
 에이전트 설명:
-- place     : 현재 바라보는 건물/장소 정보 (건물명, 운영시간, 층별 매장, 관광지 설명)
+- place     : 관광지 / 랜드마크 / 지역·동네 일반 정보. 일반지식 기반 해설 응답.
+              예) "남산타워 언제 지어졌어?", "경복궁 설명해줘", "여기 어디야?(동네)", "명동은 어떤 곳이야?"
 - navigation: 특정 목적지로 이동 (경로 안내, 길 찾기) — "X로 가는 길", "X 어떻게 가"
 - nav_guide : AR 길안내 중 현재 경로/방향에 대한 질문 — "여기서 좌회전 맞아?", "다음 갈림길은?",
               "거의 다 왔어?", "남은 거리는?" 등. 사용자가 이미 길안내 중일 때만 선택 가능.
-- halal     : 이슬람 관련 모든 것 (기도 시간, 키블라, 할랄 식당, 기도실/무슬라)
-- convenience: 일반 편의시설 (ATM, 카페, 약국, 화장실, 환전소, 지하철, 주차장 등)
+- halal     : 무슬림 종교 정보 — 기도 시간(prayer_time), 키블라 방향(qibla) 만.
+              할랄 식당/기도실 검색은 convenience 로 라우팅한다.
+- convenience: 매장(상호명 포함) 및 모든 시설 검색 — 카페, 식당, ATM, 약국, 화장실,
+              환전소, 지하철, 주차장, 상점, 할랄 식당, 기도실 등.
+              (예: "이 매장 뭐 파는 곳이야?", "스타벅스 영업시간", "할랄 식당", "기도실 어디")
 
 핵심 구분 규칙:
-- 할랄 식당은 반드시 "halal" (convenience 아님)
-- 기도실/무슬라는 반드시 "halal"
-- 일반 식당/카페는 "convenience"
-- 건물 자체에 대한 질문(이게 뭐야, 여기 몇 층이야)은 "place"
+- 기도 시간 / 키블라 / 살라트 관련 질문 → "halal"
+- 할랄 식당, 무슬림 식당 → "convenience" (sub_category="halal_restaurant")
+- 기도실, 무슬라(Musalla), 예배실 → "convenience" (sub_category="prayer_room")
+- 일반 식당/카페/매장 검색 및 특정 매장(상호명) 정보 질문 → "convenience"
+- 관광지/랜드마크/지역·동네에 대한 질문 → "place"
+  (단, 매장/상점/특정 상호명이 들어가면 "convenience")
 - 새 목적지를 정하는 길 찾기는 "navigation"
 - 이미 진행 중인 길안내에 대한 질문(좌회전 맞아? 다음은? 얼마나 남았어?)은 "nav_guide"
 
 sub_category 값 (selected_agent 별):
-- halal       : "prayer_time" | "qibla" | "restaurant" | "prayer_room"
+- halal       : "prayer_time" | "qibla"
 - convenience : "cafe" | "restaurant" | "convenience_store" | "pharmacy" | "hospital" |
                 "bank" | "atm" | "shopping" | "parking" | "subway" | "tourist" |
-                "accommodation" | "cultural" | "exchange" | "restroom" | "locker"
+                "accommodation" | "cultural" | "exchange" | "restroom" | "locker" |
+                "halal_restaurant" | "prayer_room"
 - place / navigation : "" (빈 문자열)
 
 resolved_message 규칙:
@@ -96,10 +102,21 @@ resolved_message 규칙:
 아래 예시를 참고하세요."""
 
 _FEW_SHOTS = [
-    {"role": "user",      "content": '메시지: "이 건물 뭐야?"'},
-    {"role": "assistant", "content": '{"selected_agent": "place", "resolved_message": "이 건물 뭐야?", "sub_category": ""}'},
     {"role": "user",      "content": '메시지: "명동성당에 대해 설명해줘"'},
     {"role": "assistant", "content": '{"selected_agent": "place", "resolved_message": "명동성당에 대해 설명해줘", "sub_category": ""}'},
+    {"role": "user",      "content": '메시지: "남산타워 언제 지어졌어?"'},
+    {"role": "assistant", "content": '{"selected_agent": "place", "resolved_message": "남산타워 언제 지어졌어?", "sub_category": ""}'},
+    {"role": "user",      "content": '메시지: "여기 무슨 동네야?"'},
+    {"role": "assistant", "content": '{"selected_agent": "place", "resolved_message": "여기 무슨 동네야?", "sub_category": ""}'},
+    {"role": "user",      "content": '메시지: "경복궁 역사 알려줘"'},
+    {"role": "assistant", "content": '{"selected_agent": "place", "resolved_message": "경복궁 역사 알려줘", "sub_category": ""}'},
+    # 매장(상호명) 발화 — place 아니라 convenience
+    {"role": "user",      "content": '메시지: "이 매장 뭐 파는 곳이야?"'},
+    {"role": "assistant", "content": '{"selected_agent": "convenience", "resolved_message": "이 매장 뭐 파는 곳이야?", "sub_category": "shopping"}'},
+    {"role": "user",      "content": '메시지: "스타벅스 영업시간 알려줘"'},
+    {"role": "assistant", "content": '{"selected_agent": "convenience", "resolved_message": "스타벅스 영업시간 알려줘", "sub_category": "cafe"}'},
+    {"role": "user",      "content": '메시지: "올리브영 어디 있어?"'},
+    {"role": "assistant", "content": '{"selected_agent": "convenience", "resolved_message": "올리브영 어디 있어?", "sub_category": "shopping"}'},
     {"role": "user",      "content": '이전 대화:\nuser: 눈스퀘어 뭐야?\nassistant: 눈스퀘어는 명동 쇼핑몰입니다.\n\n메시지: "거기 어떻게 가?"'},
     {"role": "assistant", "content": '{"selected_agent": "navigation", "resolved_message": "눈스퀘어 어떻게 가?", "sub_category": ""}'},
     {"role": "user",      "content": '메시지: "명동역으로 길 안내해줘"'},
@@ -120,11 +137,13 @@ _FEW_SHOTS = [
     {"role": "user",      "content": '메시지: "키블라 방향이 어디야?"'},
     {"role": "assistant", "content": '{"selected_agent": "halal", "resolved_message": "키블라 방향이 어디야?", "sub_category": "qibla"}'},
     {"role": "user",      "content": '메시지: "할랄 식당 어디 있어?"'},
-    {"role": "assistant", "content": '{"selected_agent": "halal", "resolved_message": "할랄 식당 어디 있어?", "sub_category": "restaurant"}'},
+    {"role": "assistant", "content": '{"selected_agent": "convenience", "resolved_message": "할랄 식당 어디 있어?", "sub_category": "halal_restaurant"}'},
     {"role": "user",      "content": '메시지: "무슬림 음식 추천해줘"'},
-    {"role": "assistant", "content": '{"selected_agent": "halal", "resolved_message": "무슬림 음식 추천해줘", "sub_category": "restaurant"}'},
+    {"role": "assistant", "content": '{"selected_agent": "convenience", "resolved_message": "무슬림 음식 추천해줘", "sub_category": "halal_restaurant"}'},
     {"role": "user",      "content": '메시지: "기도실 어디야?"'},
-    {"role": "assistant", "content": '{"selected_agent": "halal", "resolved_message": "기도실 어디야?", "sub_category": "prayer_room"}'},
+    {"role": "assistant", "content": '{"selected_agent": "convenience", "resolved_message": "기도실 어디야?", "sub_category": "prayer_room"}'},
+    {"role": "user",      "content": '메시지: "무슬라 가까운 데 있나?"'},
+    {"role": "assistant", "content": '{"selected_agent": "convenience", "resolved_message": "무슬라 가까운 데 있나?", "sub_category": "prayer_room"}'},
     {"role": "user",      "content": '메시지: "근처 ATM 찾아줘"'},
     {"role": "assistant", "content": '{"selected_agent": "convenience", "resolved_message": "근처 ATM 찾아줘", "sub_category": "atm"}'},
     {"role": "user",      "content": '메시지: "카페 추천해줘"'},
@@ -200,15 +219,15 @@ def _sub_message(state: OrchestratorState) -> str:
 
 
 async def _call_place_node(state: OrchestratorState) -> dict:
-    req = PlaceRequest(
-        heading=state.get("user_heading", 0.0),
-        user_lat=state["user_lat"],
-        user_lng=state["user_lng"],
-        user_message=_sub_message(state),
+    # 채팅 흐름은 ufid 가 없으므로 LLM 일반지식 기반 chat 진입점 사용.
+    # 매장(상호명) 발화는 intent_classifier 가 convenience 로 라우팅한다.
+    result = await run_place_chat_agent(
+        message=_sub_message(state),
+        lat=state["user_lat"],
+        lng=state["user_lng"],
         language=state.get("language", "ko"),
     )
-    result = await run_place_insight_agent(req)
-    return {"sub_agent_response": result if isinstance(result, dict) else result.model_dump()}
+    return {"sub_agent_response": result}
 
 
 async def _call_navigation_node(state: OrchestratorState) -> dict:
@@ -217,7 +236,7 @@ async def _call_navigation_node(state: OrchestratorState) -> dict:
         lat=state["user_lat"],
         lng=state["user_lng"],
     )
-    result = await run_search_agent(req)
+    result = await run_route_search(req)
     return {"sub_agent_response": result if isinstance(result, dict) else result.model_dump()}
 
 
@@ -247,7 +266,7 @@ async def _call_halal_node(state: OrchestratorState) -> dict:
 
 
 async def _call_convenience_node(state: OrchestratorState) -> dict:
-    # category 가 채워져 있으면 convenience_agent 의 _extract_category_and_language
+    # category 가 채워져 있으면 search_agent 의 _extract_category_and_language
     # (LLM #2) 호출 스킵.
     req = ConvenienceRequest(
         category=state.get("sub_category", ""),
@@ -256,7 +275,7 @@ async def _call_convenience_node(state: OrchestratorState) -> dict:
         lng=state["user_lng"],
         language=state.get("language", "ko"),
     )
-    result = await run_convenience_agent(req)
+    result = await run_search_agent(req)
     return {"sub_agent_response": result if isinstance(result, dict) else result.model_dump()}
 
 

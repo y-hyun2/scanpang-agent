@@ -29,6 +29,7 @@ import com.scanpang.app.components.ar.ArAgentChatMessage
 import com.scanpang.app.data.remote.ScanPangViewModel
 import androidx.compose.ui.Modifier
 import androidx.navigation.NavController
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import com.scanpang.app.components.ar.ArNavCompass
 import com.scanpang.app.components.ar.ArNavMiniMap
@@ -68,6 +69,9 @@ fun ArNavigationMapScreen(
     modifier: Modifier = Modifier,
     viewModel: ScanPangViewModel = viewModel(),
     destinationName: String = "",
+    /** Supabase에서 가져온 정확한 목적지 좌표. null이면 /navigation/search 단계를 거침. */
+    destinationLat: Double? = null,
+    destinationLng: Double? = null,
 ) {
     val appContext = LocalContext.current
     val appSettingsPrefs = remember { AppSettingsPreferences(appContext) }
@@ -137,6 +141,13 @@ fun ArNavigationMapScreen(
     var showStopNavSheet by remember { mutableStateOf(false) }
     var showStopConfirmDialog by remember { mutableStateOf(false) }
 
+    LaunchedEffect(navUiState.isArrived) {
+        if (navUiState.isArrived) {
+            delay(2000L)
+            showStopNavSheet = true
+        }
+    }
+
     BackHandler(enabled = showStopConfirmDialog) {
         showStopConfirmDialog = false
     }
@@ -159,6 +170,8 @@ fun ArNavigationMapScreen(
         ArRealSceneView(
             modifier = Modifier.fillMaxSize(),
             targetDestination = destinationName,
+            targetLat = destinationLat,
+            targetLng = destinationLng,
             onPoseUpdate = { lat, lng, heading, _, _ ->
                 userLat = lat
                 userLng = lng

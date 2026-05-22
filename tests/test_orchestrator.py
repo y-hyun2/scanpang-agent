@@ -112,7 +112,7 @@ async def test_orchestrator_routes_to_navigation():
     with (
         patch("agents.orchestrator_agent.classify_intent",
               AsyncMock(return_value="navigation")),
-        patch("agents.orchestrator_agent.run_search_agent",
+        patch("agents.orchestrator_agent.run_route_search",
               AsyncMock(return_value=_sub_agent_mock("명동역 방향으로 안내합니다."))),
     ):
         result = await run_orchestrator("명동역 어떻게 가?", 37.56, 126.98)
@@ -146,7 +146,7 @@ async def test_orchestrator_routes_to_convenience():
     with (
         patch("agents.orchestrator_agent.classify_intent",
               AsyncMock(return_value="convenience")),
-        patch("agents.orchestrator_agent.run_convenience_agent",
+        patch("agents.orchestrator_agent.run_search_agent",
               AsyncMock(return_value=_sub_agent_mock("근처 ATM이 2곳 있습니다."))),
     ):
         result = await run_orchestrator("근처 ATM 찾아줘", 37.56, 126.98)
@@ -184,7 +184,7 @@ async def test_orchestrator_session_id_passthrough():
     with (
         patch("agents.orchestrator_agent.classify_intent",
               AsyncMock(return_value="convenience")),
-        patch("agents.orchestrator_agent.run_convenience_agent",
+        patch("agents.orchestrator_agent.run_search_agent",
               AsyncMock(return_value=_sub_agent_mock("화장실 안내"))),
     ):
         result = await run_orchestrator("화장실 어디야?", 37.56, 126.98)
