@@ -59,7 +59,7 @@ import io.github.sceneview.rememberViewNodeManager
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
-private data class NavBuildingPin(val id: String, val name: String, val lat: Double, val lng: Double, val ufid: String?)
+private data class NavBuildingPin(val id: String, val name: String, val lat: Double, val lng: Double, val ufid: String?, val distanceM: Float = 0f, val category: String = "")
 
 private data class NavBuildingCandidate(
     val building: Building,
@@ -431,7 +431,7 @@ fun ArRealSceneView(
                             val anchor = earth.createAnchor(entry.markerPos.first, entry.markerPos.second, labelAlt, 0f, 0f, 0f, 1f)
                             if (anchor != null) {
                                 navBuildingAnchors[id] = anchor
-                                navBuildingPins.add(NavBuildingPin(id, entry.b.bld_nm ?: "건물", entry.markerPos.first, entry.markerPos.second, entry.b.ufid.ifEmpty { null }))
+                                navBuildingPins.add(NavBuildingPin(id, entry.b.bld_nm ?: "건물", entry.markerPos.first, entry.markerPos.second, entry.b.ufid.ifEmpty { null }, entry.dist))
                             }
                         }
                     } else {
@@ -445,7 +445,7 @@ fun ArRealSceneView(
                                     navBuildingAnchors[id]?.runCatching { detach() }
                                     navBuildingAnchors[id] = newAnchor
                                     val idx = navBuildingPins.indexOfFirst { it.id == id }
-                                    if (idx != -1) navBuildingPins[idx] = navBuildingPins[idx].copy(lat = entry.markerPos.first, lng = entry.markerPos.second)
+                                    if (idx != -1) navBuildingPins[idx] = navBuildingPins[idx].copy(lat = entry.markerPos.first, lng = entry.markerPos.second, distanceM = entry.dist)
                                 }
                             }
                         }
@@ -723,7 +723,10 @@ fun ArRealSceneView(
             key(pin.id) {
                 ArPoiCard(
                     title = pin.name,
-                    subtitle = "건물",
+                    subtitle = buildString {
+                        if (pin.category.isNotEmpty()) append("${pin.category} · ")
+                        append("${"%.0f".format(pin.distanceM)}m")
+                    },
                     modifier = Modifier.offset(x = xDp - 60.dp, y = yDp - 32.dp),
                     onClick = { onBuildingPinClick(pin.name, pin.ufid) },
                 )
