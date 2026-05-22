@@ -375,7 +375,7 @@ fun ArRealSceneView(
             val isLookingDown = poseMatrix[9] > 0.5f
 
             // ── 건물 PIN: 300ms 스로틀로 FOV+Occlusion+FrontEdge 계산 (탐색모드 동일 로직) ──
-            if (buildingsCache.isNotEmpty() && pose.horizontalAccuracy < 3.0 && now - lastNavBuildingVisibilityTime > 300) {
+            if (buildingsCache.isNotEmpty() && pose.horizontalAccuracy < 2.0 && now - lastNavBuildingVisibilityTime > 300) {
                 lastNavBuildingVisibilityTime = now
 
                 val fov = buildFovPolygon(lat, lng, pose.heading)
@@ -481,7 +481,7 @@ fun ArRealSceneView(
 
             // 1) LOCALIZING + 정확도 확보 + 목적지 있음 → 백엔드 라우트 요청
             if (navState == NavigationState.LOCALIZING &&
-                pose.horizontalAccuracy < 200.0 &&
+                pose.horizontalAccuracy < 2.0 &&
                 targetDestination.isNotEmpty()
             ) {
                 mainViewModel.updateState(NavigationState.READY_TO_ROUTE)
