@@ -449,14 +449,26 @@ async def place_search(req: SearchRequest):
                    END AS dist_m
             FROM store_details
             WHERE store_name ILIKE $1
+               OR similarity(
+                    regexp_replace(store_name, '\s+', '', 'g'),
+                    regexp_replace($6, '\s+', '', 'g')
+                  ) >= 0.3
                OR ($3 != 'other' AND category_key = $3)
-            ORDER BY dist_m NULLS LAST, last_updated DESC NULLS LAST
+            ORDER BY
+              CASE WHEN store_name ILIKE $1 THEN 0 ELSE 1 END,
+              similarity(
+                regexp_replace(store_name, '\s+', '', 'g'),
+                regexp_replace($6, '\s+', '', 'g')
+              ) DESC,
+              dist_m NULLS LAST,
+              last_updated DESC NULLS LAST
             LIMIT $2
             """,
             f"%{q}%",
             req.limit,
             category_key,
             user_lng, user_lat,
+            q,
         )
 
     results: list[SearchResultItem] = []
