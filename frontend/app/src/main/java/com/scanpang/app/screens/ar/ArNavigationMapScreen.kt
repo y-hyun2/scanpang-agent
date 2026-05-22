@@ -68,6 +68,9 @@ fun ArNavigationMapScreen(
     modifier: Modifier = Modifier,
     viewModel: ScanPangViewModel = viewModel(),
     destinationName: String = "",
+    /** Supabase에서 가져온 정확한 목적지 좌표. null이면 /navigation/search 단계를 거침. */
+    destinationLat: Double? = null,
+    destinationLng: Double? = null,
 ) {
     val appContext = LocalContext.current
     val appSettingsPrefs = remember { AppSettingsPreferences(appContext) }
@@ -156,6 +159,8 @@ fun ArNavigationMapScreen(
         ArRealSceneView(
             modifier = Modifier.fillMaxSize(),
             targetDestination = destinationName,
+            targetLat = destinationLat,
+            targetLng = destinationLng,
             onPoseUpdate = { lat, lng, heading, _, _ ->
                 userLat = lat
                 userLng = lng

@@ -111,6 +111,9 @@ enum class TurnDirection { LEFT, RIGHT, STRAIGHT, DESTINATION }
 fun ArRealSceneView(
     modifier: Modifier = Modifier,
     targetDestination: String = "",
+    /** Supabase에서 가져온 정확한 목적지 좌표. 제공되면 /navigation/search 단계를 건너뜀. */
+    targetLat: Double? = null,
+    targetLng: Double? = null,
     onPoseUpdate: (latitude: Double, longitude: Double, heading: Double, altitude: Double, horizontalAccuracy: Double) -> Unit = { _, _, _, _, _ -> },
     onNavigationUpdate: (ArNavUiState) -> Unit = {},
     /** 라우트 응답 도착 시 한 번 호출. 미니맵 폴리라인/목적지 마커용. */
@@ -478,11 +481,15 @@ fun ArRealSceneView(
 
             // 1) LOCALIZING + 정확도 확보 + 목적지 있음 → 백엔드 라우트 요청
             if (navState == NavigationState.LOCALIZING &&
-                pose.horizontalAccuracy < 3.0 &&
+                pose.horizontalAccuracy < 200.0 &&
                 targetDestination.isNotEmpty()
             ) {
                 mainViewModel.updateState(NavigationState.READY_TO_ROUTE)
-                mainViewModel.fetchRoute(lng.toString(), lat.toString(), targetDestination)
+                if (targetLat != null && targetLng != null) {
+                    mainViewModel.fetchRouteWithCoords(lng.toString(), lat.toString(), targetDestination, targetLat, targetLng)
+                } else {
+                    mainViewModel.fetchRoute(lng.toString(), lat.toString(), targetDestination)
+                }
                 onNavigationUpdate(
                     ArNavUiState(
                         phase = ArNavUiState.Phase.LOCALIZING,
