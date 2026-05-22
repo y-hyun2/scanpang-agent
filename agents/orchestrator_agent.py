@@ -68,14 +68,16 @@ _INTENT_SYSTEM = """당신은 AR 관광 앱의 요청 라우터입니다. 사용
 - navigation: 특정 목적지로 이동 (경로 안내, 길 찾기) — "X로 가는 길", "X 어떻게 가"
 - nav_guide : AR 길안내 중 현재 경로/방향에 대한 질문 — "여기서 좌회전 맞아?", "다음 갈림길은?",
               "거의 다 왔어?", "남은 거리는?" 등. 사용자가 이미 길안내 중일 때만 선택 가능.
-- halal     : 이슬람 관련 모든 것 (기도 시간, 키블라, 할랄 식당, 기도실/무슬라)
-- convenience: 매장(상호명 포함) 및 일반 편의시설 검색 — 카페, 식당, ATM, 약국, 화장실,
-              환전소, 지하철, 주차장, 상점 등. **특정 매장 정보 질문도 여기로**
-              (예: "이 매장 뭐 파는 곳이야?", "스타벅스 영업시간", "올리브영 어디 있어?")
+- halal     : 무슬림 종교 정보 — 기도 시간(prayer_time), 키블라 방향(qibla) 만.
+              할랄 식당/기도실 검색은 convenience 로 라우팅한다.
+- convenience: 매장(상호명 포함) 및 모든 시설 검색 — 카페, 식당, ATM, 약국, 화장실,
+              환전소, 지하철, 주차장, 상점, 할랄 식당, 기도실 등.
+              (예: "이 매장 뭐 파는 곳이야?", "스타벅스 영업시간", "할랄 식당", "기도실 어디")
 
 핵심 구분 규칙:
-- 할랄 식당은 반드시 "halal" (convenience 아님)
-- 기도실/무슬라는 반드시 "halal"
+- 기도 시간 / 키블라 / 살라트 관련 질문 → "halal"
+- 할랄 식당, 무슬림 식당 → "convenience" (sub_category="halal_restaurant")
+- 기도실, 무슬라(Musalla), 예배실 → "convenience" (sub_category="prayer_room")
 - 일반 식당/카페/매장 검색 및 특정 매장(상호명) 정보 질문 → "convenience"
 - 관광지/랜드마크/지역·동네에 대한 질문 → "place"
   (단, 매장/상점/특정 상호명이 들어가면 "convenience")
@@ -83,10 +85,11 @@ _INTENT_SYSTEM = """당신은 AR 관광 앱의 요청 라우터입니다. 사용
 - 이미 진행 중인 길안내에 대한 질문(좌회전 맞아? 다음은? 얼마나 남았어?)은 "nav_guide"
 
 sub_category 값 (selected_agent 별):
-- halal       : "prayer_time" | "qibla" | "restaurant" | "prayer_room"
+- halal       : "prayer_time" | "qibla"
 - convenience : "cafe" | "restaurant" | "convenience_store" | "pharmacy" | "hospital" |
                 "bank" | "atm" | "shopping" | "parking" | "subway" | "tourist" |
-                "accommodation" | "cultural" | "exchange" | "restroom" | "locker"
+                "accommodation" | "cultural" | "exchange" | "restroom" | "locker" |
+                "halal_restaurant" | "prayer_room"
 - place / navigation : "" (빈 문자열)
 
 resolved_message 규칙:
@@ -134,11 +137,13 @@ _FEW_SHOTS = [
     {"role": "user",      "content": '메시지: "키블라 방향이 어디야?"'},
     {"role": "assistant", "content": '{"selected_agent": "halal", "resolved_message": "키블라 방향이 어디야?", "sub_category": "qibla"}'},
     {"role": "user",      "content": '메시지: "할랄 식당 어디 있어?"'},
-    {"role": "assistant", "content": '{"selected_agent": "halal", "resolved_message": "할랄 식당 어디 있어?", "sub_category": "restaurant"}'},
+    {"role": "assistant", "content": '{"selected_agent": "convenience", "resolved_message": "할랄 식당 어디 있어?", "sub_category": "halal_restaurant"}'},
     {"role": "user",      "content": '메시지: "무슬림 음식 추천해줘"'},
-    {"role": "assistant", "content": '{"selected_agent": "halal", "resolved_message": "무슬림 음식 추천해줘", "sub_category": "restaurant"}'},
+    {"role": "assistant", "content": '{"selected_agent": "convenience", "resolved_message": "무슬림 음식 추천해줘", "sub_category": "halal_restaurant"}'},
     {"role": "user",      "content": '메시지: "기도실 어디야?"'},
-    {"role": "assistant", "content": '{"selected_agent": "halal", "resolved_message": "기도실 어디야?", "sub_category": "prayer_room"}'},
+    {"role": "assistant", "content": '{"selected_agent": "convenience", "resolved_message": "기도실 어디야?", "sub_category": "prayer_room"}'},
+    {"role": "user",      "content": '메시지: "무슬라 가까운 데 있나?"'},
+    {"role": "assistant", "content": '{"selected_agent": "convenience", "resolved_message": "무슬라 가까운 데 있나?", "sub_category": "prayer_room"}'},
     {"role": "user",      "content": '메시지: "근처 ATM 찾아줘"'},
     {"role": "assistant", "content": '{"selected_agent": "convenience", "resolved_message": "근처 ATM 찾아줘", "sub_category": "atm"}'},
     {"role": "user",      "content": '메시지: "카페 추천해줘"'},
