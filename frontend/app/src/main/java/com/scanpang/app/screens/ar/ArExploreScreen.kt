@@ -123,6 +123,9 @@ import com.scanpang.app.components.ar.arExploreCategoryChipSpecs
 import com.scanpang.app.components.ar.ArCategoryIconBadge
 import com.scanpang.app.components.ar.ArPoiCard
 import com.scanpang.app.data.AppSettingsPreferences
+import com.scanpang.app.data.RecentlyViewedEntry
+import com.scanpang.app.data.RecentlyViewedStore
+import com.scanpang.app.data.SavedPlaceNavTarget
 import com.scanpang.app.data.SearchHistoryPreferences
 import com.scanpang.app.data.TtsState
 import com.scanpang.app.navigation.AppRoutes
@@ -1196,6 +1199,26 @@ fun ArExploreScreen(
                 val placeUfid = (selectedPoiOverlay?.ufid ?: placeResult?.ar_overlay?.ufid).orEmpty()
                 LaunchedEffect(store) { viewModel.queryStore(placeId = placeUfid, storeName = store) }
                 val s = storeResult?.takeIf { it.store_name == store }
+
+                // ── "최근 본 장소" 기록 (PlaceDetail 안 거치고 AR 오버레이에서만 보는 케이스 대응) ──
+                // PlaceDetailCommon 의 자동 record() 와 동일 규약:
+                //   id = '{place_id}__{store_name}' (또는 백엔드 StoreResponse.id)
+                //   storeResult 도착 후 풀필드(category, lat, lng)로 기록 — 옛 깨진 row 안 만듦.
+                val recentlyViewedStore = remember(context) { RecentlyViewedStore(context) }
+                if (s != null && placeUfid.isNotEmpty()) {
+                    LaunchedEffect(s.id) {
+                        recentlyViewedStore.record(
+                            RecentlyViewedEntry(
+                                id = s.id.ifEmpty { "${placeUfid}__${store}" },
+                                name = s.name_ko.ifEmpty { store },
+                                category = s.category,
+                                target = SavedPlaceNavTarget.fromCategoryKey(s.category_key.orEmpty()),
+                                lat = s.lat ?: 0.0,
+                                lng = s.lng ?: 0.0,
+                            ),
+                        )
+                    }
+                }
                 ArFloorStoreGuideOverlay(
                     storeName = store,
                     onDismiss = {

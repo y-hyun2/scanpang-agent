@@ -55,6 +55,9 @@ import com.scanpang.app.ui.theme.ScanPangDimens
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import com.scanpang.app.data.AppSettingsPreferences
+import com.scanpang.app.data.RecentlyViewedEntry
+import com.scanpang.app.data.RecentlyViewedStore
+import com.scanpang.app.data.SavedPlaceNavTarget
 import com.scanpang.app.data.TtsState
 
 private const val NAV_TAB_MAP = "map"
@@ -382,6 +385,25 @@ fun ArNavigationMapScreen(
             val placeUfid = placeResult?.ar_overlay?.ufid.orEmpty()
             LaunchedEffect(store) { viewModel.queryStore(placeId = placeUfid, storeName = store) }
             val s = storeResult?.takeIf { it.store_name == store }
+
+            // ── "최근 본 장소" 기록 (AR 네비 중 핀 탭→오버레이 케이스) ──
+            // PlaceDetailCommon 자동 record() 와 동일 규약. storeResult 도착 후 풀필드로.
+            val recentlyViewedStore = remember(appContext) { RecentlyViewedStore(appContext) }
+            if (s != null && placeUfid.isNotEmpty()) {
+                LaunchedEffect(s.id) {
+                    recentlyViewedStore.record(
+                        RecentlyViewedEntry(
+                            id = s.id.ifEmpty { "${placeUfid}__${store}" },
+                            name = s.name_ko.ifEmpty { store },
+                            category = s.category,
+                            target = SavedPlaceNavTarget.fromCategoryKey(s.category_key.orEmpty()),
+                            lat = s.lat ?: 0.0,
+                            lng = s.lng ?: 0.0,
+                        ),
+                    )
+                }
+            }
+
             ArFloorStoreGuideOverlay(
                 storeName = store,
                 onDismiss = { selectedStore = null },
