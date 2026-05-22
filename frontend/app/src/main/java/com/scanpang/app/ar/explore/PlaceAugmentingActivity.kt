@@ -195,6 +195,9 @@ fun GeospatialARExploreScreen(
     val snackbarHostState = remember { SnackbarHostState() }
     val chatListState = rememberLazyListState()
     var chatInput by remember { mutableStateOf("") }
+    // 채팅 전송 진행 중 플래그 — 응답 도착 전 연타로 중복 backend 호출 방지.
+    // 보내기 버튼/음성 콜백 모두 이 플래그를 체크.
+    var isChatSending by remember { mutableStateOf(false) }
     var chatMessages by remember {
         mutableStateOf(
             listOf(
@@ -238,15 +241,21 @@ fun GeospatialARExploreScreen(
         if (!isTtsOn) ttsController.stop()
     }
 
-    val onSttResult: (String) -> Unit = { text ->
-        chatInput = text
+    val onSttResult: (String) -> Unit = stt@{ text ->
+        if (isChatSending) return@stt  // 응답 도착 전 중복 STT 콜백(partial+final) 차단
+        if (text.isBlank()) return@stt
+        isChatSending = true
+        chatInput = ""
+        // user 발화 즉시 표시 — 응답 기다리는 동안 빈 화면 방지.
+        chatMessages = chatMessages + ArAgentChatMessage(text = text, isUser = true)
         scope.launch {
-            val reply = sendVoiceMessage(text, agentService)
-            chatMessages = chatMessages +
-                ArAgentChatMessage(text = text, isUser = true) +
-                ArAgentChatMessage(text = reply, isUser = false)
-            chatInput = ""
-            ttsController.speakIfEnabled(reply, isTtsOn)
+            try {
+                val reply = sendVoiceMessage(text, agentService)
+                chatMessages = chatMessages + ArAgentChatMessage(text = reply, isUser = false)
+                ttsController.speakIfEnabled(reply, isTtsOn)
+            } finally {
+                isChatSending = false
+            }
         }
     }
     val latestOnSttResult = rememberUpdatedState(onSttResult)
@@ -708,15 +717,20 @@ fun GeospatialARExploreScreen(
                     inputText = chatInput,
                     onInputChange = { chatInput = it },
                     onSend = send@{
+                        if (isChatSending) return@send  // 응답 대기 중엔 무시 — 연타 차단
                         val q = chatInput.trim()
                         if (q.isEmpty()) return@send
+                        isChatSending = true
+                        chatInput = ""  // 즉시 clear — '보냈구나' 시각 피드백
+                        chatMessages = chatMessages + ArAgentChatMessage(text = q, isUser = true)
                         scope.launch {
-                            val reply = agentService.sendMessage(q)
-                            chatMessages = chatMessages +
-                                ArAgentChatMessage(text = q, isUser = true) +
-                                ArAgentChatMessage(text = reply, isUser = false)
-                            chatInput = ""
-                            ttsController.speakIfEnabled(reply, isTtsOn)
+                            try {
+                                val reply = agentService.sendMessage(q)
+                                chatMessages = chatMessages + ArAgentChatMessage(text = reply, isUser = false)
+                                ttsController.speakIfEnabled(reply, isTtsOn)
+                            } finally {
+                                isChatSending = false
+                            }
                         }
                     },
                     isSttListening = isSttListening,
