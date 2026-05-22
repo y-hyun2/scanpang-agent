@@ -233,18 +233,9 @@ fun ArExploreScreen(
 
     var isFrozen by remember { mutableStateOf(false) }
     var frozenBitmap by remember { mutableStateOf<Bitmap?>(null) }
+    var frozenDynamicPois by remember { mutableStateOf<List<DynamicPoi>>(emptyList()) }
+    var frozenAnchorPositions by remember { mutableStateOf<Map<String, Offset>>(emptyMap()) }
     val currentView = LocalView.current
-    LaunchedEffect(isFrozen) {
-        if (isFrozen) {
-            val window = (currentView.context as? Activity)?.window ?: return@LaunchedEffect
-            val bmp = Bitmap.createBitmap(currentView.width, currentView.height, Bitmap.Config.ARGB_8888)
-            PixelCopy.request(window, bmp, { result ->
-                frozenBitmap = if (result == PixelCopy.SUCCESS) bmp else null
-            }, Handler(Looper.getMainLooper()))
-        } else {
-            frozenBitmap = null
-        }
-    }
 
     LaunchedEffect(Unit) { TtsState.init(appSettingsPrefs) }
     val isTtsOn by TtsState.enabled.collectAsState()
@@ -388,6 +379,33 @@ fun ArExploreScreen(
     var lastProcessedChunkCell by remember { mutableStateOf<String?>(null) }
     var lastVisibilityCalcTime by remember { mutableStateOf(0L) }
 
+    LaunchedEffect(isFrozen) {
+        if (isFrozen) {
+            // 마커 상태를 먼저 스냅샷으로 저장
+            frozenDynamicPois = dynamicPois.toList()
+            frozenAnchorPositions = anchorScreenPositions.toMap()
+            // ARCore가 렌더링하는 SurfaceView만 캡처 → Compose UI 없이 배경만 얻음
+            val surfaceView = currentView.findFirstSurfaceView()
+            if (surfaceView != null) {
+                val bmp = Bitmap.createBitmap(surfaceView.width, surfaceView.height, Bitmap.Config.ARGB_8888)
+                PixelCopy.request(surfaceView, bmp, { result ->
+                    frozenBitmap = if (result == PixelCopy.SUCCESS) bmp else null
+                }, Handler(Looper.getMainLooper()))
+            } else {
+                // fallback: 윈도우 전체 캡처
+                val window = (currentView.context as? Activity)?.window ?: return@LaunchedEffect
+                val bmp = Bitmap.createBitmap(currentView.width, currentView.height, Bitmap.Config.ARGB_8888)
+                PixelCopy.request(window, bmp, { result ->
+                    frozenBitmap = if (result == PixelCopy.SUCCESS) bmp else null
+                }, Handler(Looper.getMainLooper()))
+            }
+        } else {
+            frozenBitmap = null
+            frozenDynamicPois = emptyList()
+            frozenAnchorPositions = emptyMap()
+        }
+    }
+
     // 화면 크기 (앵커 → 화면 좌표 투영용)
     val configuration = LocalConfiguration.current
     val density = LocalDensity.current
@@ -456,6 +474,7 @@ fun ArExploreScreen(
                     config.depthMode = Config.DepthMode.DISABLED
                 },
                 onSessionUpdated = { session, frame ->
+                    if (isFrozen) return@ARScene
                     val earth = session.earth ?: return@ARScene
                     val camera = frame.camera
                     if (earth.earthState != Earth.EarthState.ENABLED ||
@@ -887,8 +906,8 @@ fun ArExploreScreen(
             Box(modifier = Modifier.fillMaxSize()) {
 
                 ArDynamicPoiMarkers(
-                    dynamicPois = dynamicPois,
-                    anchorScreenPositions = anchorScreenPositions,
+                    dynamicPois = if (isFrozen) frozenDynamicPois else dynamicPois,
+                    anchorScreenPositions = if (isFrozen) frozenAnchorPositions else anchorScreenPositions,
                     onPoiClick = { poi ->
                         if (poi.matchingStores.isNotEmpty()) {
                             // 필터 모드 — 매장 마커
@@ -1532,6 +1551,16 @@ private fun isPointInPolygon(x: Double, y: Double, poly: List<Pair<Double, Doubl
 // computeCentroid / computeAngularFootprint / buildFovPolygon / clipPolygon /
 // computeFrontEdgeMidpoint / isRayBlockedByPolygon 은 그 파일의 internal fun 을 사용.
 // ─────────────────────────────────────────────────────────────────────────────
+
+private fun android.view.View.findFirstSurfaceView(): android.view.SurfaceView? {
+    if (this is android.view.SurfaceView) return this
+    if (this is android.view.ViewGroup) {
+        for (i in 0 until childCount) {
+            getChildAt(i).findFirstSurfaceView()?.let { return it }
+        }
+    }
+    return null
+}
 
 
 
