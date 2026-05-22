@@ -82,6 +82,7 @@ import com.scanpang.app.screens.DetailScreenDivider
 import com.scanpang.app.screens.DetailSectionHeader
 import com.scanpang.app.screens.rememberDetailBookmark
 import com.scanpang.app.util.OpenHoursUtils
+import com.scanpang.app.i18n.LocalStrings
 import com.scanpang.app.ui.theme.ScanPangColors
 import com.scanpang.app.ui.theme.ScanPangDimens
 import com.scanpang.app.ui.theme.ScanPangShapes
@@ -119,6 +120,7 @@ fun ArPoiFloatingDetailOverlay(
     onSave: () -> Unit = {},
     arOverlay: ArOverlay? = null,
 ) {
+    val s = LocalStrings.current
     var expandedFloors by remember { mutableStateOf(setOf("B1")) }
     val floorData = remember(arOverlay) {
         if (arOverlay != null && arOverlay.floor_info.isNotEmpty()) {
@@ -176,7 +178,7 @@ fun ArPoiFloatingDetailOverlay(
                     ) {
                         Icon(
                             imageVector = Icons.Rounded.BookmarkBorder,
-                            contentDescription = "저장",
+                            contentDescription = s.tabSaved,
                             tint = ScanPangColors.OnSurfaceStrong,
                             modifier = Modifier.size(ScanPangDimens.icon20),
                         )
@@ -187,7 +189,7 @@ fun ArPoiFloatingDetailOverlay(
                     ) {
                         Icon(
                             imageVector = Icons.Rounded.Close,
-                            contentDescription = "닫기",
+                            contentDescription = s.close,
                             tint = ScanPangColors.OnSurfaceStrong,
                             modifier = Modifier.size(ScanPangDimens.icon20),
                         )
@@ -254,6 +256,7 @@ private fun ArPoiStatusMetaRow(
     isEstimated: Boolean = false,
     distanceM: Double? = null,
 ) {
+    val s = LocalStrings.current
     Row(
         modifier = Modifier.fillMaxWidth(),
         verticalAlignment = Alignment.CenterVertically,
@@ -307,7 +310,7 @@ private fun ArPoiStatusMetaRow(
                             .background(if (isOpen) ScanPangColors.Success else ScanPangColors.Error),
                     )
                     Text(
-                        text = if (isOpen) "영업 중" else "영업 종료",
+                        text = if (isOpen) s.placeOpen else s.placeClosed,
                         style = ScanPangType.caption12Medium,
                         color = if (isOpen) ScanPangColors.Success else ScanPangColors.Error,
                     )
@@ -322,9 +325,10 @@ private fun ArPoiDetailSegmentedTabs(
     active: String,
     onSelect: (String) -> Unit,
 ) {
+    val s = LocalStrings.current
     val tabs = listOf(
-        ArPoiTabBuilding to "건물 정보",
-        ArPoiTabFloors to "층별 정보",
+        ArPoiTabBuilding to s.placeBuildingInfo,
+        ArPoiTabFloors to s.placeFloorInfo,
     )
     Surface(
         modifier = Modifier.fillMaxWidth(),
@@ -366,6 +370,7 @@ private fun ArPoiDetailSegmentedTabs(
 
 @Composable
 private fun ArPoiBuildingTabBody(arOverlay: ArOverlay? = null) {
+    val s = LocalStrings.current
     val imageUrl = arOverlay?.image_url?.trim().orEmpty()
     val hasImages = imageUrl.isNotBlank()
     var buildingGalleryFullscreen by remember { mutableStateOf(false) }
@@ -395,7 +400,7 @@ private fun ArPoiBuildingTabBody(arOverlay: ArOverlay? = null) {
                 ) {
                     Icon(
                         imageVector = Icons.Rounded.Close,
-                        contentDescription = "닫기",
+                        contentDescription = s.close,
                         tint = Color.White,
                     )
                 }
@@ -509,7 +514,7 @@ private fun ArPoiBuildingTabBody(arOverlay: ArOverlay? = null) {
                     Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
                         Icon(
                             imageVector = Icons.Rounded.OpenInFull,
-                            contentDescription = "전체 보기",
+                            contentDescription = s.viewAll,
                             tint = Color.White,
                             modifier = Modifier.size(18.dp),
                         )
@@ -697,6 +702,7 @@ fun ArFloorStoreGuideOverlay(
     distanceLabel: String = "",
     storeProgress: Float? = null,
 ) {
+    val s = LocalStrings.current
     val categoryKey = storeResult?.category_key ?: ""
     val heroPhotoAllowed = categoryKey !in setOf(
         "atm", "subway", "subway_station", "restroom", "public_restroom", "lockers", "locker",
@@ -803,7 +809,7 @@ fun ArFloorStoreGuideOverlay(
                                 Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
                                     Icon(
                                         imageVector = Icons.Rounded.OpenInFull,
-                                        contentDescription = "전체 보기",
+                                        contentDescription = s.viewAll,
                                         tint = Color.White,
                                         modifier = Modifier.size(14.dp),
                                     )
@@ -860,7 +866,7 @@ fun ArFloorStoreGuideOverlay(
                         ) {
                             Icon(
                                 imageVector = if (bookmark.bookmarked) Icons.Rounded.Bookmark else Icons.Rounded.BookmarkBorder,
-                                contentDescription = if (bookmark.bookmarked) "저장됨" else "저장",
+                                contentDescription = if (bookmark.bookmarked) s.placeBookmarked else s.tabSaved,
                                 tint = if (bookmark.bookmarked) ScanPangColors.Primary else ScanPangColors.OnSurfaceStrong,
                                 modifier = Modifier.size(ScanPangDimens.icon20),
                             )
@@ -871,7 +877,7 @@ fun ArFloorStoreGuideOverlay(
                         ) {
                             Icon(
                                 imageVector = Icons.Rounded.Close,
-                                contentDescription = "닫기",
+                                contentDescription = s.close,
                                 tint = ScanPangColors.OnSurfaceStrong,
                                 modifier = Modifier.size(ScanPangDimens.icon20),
                             )
@@ -890,9 +896,9 @@ fun ArFloorStoreGuideOverlay(
                         val halalType = (storeResult?.details?.get("halal_type") as? String).orEmpty()
                         val halalTags = buildList {
                             if (storeResult?.details?.get("muslim_cooks_available") as? Boolean == true)
-                                add(Pair("무슬림 조리사", Icons.Rounded.Verified))
+                                add(Pair(s.placeMuslimChef, Icons.Rounded.Verified))
                             if (storeResult?.details?.get("no_alcohol_sales") as? Boolean == true)
-                                add(Pair("주류 미판매", Icons.Rounded.Star))
+                                add(Pair(s.placeNoAlcohol, Icons.Rounded.Star))
                         }
                         if (halalType.isNotBlank() || halalTags.isNotEmpty()) {
                             Row(
@@ -965,15 +971,15 @@ fun ArFloorStoreGuideOverlay(
                                     modifier = Modifier.size(14.dp),
                                 )
                                 Text(
-                                    text = if (todayHours.isNotBlank()) "오늘 $todayHours"
-                                        else if (effectiveIsOpen) "영업 중" else "영업 종료",
+                                    text = if (todayHours.isNotBlank()) s.placeToday(todayHours)
+                                        else if (effectiveIsOpen) s.placeOpen else s.placeClosed,
                                     style = ScanPangType.title14,
                                     color = ScanPangColors.OnSurfaceStrong,
                                     modifier = Modifier.weight(1f),
                                 )
                                 if (lastOrder.isNotBlank()) {
                                     Text(
-                                        text = "라스트오더 $lastOrder",
+                                        text = s.placeLastOrder(lastOrder),
                                         style = ScanPangType.caption12Medium,
                                         color = ScanPangColors.OnSurfaceMuted,
                                     )
@@ -983,17 +989,17 @@ fun ArFloorStoreGuideOverlay(
                     }
                     // ⑥ 상세 정보 — 헤더 없이 아이콘 + 값 (detail screen과 동일 항목)
                     val facilityList = buildList {
-                        if (storeResult?.details?.get("has_disabled") as? Boolean == true) add("장애인 화장실")
-                        if (storeResult?.details?.get("has_child") as? Boolean == true) add("유아 화장실")
-                        if (storeResult?.details?.get("has_diaper_table") as? Boolean == true) add("기저귀 교환대")
-                        if (storeResult?.details?.get("wudu") as? Boolean == true) add("우두 시설")
-                        if (storeResult?.details?.get("gender_separation") as? Boolean == true) add("남녀 분리")
-                        if (storeResult?.details?.get("prayer_mat") as? Boolean == true) add("기도 매트")
-                        if (storeResult?.details?.get("quran_available") as? Boolean == true) add("꾸란 비치")
+                        if (storeResult?.details?.get("has_disabled") as? Boolean == true) add(s.placeDisabledRestroom)
+                        if (storeResult?.details?.get("has_child") as? Boolean == true) add(s.placeChildRestroom)
+                        if (storeResult?.details?.get("has_diaper_table") as? Boolean == true) add(s.placeDiaperTable)
+                        if (storeResult?.details?.get("wudu") as? Boolean == true) add(s.placeWudu)
+                        if (storeResult?.details?.get("gender_separation") as? Boolean == true) add(s.placeGenderSeparated)
+                        if (storeResult?.details?.get("prayer_mat") as? Boolean == true) add(s.placePrayerMat)
+                        if (storeResult?.details?.get("quran_available") as? Boolean == true) add(s.placeQuran)
                     }
                     val safetyList = buildList {
                         if (storeResult?.details?.get("has_cctv") as? Boolean == true) add("CCTV")
-                        if (storeResult?.details?.get("has_emergency_bell") as? Boolean == true) add("비상벨")
+                        if (storeResult?.details?.get("has_emergency_bell") as? Boolean == true) add(s.placeEmergencyBell)
                     }
                     val conveniences = (storeResult?.details?.get("conveniences") as? List<*>)
                         ?.filterIsInstance<String>() ?: emptyList()
@@ -1010,8 +1016,8 @@ fun ArFloorStoreGuideOverlay(
                     val toiletStr = buildList {
                         val m = toiletMaleRaw.toToiletInt()
                         val f = toiletFemaleRaw.toToiletInt()
-                        if ((m ?: 0) > 0) add("남성 ${m}칸")
-                        if ((f ?: 0) > 0) add("여성 ${f}칸")
+                        if ((m ?: 0) > 0) add(s.placeMaleStalls(m!!))
+                        if ((f ?: 0) > 0) add(s.placeFemaleStalls(f!!))
                     }.joinToString(", ")
                     val isRestroom = categoryKey in setOf("restroom", "public_restroom")
                     val infoLines = listOfNotNull(
@@ -1083,7 +1089,7 @@ fun ArFloorStoreGuideOverlay(
                             }
                             if (menuPairs.isNotEmpty()) {
                                 DetailScreenDivider()
-                                DetailSectionHeader(title = "대표 메뉴")
+                                DetailSectionHeader(title = s.placeFeaturedMenu)
                                 Spacer(modifier = Modifier.height(ScanPangSpacing.xs))
                                 Column(verticalArrangement = Arrangement.spacedBy(ScanPangSpacing.xs)) {
                                     menuPairs.take(3).forEach { (name, price) ->
@@ -1114,7 +1120,7 @@ fun ArFloorStoreGuideOverlay(
                             }
                             if (exchangeRows.isNotEmpty()) {
                                 DetailScreenDivider()
-                                DetailSectionHeader(title = "오늘의 환율")
+                                DetailSectionHeader(title = s.placeTodayExchangeRate)
                                 Spacer(modifier = Modifier.height(ScanPangSpacing.xs))
                                 Column(verticalArrangement = Arrangement.spacedBy(ScanPangSpacing.xs)) {
                                     exchangeRows.forEach { (ccy, flag, rateText) ->

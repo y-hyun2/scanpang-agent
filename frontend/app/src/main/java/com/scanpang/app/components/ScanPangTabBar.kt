@@ -40,6 +40,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
+import com.scanpang.app.i18n.LocalStrings
 import com.scanpang.app.ui.theme.ScanPangColors
 import com.scanpang.app.ui.theme.ScanPangDimens
 import com.scanpang.app.ui.theme.ScanPangShapes
@@ -68,6 +69,7 @@ fun ScanPangTabBar(
     onExploreClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val s = LocalStrings.current
     Box(
         modifier = modifier
             .fillMaxWidth()
@@ -95,14 +97,14 @@ fun ScanPangTabBar(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             BottomTabSlot(
-                label = "홈",
+                label = s.tabHome,
                 iconUnselected = Icons.Outlined.Home,
                 iconSelected = Icons.Rounded.Home,
                 selected = selectedTab == ScanPangMainTab.Home,
                 onClick = onHomeClick,
             )
             BottomTabSlot(
-                label = "검색",
+                label = s.tabSearch,
                 iconUnselected = Icons.Outlined.Search,
                 iconSelected = Icons.Rounded.Search,
                 selected = selectedTab == ScanPangMainTab.Search,
@@ -110,14 +112,14 @@ fun ScanPangTabBar(
             )
             Spacer(modifier = Modifier.weight(1f))
             BottomTabSlot(
-                label = "저장",
+                label = s.tabSaved,
                 iconUnselected = Icons.Rounded.BookmarkBorder,
                 iconSelected = Icons.Rounded.Bookmark,
                 selected = selectedTab == ScanPangMainTab.Saved,
                 onClick = onSavedClick,
             )
             BottomTabSlot(
-                label = "내 정보",
+                label = s.tabProfile,
                 iconUnselected = Icons.Outlined.AccountCircle,
                 iconSelected = Icons.Rounded.AccountCircle,
                 selected = selectedTab == ScanPangMainTab.Profile,
@@ -150,7 +152,7 @@ fun ScanPangTabBar(
                 }
             }
             Text(
-                text = "탐색",
+                text = s.tabExplore,
                 style = ScanPangType.tabLabelActive,
                 color = ScanPangColors.Primary,
             )

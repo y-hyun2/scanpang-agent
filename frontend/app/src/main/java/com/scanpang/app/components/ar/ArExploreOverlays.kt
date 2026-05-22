@@ -95,6 +95,7 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.scanpang.app.i18n.LocalStrings
 import com.scanpang.app.ui.theme.ScanPangColors
 import com.scanpang.app.ui.theme.ScanPangDimens
 import com.scanpang.app.ui.theme.ScanPangShapes
@@ -108,6 +109,7 @@ fun ArTopGradientBar(
     onSearchClick: () -> Unit,
     centerContent: @Composable () -> Unit,
 ) {
+    val s = LocalStrings.current
     Column(
         modifier = modifier
             .fillMaxWidth()
@@ -135,7 +137,7 @@ fun ArTopGradientBar(
         ) {
             ArCircleIconButton(
                 icon = Icons.Rounded.Home,
-                contentDescription = "홈",
+                contentDescription = s.tabHome,
                 onClick = onHomeClick,
                 modifier = Modifier.align(Alignment.CenterStart),
             )
@@ -147,7 +149,7 @@ fun ArTopGradientBar(
             }
             ArCircleIconButton(
                 icon = Icons.Rounded.Search,
-                contentDescription = "검색",
+                contentDescription = s.tabSearch,
                 onClick = onSearchClick,
                 modifier = Modifier.align(Alignment.CenterEnd),
             )
@@ -264,6 +266,7 @@ fun ArSideActionColumn(
     cameraSurfaceColor: Color = ScanPangColors.ArOverlayWhite93,
     cameraIconTint: Color = ScanPangColors.OnSurfaceStrong,
 ) {
+    val s = LocalStrings.current
     Column(
         modifier = modifier.width(ScanPangDimens.arSideColumnWidth),
         verticalArrangement = Arrangement.spacedBy(ScanPangDimens.arSideIconGap),
@@ -271,7 +274,7 @@ fun ArSideActionColumn(
     ) {
         ArSideFab(
             icon = Icons.AutoMirrored.Rounded.VolumeUp,
-            contentDescription = "볼륨",
+            contentDescription = s.navVoiceGuide,
             onClick = onVolumeClick,
             surfaceColor = ScanPangColors.ArOverlayWhite85,
         )
@@ -449,6 +452,7 @@ internal fun ArMicSttButton(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val s = LocalStrings.current
     Box(
         modifier = modifier.size(40.dp),
         contentAlignment = Alignment.Center,
@@ -482,7 +486,7 @@ internal fun ArMicSttButton(
             Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
                 Icon(
                     imageVector = Icons.Rounded.Mic,
-                    contentDescription = "음성 입력",
+                    contentDescription = s.navVoiceGuide,
                     modifier = Modifier.size(ScanPangDimens.arMicSendIcon),
                     tint = Color.White,
                 )
@@ -524,6 +528,7 @@ fun ArExploreInteractiveChatSection(
     // 전송 진행 중일 때 버튼을 spinner 로 바꾸고 클릭 차단 — 연타 방지의 시각 보강.
     isSending: Boolean = false,
 ) {
+    val s = LocalStrings.current
     Column(
         modifier = modifier
             .fillMaxWidth()
@@ -588,7 +593,7 @@ fun ArExploreInteractiveChatSection(
                     Box {
                         if (inputText.isEmpty()) {
                             Text(
-                                text = "무엇이든 물어보세요",
+                                text = s.navChatPlaceholder,
                                 style = ScanPangType.searchPlaceholderRegular,
                                 color = ScanPangColors.OnSurfacePlaceholder,
                             )
@@ -616,7 +621,7 @@ fun ArExploreInteractiveChatSection(
                 } else {
                     Icon(
                         imageVector = Icons.AutoMirrored.Rounded.Send,
-                        contentDescription = "전송",
+                        contentDescription = s.send,
                         modifier = Modifier.size(ScanPangDimens.icon16),
                         tint = if (canSend) ScanPangColors.Primary else ScanPangColors.OnSurfaceMuted,
                     )
@@ -634,6 +639,7 @@ fun ArChatBottomSection(
     modifier: Modifier = Modifier,
     agentTag: (@Composable () -> Unit)? = null,
 ) {
+    val s = LocalStrings.current
     Column(
         modifier = modifier
             .fillMaxWidth()
@@ -684,6 +690,7 @@ fun ArChatInputBar(
     placeholder: String,
     modifier: Modifier = Modifier,
 ) {
+    val s = LocalStrings.current
     Surface(
         modifier = modifier
             .fillMaxWidth()
@@ -721,7 +728,7 @@ fun ArChatInputBar(
                 Box(contentAlignment = Alignment.Center) {
                     Icon(
                         imageVector = Icons.AutoMirrored.Rounded.Send,
-                        contentDescription = "전송",
+                        contentDescription = s.send,
                         modifier = Modifier.size(ScanPangDimens.icon16),
                         tint = ScanPangColors.OnSurfaceMuted,
                     )
@@ -1026,6 +1033,7 @@ fun ArExploreFilterPanelFigma(
     onApply: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val s = LocalStrings.current
     Column(
         modifier = modifier,
         verticalArrangement = Arrangement.spacedBy(ScanPangSpacing.md),
@@ -1036,7 +1044,7 @@ fun ArExploreFilterPanelFigma(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Text(
-                text = "필터",
+                text = s.arFilter,
                 style = ScanPangType.arFilterTitle16,
                 color = ScanPangColors.OnSurfaceStrong,
             )
@@ -1066,7 +1074,7 @@ fun ArExploreFilterPanelFigma(
                 }
                 Spacer(modifier = Modifier.width(ScanPangSpacing.xs))
                 Text(
-                    text = "초기화",
+                    text = s.arFilterReset,
                     style = ScanPangType.chip13Medium,
                     color = ScanPangColors.OnSurfaceMuted,
                 )
@@ -1124,7 +1132,7 @@ fun ArExploreFilterPanelFigma(
             ),
         ) {
             Text(
-                text = "필터 적용",
+                text = s.arFilterApply,
                 style = ScanPangType.body15Medium.copy(fontWeight = FontWeight.Bold),
             )
         }
@@ -1138,9 +1146,10 @@ fun BoxScope.ArExploreSideColumn(
     isTtsOn: Boolean,
     isTtsPlaying: Boolean = false,
 ) {
+    val s = LocalStrings.current
     ArExploreRoundSideButton(
         icon = if (isTtsOn) Icons.Rounded.Headset else Icons.Rounded.HeadsetOff,
-        contentDescription = "음성 안내",
+        contentDescription = s.navVoiceGuide,
         onClick = onTtsClick,
         surfaceColor = ScanPangColors.ArOverlayWhite85,
         iconTint = if (isTtsOn) ScanPangColors.OnSurfaceStrong else ScanPangColors.ArTtsOffIconTint,
@@ -1207,6 +1216,7 @@ fun ArExploreSearchPanelContent(
     onHitStartNav: (ArExploreSearchHitUi) -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val s = LocalStrings.current
     Column(
         modifier = modifier,
         verticalArrangement = Arrangement.spacedBy(8.dp),
@@ -1241,7 +1251,7 @@ fun ArExploreSearchPanelContent(
                     Box {
                         if (query.isEmpty()) {
                             Text(
-                                text = "장소, 건물, 매장 검색",
+                                text = s.arSearchPlaceholder,
                                 style = ScanPangType.body14Regular,
                                 color = ScanPangColors.OnSurfacePlaceholder,
                             )
@@ -1253,7 +1263,7 @@ fun ArExploreSearchPanelContent(
             if (query.isNotEmpty()) {
                 Icon(
                     imageVector = Icons.Rounded.Close,
-                    contentDescription = "지우기",
+                    contentDescription = s.delete,
                     modifier = Modifier
                         .size(ScanPangDimens.icon20)
                         .clickable { onQueryChange("") },
@@ -1280,12 +1290,12 @@ fun ArExploreSearchPanelContent(
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
                             Text(
-                                text = "최근 검색",
+                                text = s.arRecentSearches,
                                 style = ScanPangType.caption12Medium,
                                 color = ScanPangColors.OnSurfaceMuted,
                             )
                             Text(
-                                text = "전체 삭제",
+                                text = s.arClearAll,
                                 modifier = Modifier.clickable { onRecentClearAll() },
                                 style = ScanPangType.meta11Medium,
                                 color = ScanPangColors.OnSurfaceMuted,
@@ -1319,7 +1329,7 @@ fun ArExploreSearchPanelContent(
                                 )
                                 Icon(
                                     imageVector = Icons.Rounded.Close,
-                                    contentDescription = "삭제",
+                                    contentDescription = s.delete,
                                     modifier = Modifier
                                         .size(16.dp)
                                         .clickable { onRecentQueryRemove(q) },
@@ -1358,6 +1368,7 @@ private fun ArExploreSearchResultCard(
     onStartNav: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val s = LocalStrings.current
     Surface(
         modifier = modifier.fillMaxWidth(),
         shape = RoundedCornerShape(12.dp),
@@ -1438,7 +1449,7 @@ private fun ArExploreSearchResultCard(
                     border = BorderStroke(ScanPangDimens.borderHairline, ScanPangColors.OutlineSubtle),
                     colors = ButtonDefaults.outlinedButtonColors(contentColor = ScanPangColors.OnSurfaceStrong),
                 ) {
-                    Text("정보 보기", style = ScanPangType.meta11Medium)
+                    Text(s.arViewInfo, style = ScanPangType.meta11Medium)
                 }
                 Button(
                     onClick = onStartNav,
@@ -1449,7 +1460,7 @@ private fun ArExploreSearchResultCard(
                     contentPadding = PaddingValues(0.dp),
                     colors = ButtonDefaults.buttonColors(containerColor = ScanPangColors.Primary),
                 ) {
-                    Text("길안내", style = ScanPangType.meta11Medium, color = Color.White)
+                    Text(s.arNavigate, style = ScanPangType.meta11Medium, color = Color.White)
                 }
             }
         }
