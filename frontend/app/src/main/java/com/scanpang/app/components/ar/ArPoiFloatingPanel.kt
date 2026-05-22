@@ -357,21 +357,13 @@ private fun ArPoiDetailSegmentedTabs(
     }
 }
 
-@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun ArPoiBuildingTabBody(arOverlay: ArOverlay? = null) {
-    val buildingImageCount = 4
-    val buildingImageBg = listOf(
-        Color(0xFFE8E8E8),
-        Color(0xFFD8D8D8),
-        Color(0xFFC8C8C8),
-        Color(0xFFB8B8B8),
-    )
-    val pagerState = rememberPagerState(pageCount = { buildingImageCount })
+    val imageUrl = arOverlay?.image_url?.trim().orEmpty()
+    val hasImages = imageUrl.isNotBlank()
     var buildingGalleryFullscreen by remember { mutableStateOf(false) }
-    val currentBuildingPage = pagerState.currentPage
 
-    if (buildingGalleryFullscreen) {
+    if (hasImages && buildingGalleryFullscreen) {
         Dialog(
             onDismissRequest = { buildingGalleryFullscreen = false },
             properties = DialogProperties(usePlatformDefaultWidth = false),
@@ -381,35 +373,12 @@ private fun ArPoiBuildingTabBody(arOverlay: ArOverlay? = null) {
                     .fillMaxSize()
                     .background(Color.Black),
             ) {
-                HorizontalPager(
-                    state = pagerState,
+                coil.compose.AsyncImage(
+                    model = imageUrl,
+                    contentDescription = null,
                     modifier = Modifier.fillMaxSize(),
-                    pageNestedScrollConnection = PagerDefaults.pageNestedScrollConnection(
-                        state = pagerState,
-                        orientation = Orientation.Horizontal,
-                    ),
-                ) { page ->
-                    Box(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .background(buildingImageBg[page]),
-                    )
-                }
-                Surface(
-                    shape = RoundedCornerShape(6.dp),
-                    color = Color.Black.copy(alpha = 0.45f),
-                    modifier = Modifier
-                        .align(Alignment.TopStart)
-                        .statusBarsPadding()
-                        .padding(ScanPangSpacing.md),
-                ) {
-                    Text(
-                        text = "${currentBuildingPage + 1}/$buildingImageCount",
-                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
-                        style = ScanPangType.meta11Medium,
-                        color = Color.White,
-                    )
-                }
+                    contentScale = androidx.compose.ui.layout.ContentScale.Fit,
+                )
                 IconButton(
                     onClick = { buildingGalleryFullscreen = false },
                     modifier = Modifier
@@ -503,79 +472,38 @@ private fun ArPoiBuildingTabBody(arOverlay: ArOverlay? = null) {
             }
         }
 
-        Spacer(modifier = Modifier.height(ScanPangSpacing.md))
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(118.dp)
-                .clip(RoundedCornerShape(12.dp)),
-        ) {
-            HorizontalPager(
-                state = pagerState,
-                modifier = Modifier.fillMaxSize(),
-                pageNestedScrollConnection = PagerDefaults.pageNestedScrollConnection(
-                    state = pagerState,
-                    orientation = Orientation.Horizontal,
-                ),
-            ) { page ->
-                Box(
+        if (hasImages) {
+            Spacer(modifier = Modifier.height(ScanPangSpacing.md))
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(118.dp)
+                    .clip(RoundedCornerShape(12.dp)),
+            ) {
+                coil.compose.AsyncImage(
+                    model = imageUrl,
+                    contentDescription = null,
+                    modifier = Modifier.fillMaxSize(),
+                    contentScale = androidx.compose.ui.layout.ContentScale.Crop,
+                )
+                Surface(
                     modifier = Modifier
-                        .fillMaxSize()
-                        .background(buildingImageBg[page]),
-                )
-            }
-            Surface(
-                shape = RoundedCornerShape(6.dp),
-                color = Color.Black.copy(alpha = 0.45f),
-                modifier = Modifier
-                    .align(Alignment.TopStart)
-                    .padding(8.dp),
-            ) {
-                Text(
-                    text = "${currentBuildingPage + 1}/$buildingImageCount",
-                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
-                    style = ScanPangType.meta11Medium,
-                    color = Color.White,
-                )
-            }
-            Surface(
-                modifier = Modifier
-                    .align(Alignment.TopEnd)
-                    .padding(4.dp)
-                    .size(32.dp)
-                    .clip(CircleShape)
-                    .clickable { buildingGalleryFullscreen = true },
-                shape = CircleShape,
-                color = Color.Black.copy(alpha = 0.35f),
-            ) {
-                Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
-                    Icon(
-                        imageVector = Icons.Rounded.OpenInFull,
-                        contentDescription = "전체 보기",
-                        tint = Color.White,
-                        modifier = Modifier.size(18.dp),
-                    )
-                }
-            }
-            Row(
-                modifier = Modifier
-                    .align(Alignment.BottomCenter)
-                    .padding(bottom = 8.dp),
-                horizontalArrangement = Arrangement.spacedBy(4.dp),
-            ) {
-                repeat(buildingImageCount) { i ->
-                    Box(
-                        modifier = Modifier
-                            .size(if (i == currentBuildingPage) 6.dp else 5.dp)
-                            .clip(CircleShape)
-                            .background(
-                                if (i == currentBuildingPage) {
-                                    Color.White
-                                } else {
-                                    Color.White.copy(alpha = 0.45f)
-                                },
-                            ),
-                    )
+                        .align(Alignment.TopEnd)
+                        .padding(4.dp)
+                        .size(32.dp)
+                        .clip(CircleShape)
+                        .clickable { buildingGalleryFullscreen = true },
+                    shape = CircleShape,
+                    color = Color.Black.copy(alpha = 0.35f),
+                ) {
+                    Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
+                        Icon(
+                            imageVector = Icons.Rounded.OpenInFull,
+                            contentDescription = "전체 보기",
+                            tint = Color.White,
+                            modifier = Modifier.size(18.dp),
+                        )
+                    }
                 }
             }
         }

@@ -1,19 +1,29 @@
 package com.scanpang.app.screens
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
+import androidx.compose.material.icons.rounded.CheckCircle
+import androidx.compose.material.icons.rounded.RadioButtonUnchecked
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Scaffold
@@ -26,7 +36,10 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
@@ -42,6 +55,7 @@ import com.scanpang.app.ui.theme.ScanPangType
 /**
  * "최근 본 장소 더보기" 화면 — [RecentlyViewedStore] 에 누적된 전체 항목을 시간 역순으로 노출.
  * Home 미리보기와 동일한 [RecentlyViewedRow] 를 그대로 재사용한다.
+ * "지우기" 버튼으로 삭제 모드 진입 → 단일/다중/전체 선택 후 삭제 가능.
  */
 @Composable
 fun RecentlyViewedListScreen(
@@ -53,6 +67,9 @@ fun RecentlyViewedListScreen(
     val lifecycleOwner = LocalLifecycleOwner.current
 
     var items by remember { mutableStateOf(store.getAll()) }
+    var isDeleteMode by remember { mutableStateOf(false) }
+    var selectedIds by remember { mutableStateOf(setOf<String>()) }
+
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_RESUME) {
@@ -61,6 +78,22 @@ fun RecentlyViewedListScreen(
         }
         lifecycleOwner.lifecycle.addObserver(observer)
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+
+    BackHandler(enabled = isDeleteMode) {
+        isDeleteMode = false
+        selectedIds = emptySet()
+    }
+
+    fun exitDeleteMode() {
+        isDeleteMode = false
+        selectedIds = emptySet()
+    }
+
+    fun deleteSelected() {
+        selectedIds.forEach { store.remove(it) }
+        items = store.getAll()
+        exitDeleteMode()
     }
 
     Scaffold(
@@ -80,6 +113,7 @@ fun RecentlyViewedListScreen(
             ),
             verticalArrangement = Arrangement.spacedBy(ScanPangSpacing.sm),
         ) {
+            // 헤더
             item {
                 Row(
                     modifier = Modifier
@@ -87,7 +121,9 @@ fun RecentlyViewedListScreen(
                         .padding(bottom = ScanPangSpacing.sm),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    IconButton(onClick = { navController.popBackStack() }) {
+                    IconButton(onClick = {
+                        if (isDeleteMode) exitDeleteMode() else navController.popBackStack()
+                    }) {
                         Icon(
                             imageVector = Icons.AutoMirrored.Rounded.ArrowBack,
                             contentDescription = "뒤로",
@@ -100,8 +136,78 @@ fun RecentlyViewedListScreen(
                         color = ScanPangColors.OnSurfaceStrong,
                         modifier = Modifier.weight(1f),
                     )
+                    if (items.isNotEmpty()) {
+                        Text(
+                            text = if (isDeleteMode) "취소" else "지우기",
+                            style = ScanPangType.body14Regular,
+                            color = ScanPangColors.Primary,
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(6.dp))
+                                .clickable {
+                                    if (isDeleteMode) exitDeleteMode() else isDeleteMode = true
+                                }
+                                .padding(horizontal = 8.dp, vertical = 4.dp),
+                        )
+                    }
                 }
             }
+
+            // 삭제 모드: 전체선택 + 삭제 버튼 행
+            if (isDeleteMode) {
+                item {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(bottom = ScanPangSpacing.xs),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        val allSelected = selectedIds.size == items.size && items.isNotEmpty()
+                        Row(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(8.dp))
+                                .clickable {
+                                    selectedIds = if (allSelected) emptySet()
+                                    else items.map { it.id }.toSet()
+                                }
+                                .padding(horizontal = 8.dp, vertical = 6.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        ) {
+                            Icon(
+                                imageVector = if (allSelected) Icons.Rounded.CheckCircle else Icons.Rounded.RadioButtonUnchecked,
+                                contentDescription = "전체 선택",
+                                modifier = Modifier.size(20.dp),
+                                tint = if (allSelected) ScanPangColors.Primary else ScanPangColors.OnSurfacePlaceholder,
+                            )
+                            Text(
+                                text = "전체선택",
+                                style = ScanPangType.body14Regular,
+                                color = ScanPangColors.OnSurfaceStrong,
+                            )
+                        }
+                        Spacer(modifier = Modifier.weight(1f))
+                        Button(
+                            onClick = { deleteSelected() },
+                            enabled = selectedIds.isNotEmpty(),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = ScanPangColors.Error,
+                                disabledContainerColor = Color(0xFFE5E7EB),
+                                contentColor = Color.White,
+                                disabledContentColor = ScanPangColors.OnSurfacePlaceholder,
+                            ),
+                            shape = RoundedCornerShape(10.dp),
+                            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
+                        ) {
+                            Text(
+                                text = if (selectedIds.isEmpty()) "삭제"
+                                else "삭제 (${selectedIds.size}개)",
+                                style = ScanPangType.body14Regular,
+                            )
+                        }
+                    }
+                }
+            }
+
             if (items.isEmpty()) {
                 item {
                     RecentlyViewedListEmpty()
@@ -111,11 +217,19 @@ fun RecentlyViewedListScreen(
                     items = items,
                     key = { it.id + it.viewedAt },
                 ) { entry ->
+                    val isSelected = entry.id in selectedIds
                     RecentlyViewedRow(
                         entry = entry,
+                        isDeleteMode = isDeleteMode,
+                        isSelected = isSelected,
                         onClick = {
-                            navController.navigate(entry.toDetailRoute()) {
-                                launchSingleTop = true
+                            if (isDeleteMode) {
+                                selectedIds = if (isSelected) selectedIds - entry.id
+                                else selectedIds + entry.id
+                            } else {
+                                navController.navigate(entry.toDetailRoute()) {
+                                    launchSingleTop = true
+                                }
                             }
                         },
                     )

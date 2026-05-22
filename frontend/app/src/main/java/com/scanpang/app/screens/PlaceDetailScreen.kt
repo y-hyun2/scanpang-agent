@@ -191,7 +191,6 @@ fun PlaceDetailScreen(
     val subwayDetail: SubwayDetail? = remember(backend) { backend?.toSubwayDetail() }
 
     val heroPhotoAllowed = categoryKey !in setOf("atm", "subway", "subway_station", "restroom", "public_restroom", "lockers", "locker")
-    val canFullscreen = hasHeroPhoto
 
     // 갤러리: 백엔드 image_urls 가 1개 이상 있을 때만 표시. URL 없으면 사진 영역 자체를 숨김.
     val imageModels = remember(backend, place.id, heroPhotoAllowed) {
@@ -199,6 +198,7 @@ fun PlaceDetailScreen(
         else backend?.image_urls.orEmpty().filter { it.isNotBlank() }
     }
     val hasHeroPhoto = heroPhotoAllowed && imageModels.isNotEmpty()
+    val canFullscreen = hasHeroPhoto
     val pagerState = if (hasHeroPhoto) rememberPagerState(pageCount = { imageModels.size }) else null
     var fullscreenOpen by remember { mutableStateOf(false) }
     BackHandler(enabled = fullscreenOpen) { fullscreenOpen = false }
