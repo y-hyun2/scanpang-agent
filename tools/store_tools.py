@@ -12,6 +12,7 @@ store_tools.py
 """
 
 from datetime import datetime, timezone
+from typing import AsyncIterator
 import json
 
 from core.db import get_pool
@@ -327,6 +328,192 @@ async def get_store_detail(
         "floor":         floor,
         "source":        source,
     }
+
+
+async def stream_store_detail(
+    place_id: str,
+    store_name: str,
+    lat: float | None = None,
+    lng: float | None = None,
+) -> AsyncIterator[dict]:
+    """
+    get_store_detail 와 동일한 로직을 각 단계마다 progress 이벤트를 yield 하며 수행.
+    마지막으로 {"result": <store dict>} 를 yield.
+    SSE 스트리밍 엔드포인트 전용.
+    """
+    cache_id = f"{place_id}__{store_name}"
+    pool = await get_pool()
+
+    _OUTDOOR = {"restroom", "subway", "subway_station", "locker", "prayer_room"}
+    pre_category = classify_category(category_name="", store_name=store_name)
+    is_outdoor = pre_category in _OUTDOOR
+
+    yield {"progress": 0.05, "step": "시작"}
+
+    # ── ① 캐시 조회 ──────────────────────────────────────────────────────────
+    expected_addr_seed = ""
+    row = None
+    if not is_outdoor:
+        async with pool.acquire() as conn:
+            row = await conn.fetchrow("SELECT * FROM store_details WHERE id = $1", cache_id)
+        if row and row["source"] != "floor_info_seed":
+            yield {"progress": 1.0, "step": "완료"}
+            yield {"result": _row_to_dict(row)}
+            return
+        if row and row["source"] == "floor_info_seed":
+            expected_addr_seed = row["addr"] or ""
+
+    yield {"progress": 0.10, "step": "캐시 확인"}
+
+    # ── ② 좌표 결정 ──────────────────────────────────────────────────────────
+    if lat is None or lng is None:
+        async with pool.acquire() as conn:
+            coord = await conn.fetchrow("SELECT lat, lng FROM place_info WHERE ufid = $1", place_id)
+            if not coord or coord["lat"] is None:
+                coord = await conn.fetchrow(
+                    "SELECT center_lat AS lat, center_lng AS lng FROM buildings WHERE ufid = $1",
+                    place_id,
+                )
+        lat = float(coord["lat"]) if coord and coord["lat"] is not None else _DEFAULT_LAT
+        lng = float(coord["lng"]) if coord and coord["lng"] is not None else _DEFAULT_LNG
+    else:
+        lat, lng = float(lat), float(lng)
+
+    yield {"progress": 0.25, "step": "좌표 확인"}
+
+    # ── ③ Kakao Local 1차 ────────────────────────────────────────────────────
+    kakao = await check_kakao_open_status(store_name, lat, lng) or {}
+    category_name = kakao.get("category", "") or ""
+    category_full = kakao.get("category_full", "") or category_name
+    category_key = classify_category(category_full, store_name)
+    print(f"[store_tools/stream] {store_name!r} → category_key={category_key!r}")
+
+    yield {"progress": 0.45, "step": "카카오 검색"}
+
+    # ── ④ 카테고리별 fetcher 디스패치 ────────────────────────────────────────
+    fetched = await fetch_by_category(
+        category_key=category_key,
+        store_name=store_name,
+        lat=lat,
+        lng=lng,
+        building_ufid=place_id,
+        category_name=category_name,
+    )
+
+    yield {"progress": 0.70, "step": "매장 정보 수집"}
+
+    # 시·구 검증
+    def _district(a: str) -> str:
+        if not a: return ""
+        parts = a.split()
+        return " ".join(parts[1:3]) if len(parts) >= 3 else ""
+
+    if expected_addr_seed and fetched.get("addr"):
+        exp_d = _district(expected_addr_seed)
+        got_d = _district(fetched.get("addr", ""))
+        if exp_d and got_d and exp_d != got_d:
+            print(f"[store_tools/stream] 시·구 불일치 거절: expected={exp_d!r} got={got_d!r}")
+            yield {"progress": 1.0, "step": "완료"}
+            yield {"result": _row_to_dict(row)}
+            return
+
+    phone = fetched.get("phone") or kakao.get("phone", "")
+    addr = fetched.get("addr") or kakao.get("addr", "")
+    if not category_name:
+        category_name = fetched.get("category", "") or ""
+    raw_homepage = fetched.get("homepage", "") or ""
+    if _is_social_url(raw_homepage):
+        raw_homepage = ""
+    homepage = raw_homepage
+    open_hours = fetched.get("open_hours", "")
+    closed_days = fetched.get("closed_days", "")
+    image_urls = fetched.get("image_urls", []) or []
+    floor = fetched.get("floor", "") or None
+    details = fetched.get("details", {}) or {}
+    source = fetched.get("source", "kakao" if kakao else "")
+
+    # ── ④-b open_hours 구조화 ────────────────────────────────────────────────
+    if open_hours and category_key not in ("subway", "subway_station"):
+        schedule = await normalize_open_hours(open_hours)
+        if schedule:
+            details["schedule"] = schedule
+
+    yield {"progress": 0.85, "step": "영업시간 정규화"}
+
+    # store_name 정규화
+    matched_name = (details.get("matched_name") if isinstance(details, dict) else "") or ""
+    base_name = store_name
+    if matched_name and matched_name != store_name:
+        try:
+            from rapidfuzz import fuzz as _fuzz
+            score = _fuzz.partial_ratio(
+                store_name.replace(" ", ""), matched_name.replace(" ", "")
+            )
+            if score < 70:
+                base_name = matched_name
+        except ImportError:
+            pass
+    display_name = _enrich_store_name(base_name, addr)
+
+    if is_outdoor:
+        result = {
+            "id": cache_id, "place_id": place_id, "store_name": display_name,
+            "category": category_name, "category_key": category_key,
+            "addr": addr, "phone": phone, "lat": lat, "lng": lng,
+            "place_url": kakao.get("place_url", ""), "details": details,
+            "open_hours": open_hours, "closed_days": closed_days,
+            "homepage": homepage, "image_urls": image_urls,
+            "floor": floor, "source": source,
+        }
+        yield {"progress": 1.0, "step": "완료"}
+        yield {"result": result}
+        return
+
+    # ── ⑤ store_details UPSERT ───────────────────────────────────────────────
+    async with pool.acquire() as conn:
+        await conn.execute(
+            """
+            INSERT INTO store_details
+                (id, place_id, store_name, category, category_key,
+                 addr, phone, lat, lng, place_url,
+                 details, open_hours, closed_days, homepage, image_urls,
+                 floor, source, last_updated)
+            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,
+                    $11::jsonb,$12,$13,$14,$15::jsonb,$16,$17,$18)
+            ON CONFLICT (id) DO UPDATE SET
+                category      = EXCLUDED.category,
+                category_key  = EXCLUDED.category_key,
+                addr          = EXCLUDED.addr,
+                phone         = EXCLUDED.phone,
+                place_url     = EXCLUDED.place_url,
+                details       = EXCLUDED.details,
+                open_hours    = EXCLUDED.open_hours,
+                closed_days   = EXCLUDED.closed_days,
+                homepage      = EXCLUDED.homepage,
+                image_urls    = EXCLUDED.image_urls,
+                floor         = EXCLUDED.floor,
+                source        = EXCLUDED.source,
+                last_updated  = EXCLUDED.last_updated
+            """,
+            cache_id, place_id, display_name,
+            category_name, category_key,
+            addr, phone, lat, lng, kakao.get("place_url", ""),
+            details, open_hours, closed_days, homepage,
+            image_urls, floor, source, datetime.now(timezone.utc),
+        )
+
+    result = {
+        "id": cache_id, "place_id": place_id, "store_name": display_name,
+        "category": category_name, "category_key": category_key,
+        "addr": addr, "phone": phone, "lat": lat, "lng": lng,
+        "place_url": kakao.get("place_url", ""), "details": details,
+        "open_hours": open_hours, "closed_days": closed_days,
+        "homepage": homepage, "image_urls": image_urls,
+        "floor": floor, "source": source,
+    }
+    yield {"progress": 0.95, "step": "저장"}
+    yield {"progress": 1.0, "step": "완료"}
+    yield {"result": result}
 
 
 def _row_to_dict(row) -> dict:
