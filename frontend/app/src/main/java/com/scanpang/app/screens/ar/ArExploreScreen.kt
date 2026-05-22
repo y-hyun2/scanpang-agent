@@ -198,7 +198,8 @@ fun ArExploreScreen(
     val placeResult by viewModel.placeResult.collectAsState()
     // 마커 탭 시 /place/store 응답 — ArFloorStoreGuideOverlay 메타 라인의 category·영업중 표시 원천
     val storeResult by viewModel.storeResult.collectAsState()
-    val storeProgress by viewModel.storeProgress.collectAsState()
+    val storeLoadingAt by viewModel.storeLoadingAt.collectAsState()
+    val buildingLoadingAt by viewModel.buildingLoadingAt.collectAsState()
     val context = LocalContext.current
 
     val appContext = context.applicationContext
@@ -994,16 +995,12 @@ fun ArExploreScreen(
             )
 
             // ── 하단 채팅 섹션 ──
-            // 키보드가 올라와 있으면 imePadding() 이 이미 키보드 위로 위치를 맞춰주므로
-            // 탭 바 여유분 padding 은 추가하지 않는다.
             val imeVisible = WindowInsets.ime.getBottom(LocalDensity.current) > 0
             Column(
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
                     .fillMaxWidth()
-                    .navigationBarsPadding()
-                    .imePadding()
-                    .padding(bottom = if (imeVisible) 0.dp else ScanPangDimens.mainTabContentBottomInset - 16.dp),
+                    .then(if (imeVisible) Modifier.imePadding().offset(y = 180.dp) else Modifier.navigationBarsPadding().padding(bottom = ScanPangDimens.mainTabContentBottomInset - 16.dp)),
             ) {
                 ArExploreInteractiveChatSection(
                     messages = chatMessages,
@@ -1188,6 +1185,7 @@ fun ArExploreScreen(
                     },
                     modifier = Modifier.fillMaxSize(),
                     arOverlay = selectedPoiOverlay ?: placeResult?.ar_overlay,
+                    buildingLoadingStartedAt = buildingLoadingAt,
                 )
             }
 
@@ -1196,7 +1194,7 @@ fun ArExploreScreen(
                 // 건물 ufid 를 place_id 로 전달 — store_details cache key 일관성.
                 // selectedPoiOverlay 가 우선(층별탭 시나리오), 없으면 placeResult.
                 val placeUfid = (selectedPoiOverlay?.ufid ?: placeResult?.ar_overlay?.ufid).orEmpty()
-                LaunchedEffect(store) { viewModel.streamStore(placeId = placeUfid, storeName = store) }
+                LaunchedEffect(store) { viewModel.queryStore(placeId = placeUfid, storeName = store) }
                 val s = storeResult?.takeIf { it.store_name == store }
                 ArFloorStoreGuideOverlay(
                     storeName = store,
@@ -1217,7 +1215,7 @@ fun ArExploreScreen(
                     category = s?.category.orEmpty(),
                     isOpenNow = s?.is_open_now,
                     storeResult = s,
-                    storeProgress = storeProgress,
+                    storeLoadingStartedAt = storeLoadingAt,
                 )
             }
 
