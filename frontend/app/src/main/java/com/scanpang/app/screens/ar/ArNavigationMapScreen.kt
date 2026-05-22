@@ -77,6 +77,9 @@ fun ArNavigationMapScreen(
     var chatMessages by remember {
         mutableStateOf(listOf(ArAgentChatMessage(text = "길찾기 중 궁금한 점을 물어보세요!", isUser = false)))
     }
+    // 응답 도착 전 보내기 연타로 같은 query 가 backend 에 N번 전송되던 문제 차단.
+    // ArExploreScreen 과 동일 패턴.
+    var isChatSending by remember { mutableStateOf(false) }
 
     // ArRealSceneView가 매 프레임 보고하는 길안내 상태 (좌/우/직진, 거리, 도착 등)
     var navUiState by remember { mutableStateOf(ArNavUiState()) }
@@ -246,16 +249,23 @@ fun ArNavigationMapScreen(
                         query = aiQuery,
                         onQueryChange = { aiQuery = it },
                         onSend = { text ->
+                            if (isChatSending) return@ArNavAiGuideTabWithTextField
                             val q = text.trim()
                             if (q.isEmpty()) return@ArNavAiGuideTabWithTextField
+                            isChatSending = true
                             chatMessages = chatMessages + ArAgentChatMessage(text = q, isUser = true)
                             aiQuery = ""
                             scope.launch {
-                                val reply = agentService.sendMessage(q)
-                                chatMessages = chatMessages + ArAgentChatMessage(text = reply, isUser = false)
-                                ttsController.speakIfEnabled(reply, isTtsOn)
+                                try {
+                                    val reply = agentService.sendMessage(q)
+                                    chatMessages = chatMessages + ArAgentChatMessage(text = reply, isUser = false)
+                                    ttsController.speakIfEnabled(reply, isTtsOn)
+                                } finally {
+                                    isChatSending = false
+                                }
                             }
                         },
+                        isSending = isChatSending,
                         messages = chatMessages,
                         placeholder = "무엇이든 물어보세요",
                     )

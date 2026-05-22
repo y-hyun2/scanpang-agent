@@ -645,6 +645,8 @@ fun ArNavAiGuideTabWithTextField(
     messages: List<ArAgentChatMessage>,
     placeholder: String,
     modifier: Modifier = Modifier,
+    // 응답 대기 중엔 send 버튼 → spinner + 클릭 차단. ArExploreScreen 의 채팅과 동일.
+    isSending: Boolean = false,
 ) {
     val listState = rememberLazyListState()
     LaunchedEffect(messages.size) {
@@ -711,7 +713,7 @@ fun ArNavAiGuideTabWithTextField(
                 singleLine = true,
                 keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(imeAction = ImeAction.Send),
                 keyboardActions = androidx.compose.foundation.text.KeyboardActions(
-                    onSend = { if (query.isNotBlank()) onSend(query) }
+                    onSend = { if (query.isNotBlank() && !isSending) onSend(query) }
                 ),
                 colors = TextFieldDefaults.colors(
                     focusedContainerColor = Color.Transparent,
@@ -723,16 +725,25 @@ fun ArNavAiGuideTabWithTextField(
                     cursorColor = ScanPangColors.Primary,
                 ),
             )
+            val canSend = query.isNotBlank() && !isSending
             IconButton(
-                onClick = { if (query.isNotBlank()) onSend(query) },
-                enabled = query.isNotBlank(),
+                onClick = { if (canSend) onSend(query) },
+                enabled = canSend,
             ) {
-                Icon(
-                    imageVector = Icons.AutoMirrored.Rounded.Send,
-                    contentDescription = "전송",
-                    modifier = Modifier.size(ScanPangDimens.icon16),
-                    tint = if (query.isNotBlank()) ScanPangColors.Primary else ScanPangColors.OnSurfaceMuted,
-                )
+                if (isSending) {
+                    androidx.compose.material3.CircularProgressIndicator(
+                        modifier = Modifier.size(ScanPangDimens.icon16),
+                        strokeWidth = 2.dp,
+                        color = ScanPangColors.Primary,
+                    )
+                } else {
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Rounded.Send,
+                        contentDescription = "전송",
+                        modifier = Modifier.size(ScanPangDimens.icon16),
+                        tint = if (canSend) ScanPangColors.Primary else ScanPangColors.OnSurfaceMuted,
+                    )
+                }
             }
         }
     }
