@@ -33,6 +33,8 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -56,6 +58,7 @@ import com.scanpang.app.components.ProfileSettingsToggleRow
 import com.scanpang.app.components.auth.LogoutConfirmDialog
 import com.scanpang.app.data.AppSettingsPreferences
 import com.scanpang.app.data.OnboardingPreferences
+import com.scanpang.app.data.TtsState
 import com.scanpang.app.navigation.AppRoutes
 import com.scanpang.app.ui.theme.ScanPangColors
 import com.scanpang.app.ui.theme.ScanPangDimens
@@ -79,13 +82,13 @@ fun ProfileScreen(
     // ON_RESUME 시 prefs 를 다시 읽어 state 를 갱신한다.
     var languageCode by remember { mutableStateOf(onboardingPrefs.getLanguageCode()) }
     var valueAdded by remember { mutableStateOf(onboardingPrefs.getValueAdded()) }
-    var ttsEnabled by remember { mutableStateOf(appSettingsPrefs.isTtsEnabled()) }
+    LaunchedEffect(Unit) { TtsState.init(appSettingsPrefs) }
+    val ttsEnabled by TtsState.enabled.collectAsState()
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_RESUME) {
                 languageCode = onboardingPrefs.getLanguageCode()
                 valueAdded = onboardingPrefs.getValueAdded()
-                ttsEnabled = appSettingsPrefs.isTtsEnabled()
             }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
@@ -215,10 +218,7 @@ fun ProfileScreen(
                         icon = Icons.Rounded.RecordVoiceOver,
                         iconTint = ScanPangColors.Primary,
                         checked = ttsEnabled,
-                        onCheckedChange = {
-                            ttsEnabled = it
-                            appSettingsPrefs.setTtsEnabled(it)
-                        },
+                        onCheckedChange = { TtsState.set(it, appSettingsPrefs) },
                         showDividerBelow = false,
                     )
                 }

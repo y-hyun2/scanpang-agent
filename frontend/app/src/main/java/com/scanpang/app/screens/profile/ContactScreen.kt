@@ -51,13 +51,18 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.dp
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.navigation.NavController
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
+import com.scanpang.app.data.auth.AuthRepository
+import com.scanpang.app.data.remote.InquirySubmitRequest
+import com.scanpang.app.data.remote.RetrofitClient
 import com.scanpang.app.ui.theme.ScanPangColors
 import com.scanpang.app.ui.theme.ScanPangDimens
 import com.scanpang.app.ui.theme.ScanPangShapes
 import com.scanpang.app.ui.theme.ScanPangSpacing
+import kotlinx.coroutines.launch
 import com.scanpang.app.ui.theme.ScanPangType
 
 private const val MAX_PHOTOS = 3
@@ -111,6 +116,9 @@ private fun InquiryTab() {
     }
     var attachedPhotos by remember { mutableStateOf<List<Uri>>(emptyList()) }
     var submitted by rememberSaveable { mutableStateOf(false) }
+    var submitting by remember { mutableStateOf(false) }
+    var submitError by remember { mutableStateOf<String?>(null) }
+    val scope = rememberCoroutineScope()
 
     val photoPickerLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.GetMultipleContents()
@@ -288,7 +296,8 @@ private fun InquiryTab() {
             )
         }
         item {
-            val canSubmit = selectedCategory != inquiryCategories[0] &&
+            val canSubmit = !submitting &&
+                selectedCategory != inquiryCategories[0] &&
                 titleValue.text.isNotBlank() &&
                 bodyValue.text.isNotBlank()
             Box(
@@ -297,13 +306,49 @@ private fun InquiryTab() {
                     .height(52.dp)
                     .clip(ScanPangShapes.radius16)
                     .background(if (canSubmit) ScanPangColors.Primary else ScanPangColors.DisabledSurface)
-                    .clickable(enabled = canSubmit) { submitted = true },
+                    .clickable(enabled = canSubmit) {
+                        // 백엔드 POST /user/inquiry → inquiries 테이블 INSERT.
+                        // user_id 는 Supabase Auth uid. 비로그인 케이스는 차단(보통
+                        // ProfileScreen 까지 들어오면 로그인 상태지만 방어적으로).
+                        val uid = AuthRepository.currentUserId() ?: run {
+                            submitError = "로그인이 필요합니다"
+                            return@clickable
+                        }
+                        submitting = true
+                        submitError = null
+                        scope.launch {
+                            try {
+                                RetrofitClient.api.submitInquiry(
+                                    InquirySubmitRequest(
+                                        user_id  = uid,
+                                        category = selectedCategory,
+                                        title    = titleValue.text.trim(),
+                                        content  = bodyValue.text.trim(),
+                                    ),
+                                )
+                                submitted = true
+                            } catch (e: Exception) {
+                                android.util.Log.e("ContactScreen", "submitInquiry failed", e)
+                                submitError = "전송 실패: 잠시 후 다시 시도해주세요"
+                            } finally {
+                                submitting = false
+                            }
+                        }
+                    },
                 contentAlignment = Alignment.Center,
             ) {
                 Text(
-                    text = "문의 제출하기",
+                    text = if (submitting) "전송 중..." else "문의 제출하기",
                     style = ScanPangType.body15Medium,
                     color = Color.White,
+                )
+            }
+            submitError?.let { msg ->
+                Text(
+                    text = msg,
+                    style = ScanPangType.caption12,
+                    color = ScanPangColors.Error,
+                    modifier = Modifier.padding(top = ScanPangSpacing.xs),
                 )
             }
         }

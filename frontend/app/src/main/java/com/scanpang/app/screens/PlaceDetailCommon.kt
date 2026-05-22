@@ -129,6 +129,8 @@ fun rememberDetailBookmark(
     distanceLine: String,
     tags: List<String>,
     categoryKey: String,
+    lat: Double = 0.0,
+    lng: Double = 0.0,
 ): DetailBookmarkController {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -170,9 +172,10 @@ fun rememberDetailBookmark(
                     id = placeId,
                     name = placeName,
                     category = category,
-                    distanceLine = distanceLine,
                     tags = tags,
                     target = target,
+                    lat = lat,
+                    lng = lng,
                 ),
             )
             bookmarked = true

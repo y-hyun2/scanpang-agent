@@ -61,8 +61,7 @@ fun OnboardingLanguageScreen(
                 .background(Color.White)
                 .padding(innerPadding)
                 .navigationBarsPadding()
-                .padding(horizontal = ScanPangSpacing.lg)
-                .padding(bottom = ScanPangSpacing.sm),
+                .padding(horizontal = ScanPangSpacing.lg),
         ) {
             Column(
                 modifier = Modifier

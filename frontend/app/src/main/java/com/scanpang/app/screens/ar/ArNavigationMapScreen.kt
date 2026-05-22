@@ -52,6 +52,9 @@ import com.scanpang.app.navigation.AppRoutes
 import com.scanpang.app.ui.theme.ScanPangColors
 import com.scanpang.app.ui.theme.ScanPangDimens
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
+import com.scanpang.app.data.AppSettingsPreferences
+import com.scanpang.app.data.TtsState
 
 private const val NAV_TAB_MAP = "map"
 private const val NAV_TAB_AI = "ai"
@@ -67,6 +70,7 @@ fun ArNavigationMapScreen(
     destinationName: String = "",
 ) {
     val appContext = LocalContext.current
+    val appSettingsPrefs = remember { AppSettingsPreferences(appContext) }
     val scope = rememberCoroutineScope()
     val agentService = remember { ScanPangAgentService() }
     val ttsController = remember(appContext) { ArExploreTtsController(appContext) {} }
@@ -125,7 +129,8 @@ fun ArNavigationMapScreen(
     }
     var activeTab by remember { mutableStateOf(NAV_TAB_MAP) }
     var aiQuery by remember { mutableStateOf("") }
-    var isTtsOn by remember { mutableStateOf(true) }
+    LaunchedEffect(Unit) { TtsState.init(appSettingsPrefs) }
+    val isTtsOn by TtsState.enabled.collectAsState()
     var showStopNavSheet by remember { mutableStateOf(false) }
     var showStopConfirmDialog by remember { mutableStateOf(false) }
 
@@ -212,7 +217,7 @@ fun ArNavigationMapScreen(
         )
 
         ArNavSideVolumeCamera(
-            onVolumeClick = { isTtsOn = !isTtsOn },
+            onVolumeClick = { TtsState.toggle(appSettingsPrefs) },
             isTtsOn = isTtsOn,
         )
 

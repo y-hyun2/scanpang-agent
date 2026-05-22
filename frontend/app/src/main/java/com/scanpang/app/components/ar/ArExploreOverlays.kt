@@ -564,7 +564,7 @@ fun ArExploreInteractiveChatSection(
                 .clip(ScanPangShapes.arInputPill)
                 .background(ScanPangColors.ArOverlayWhite93)
                 .padding(horizontal = 6.dp, vertical = 6.dp),
-            verticalAlignment = Alignment.Bottom,
+            verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(ScanPangSpacing.sm),
         ) {
             ArMicSttButton(

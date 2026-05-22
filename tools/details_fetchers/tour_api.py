@@ -47,16 +47,18 @@ async def fetch(
     image_urls = [image_url] if image_url else []
 
     return {
-        "phone":       "",
-        "addr":        "",
+        "phone":       info.get("phone", ""),
+        "addr":        info.get("addr", ""),
         "homepage":    info.get("homepage", ""),
         "open_hours":  info.get("open_hours", ""),
         "closed_days": info.get("closed_days", ""),
         "image_urls":  image_urls,
         "details":     {
-            "description_en": info.get("description_en", ""),
-            "admission_fee":  info.get("admission_fee", ""),
-            "parking_info":   info.get("parking_info", ""),
+            "overview":        info.get("overview", ""),
+            "admission_fee":   info.get("admission_fee", ""),
+            "parking_info":    info.get("parking_info", ""),
+            "content_id":      info.get("content_id", ""),
+            "content_type_id": info.get("content_type_id"),
         },
         "source":      "tour_api",
     }

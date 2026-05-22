@@ -157,6 +157,8 @@ fun PlaceDetailScreen(
     if (place == null) {
         if (backend != null) {
             LaunchedEffect(Unit) { navController.popBackStack() }
+        } else {
+            PlaceLoadingScreen()
         }
         return
     }
@@ -208,6 +210,8 @@ fun PlaceDetailScreen(
         distanceLine = "${displayCategory} · ${place.distance}",
         tags = place.tags,
         categoryKey = categoryKey,
+        lat = place.latitude,
+        lng = place.longitude,
     )
 
     if (fullscreenOpen && pagerState != null) {

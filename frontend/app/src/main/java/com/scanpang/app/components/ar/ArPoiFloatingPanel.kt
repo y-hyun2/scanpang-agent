@@ -733,7 +733,7 @@ fun ArFloorStoreGuideOverlay(
     storeResult: com.scanpang.app.data.remote.StoreResponse? = null,
     distanceLabel: String = "",
 ) {
-    val imageUrls = (storeResult?.image_urls ?: emptyList()).take(6)
+    val imageUrls = (storeResult?.image_urls ?: emptyList()).filter { it.isNotBlank() }.take(6)
     val displayCategory = resolveCategoryLabel(
         categoryKey = storeResult?.category_key ?: "",
         rawCategory = storeResult?.category ?: category,
@@ -755,7 +755,7 @@ fun ArFloorStoreGuideOverlay(
         "tourist", "tourist_spot", "attraction",
     )
 
-    val pagerState = rememberPagerState(pageCount = { imageUrls.size.coerceAtLeast(1) })
+    val pagerState = rememberPagerState(pageCount = { imageUrls.size })
     var isFullscreen by remember { mutableStateOf(false) }
 
     BackHandler(enabled = isFullscreen) { isFullscreen = false }
@@ -767,6 +767,8 @@ fun ArFloorStoreGuideOverlay(
         distanceLine = distanceLabel,
         tags = emptyList(),
         categoryKey = categoryKey,
+        lat = storeResult?.lat ?: 0.0,
+        lng = storeResult?.lng ?: 0.0,
     )
 
     Box(modifier = modifier.fillMaxSize()) {
@@ -788,6 +790,12 @@ fun ArFloorStoreGuideOverlay(
             shadowElevation = ScanPangDimens.arPoiCardShadowElevation,
         ) {
             Column(modifier = Modifier.fillMaxSize()) {
+                if (storeResult == null) {
+                    com.scanpang.app.screens.PlaceLoadingScreen(
+                        modifier = Modifier.fillMaxSize(),
+                    )
+                    return@Surface
+                }
                 // ① 사진 캐러셀 (최대 6장, 90dp 고정)
                 if (imageUrls.isNotEmpty()) {
                     Box(

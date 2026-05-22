@@ -16,7 +16,10 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBackIos
@@ -86,45 +89,52 @@ fun TermsAgreementScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .background(ScanPangColors.Surface)
-                .statusBarsPadding(),
+                .statusBarsPadding()
+                .navigationBarsPadding(),
         ) {
             TermsHeader(onBack = onBack)
             Column(
                 modifier = Modifier
                     .fillMaxSize()
                     .padding(horizontal = ScanPangSpacing.lg)
-                    .padding(top = ScanPangSpacing.lg, bottom = ScanPangSpacing.xl),
+                    .padding(top = ScanPangSpacing.lg),
             ) {
-                Text(
-                    text = "서비스 이용을 위해 동의가 필요합니다",
-                    style = ScanPangType.detailScreenTitle22,
-                    color = ScanPangColors.OnSurfaceStrong,
-                )
-                Spacer(modifier = Modifier.height(ScanPangSpacing.lg))
-
-                AllAgreeRow(
-                    checked = allChecked,
-                    onToggle = {
-                        val next = !allChecked
-                        checks = Terms.associate { it.id to next }
-                    },
-                )
-                Spacer(modifier = Modifier.height(ScanPangSpacing.md))
-
-                Terms.forEachIndexed { index, term ->
-                    TermsAgreeRow(
-                        label = if (term.required) "${term.label} (필수)" else "${term.label} (선택)",
-                        checked = checks[term.id] == true,
-                        onToggle = {
-                            checks = checks.toMutableMap().apply {
-                                this[term.id] = !(this[term.id] ?: false)
-                            }
-                        },
-                        showDetail = index != 0,
-                        onDetailClick = { onTermDetailClick(term.id) },
+                Column(
+                    modifier = Modifier
+                        .weight(1f)
+                        .verticalScroll(rememberScrollState()),
+                ) {
+                    Text(
+                        text = "서비스 이용을 위해 동의가 필요합니다",
+                        style = ScanPangType.detailScreenTitle22,
+                        color = ScanPangColors.OnSurfaceStrong,
                     )
+                    Spacer(modifier = Modifier.height(ScanPangSpacing.lg))
+
+                    AllAgreeRow(
+                        checked = allChecked,
+                        onToggle = {
+                            val next = !allChecked
+                            checks = Terms.associate { it.id to next }
+                        },
+                    )
+                    Spacer(modifier = Modifier.height(ScanPangSpacing.md))
+
+                    Terms.forEachIndexed { index, term ->
+                        TermsAgreeRow(
+                            label = if (term.required) "${term.label} (필수)" else "${term.label} (선택)",
+                            checked = checks[term.id] == true,
+                            onToggle = {
+                                checks = checks.toMutableMap().apply {
+                                    this[term.id] = !(this[term.id] ?: false)
+                                }
+                            },
+                            showDetail = index != 0,
+                            onDetailClick = { onTermDetailClick(term.id) },
+                        )
+                    }
+                    Spacer(modifier = Modifier.height(ScanPangSpacing.lg))
                 }
-                Spacer(modifier = Modifier.weight(1f))
                 ContinueCta(
                     enabled = requiredChecked,
                     onClick = {
@@ -138,6 +148,7 @@ fun TermsAgreementScreen(
                         )
                     },
                 )
+                Spacer(modifier = Modifier.height(ScanPangSpacing.lg))
             }
         }
     }
@@ -225,7 +236,7 @@ private fun TermsAgreeRow(
         )
         if (showDetail) {
             Text(
-                text = "전문보기",
+                text = "더보기",
                 style = ScanPangType.caption12Medium,
                 color = ScanPangColors.Primary,
                 modifier = Modifier.clickable(onClick = onDetailClick),

@@ -51,9 +51,29 @@ import com.scanpang.app.ui.theme.ScanPangShapes
 import com.scanpang.app.ui.theme.ScanPangSpacing
 import com.scanpang.app.ui.theme.ScanPangType
 
-private val filterLabels = listOf(
-    "전체", "식당", "카페", "편의점", "쇼핑", "관광지", "기도실", "환전소", "은행", "ATM",
-    "병원", "약국", "지하철역", "화장실", "물품보관함",
+// 필터 chip 한국어 라벨 → 매칭할 target enum 집합.
+// SavedPlaceEntry.category 의 한국어 string contains 매칭은 표기 변동(예: "할랄 식당"
+// vs "식당") 에 약하므로 target enum (= category_key) 기반 정확 매칭으로 통일.
+// "식당" 탭은 일반 + 할랄 식당 둘 다 포함(SavedPlaceNavTarget.fromCategoryKey 에서
+// halal_restaurant 도 Restaurant 로 매핑됨).
+private data class SavedFilter(val label: String, val targets: Set<SavedPlaceNavTarget>)
+
+private val savedFilters = listOf(
+    SavedFilter("전체", emptySet()),  // 빈 set = 필터 안 함
+    SavedFilter("식당", setOf(SavedPlaceNavTarget.Restaurant)),
+    SavedFilter("카페", setOf(SavedPlaceNavTarget.Cafe)),
+    SavedFilter("편의점", setOf(SavedPlaceNavTarget.ConvenienceStore)),
+    SavedFilter("쇼핑", setOf(SavedPlaceNavTarget.Shopping)),
+    SavedFilter("관광지", setOf(SavedPlaceNavTarget.TouristSpot)),
+    SavedFilter("기도실", setOf(SavedPlaceNavTarget.PrayerRoom)),
+    SavedFilter("환전소", setOf(SavedPlaceNavTarget.Exchange)),
+    SavedFilter("은행", setOf(SavedPlaceNavTarget.Bank)),
+    SavedFilter("ATM", setOf(SavedPlaceNavTarget.Atm)),
+    SavedFilter("병원", setOf(SavedPlaceNavTarget.Hospital)),
+    SavedFilter("약국", setOf(SavedPlaceNavTarget.Pharmacy)),
+    SavedFilter("지하철역", setOf(SavedPlaceNavTarget.Subway)),
+    SavedFilter("화장실", setOf(SavedPlaceNavTarget.Restroom)),
+    SavedFilter("물품보관함", setOf(SavedPlaceNavTarget.Lockers)),
 )
 
 private enum class SavedSort {
@@ -78,6 +98,21 @@ private fun parseDistanceMeters(line: String): Int {
     return Int.MAX_VALUE / 4
 }
 
+private fun haversineMeters(lat1: Double, lng1: Double, lat2: Double, lng2: Double): Double {
+    val r = 6371000.0
+    val dLat = Math.toRadians(lat2 - lat1)
+    val dLng = Math.toRadians(lng2 - lng1)
+    val a = Math.sin(dLat / 2).let { it * it } +
+        Math.cos(Math.toRadians(lat1)) * Math.cos(Math.toRadians(lat2)) *
+        Math.sin(dLng / 2).let { it * it }
+    return 2 * r * Math.asin(Math.sqrt(a))
+}
+
+private fun formatDistanceLabel(meters: Int): String = when {
+    meters < 1000 -> "${meters}m"
+    else          -> "%.1fkm".format(meters / 1000.0)
+}
+
 // Detail 화면들이 distanceLine 을 "카테고리 · 80m" 처럼 카테고리 prefix 와 함께 저장한다.
 // 저장한 장소 카드는 이미 좌측에 파란 카테고리 pill 을 노출하므로, 회색 텍스트 영역에는
 // 거리값만 남기기 위해 " · " 직전의 카테고리 부분을 잘라낸다.
@@ -87,15 +122,29 @@ private fun stripCategoryPrefix(line: String): String {
     return if (idx >= 0) line.substring(idx + 3).trim() else line.trim()
 }
 
-private fun SavedPlaceEntry.toUiRow(): SavedPlaceRow = SavedPlaceRow(
-    id = id,
-    title = name,
-    categoryLabel = category,
-    distanceLine = stripCategoryPrefix(distanceLine),
-    distanceMeters = parseDistanceMeters(distanceLine),
-    savedOrder = savedOrder,
-    navTarget = target,
-)
+/**
+ * 사용자 현재 위치 기준 거리 동적 계산.
+ *  - 좌표 + GPS 모두 있으면 Haversine 으로 실거리 표시
+ *  - 좌표 없거나(옛 row, 0.0/0.0) GPS 미수신이면 거리 표시 안 함 (빈 string).
+ *    정렬 시엔 MAX 로 처리해 뒤로 밀어둠.
+ *  저장 시점에 박혔던 distanceLine 의 거리값은 stale 이라 사용하지 않는다.
+ */
+private fun SavedPlaceEntry.toUiRow(userLat: Double?, userLng: Double?): SavedPlaceRow {
+    val hasCoords = lat != 0.0 && lng != 0.0
+    val canCompute = hasCoords && userLat != null && userLng != null
+    val meters = if (canCompute) haversineMeters(userLat!!, userLng!!, lat, lng).toInt()
+                 else Int.MAX_VALUE / 4
+    val label = if (canCompute) formatDistanceLabel(meters) else ""
+    return SavedPlaceRow(
+        id = id,
+        title = name,
+        categoryLabel = category,
+        distanceLine = label,
+        distanceMeters = meters,
+        savedOrder = savedOrder,
+        navTarget = target,
+    )
+}
 
 private fun NavController.navigateToSavedDetail(target: SavedPlaceNavTarget, placeId: String) {
     navigate(AppRoutes.placeDetailRoute(target.toCategoryKey(), placeId)) { launchSingleTop = true }
@@ -111,6 +160,39 @@ fun SavedPlacesScreen(
     val store = remember { SavedPlacesStore(context) }
     var entries by remember { mutableStateOf(store.getAll()) }
 
+    // GPS — 저장된 각 장소까지의 거리 동적 계산용. 권한 없거나 lastLocation null
+    // 이면 distanceLine 의 박힌 값으로 폴백.
+    var userLat by remember { mutableStateOf<Double?>(null) }
+    var userLng by remember { mutableStateOf<Double?>(null) }
+    androidx.compose.runtime.LaunchedEffect(Unit) {
+        val hasPermission =
+            android.content.pm.PackageManager.PERMISSION_GRANTED ==
+                androidx.core.content.ContextCompat.checkSelfPermission(
+                    context, android.Manifest.permission.ACCESS_FINE_LOCATION
+                ) ||
+            android.content.pm.PackageManager.PERMISSION_GRANTED ==
+                androidx.core.content.ContextCompat.checkSelfPermission(
+                    context, android.Manifest.permission.ACCESS_COARSE_LOCATION
+                )
+        if (!hasPermission) return@LaunchedEffect
+        val client = com.google.android.gms.location.LocationServices
+            .getFusedLocationProviderClient(context)
+        client.lastLocation.addOnSuccessListener { loc ->
+            if (loc != null) {
+                userLat = loc.latitude; userLng = loc.longitude
+            } else {
+                client.getCurrentLocation(
+                    com.google.android.gms.location.Priority.PRIORITY_BALANCED_POWER_ACCURACY,
+                    null,
+                ).addOnSuccessListener { fresh ->
+                    if (fresh != null) {
+                        userLat = fresh.latitude; userLng = fresh.longitude
+                    }
+                }
+            }
+        }
+    }
+
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_RESUME) {
@@ -125,15 +207,11 @@ fun SavedPlacesScreen(
     var sort by remember { mutableStateOf(SavedSort.ByDistance) }
     var sortMenuExpanded by remember { mutableStateOf(false) }
 
-    val rows = remember(entries, filterIndex) {
-        val mapped = entries.map { it.toUiRow() }
-        if (filterIndex == 0) mapped
-        else {
-            val label = filterLabels[filterIndex]
-            mapped.filter { row ->
-                row.categoryLabel == label || row.categoryLabel.contains(label)
-            }
-        }
+    val rows = remember(entries, filterIndex, userLat, userLng) {
+        val mapped = entries.map { it.toUiRow(userLat, userLng) }
+        val filter = savedFilters[filterIndex]
+        if (filter.targets.isEmpty()) mapped   // "전체"
+        else mapped.filter { it.navTarget in filter.targets }
     }
 
     val sortedRows = remember(sort, rows) {
@@ -204,9 +282,9 @@ fun SavedPlacesScreen(
                     LazyRow(
                         horizontalArrangement = Arrangement.spacedBy(ScanPangSpacing.sm),
                     ) {
-                        itemsIndexed(filterLabels) { index, label ->
+                        itemsIndexed(savedFilters) { index, f ->
                             ScanPangFilterChip(
-                                label = label,
+                                label = f.label,
                                 selected = filterIndex == index,
                                 onClick = { filterIndex = index },
                             )
