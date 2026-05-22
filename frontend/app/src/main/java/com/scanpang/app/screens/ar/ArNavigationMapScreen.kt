@@ -198,7 +198,8 @@ fun ArNavigationMapScreen(
 
         ArNavTopHud(
             modifier = Modifier.align(Alignment.TopStart),
-            onCameraClick = { },
+            onVolumeClick = { TtsState.toggle(appSettingsPrefs) },
+            isTtsOn = isTtsOn,
             onSearchClick = {
                 navController.navigate(AppRoutes.ArExplore) { launchSingleTop = true }
             },
@@ -214,11 +215,6 @@ fun ArNavigationMapScreen(
                     onClick = { showStopNavSheet = true },
                 )
             },
-        )
-
-        ArNavSideVolumeCamera(
-            onVolumeClick = { TtsState.toggle(appSettingsPrefs) },
-            isTtsOn = isTtsOn,
         )
 
         Box(
