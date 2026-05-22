@@ -15,7 +15,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.sp
 import com.scanpang.app.ui.theme.ScanPangColors
 import com.scanpang.app.ui.theme.ScanPangDimens
 import com.scanpang.app.ui.theme.ScanPangShapes
@@ -47,10 +49,11 @@ fun ScanPangCategoryTile(
         Spacer(modifier = Modifier.height(ScanPangDimens.categoryIconLabelGap))
         Text(
             text = label,
-            style = ScanPangType.category11SemiBold,
+            style = ScanPangType.category11SemiBold.copy(fontSize = 10.sp, lineHeight = 12.sp),
             color = ScanPangColors.OnSurfaceStrong,
-            maxLines = 1,
+            maxLines = 2,
             overflow = TextOverflow.Ellipsis,
+            textAlign = TextAlign.Center,
         )
     }
 }

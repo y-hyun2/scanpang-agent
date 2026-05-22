@@ -29,6 +29,7 @@ import com.scanpang.app.components.ProfileSettingsCard
 import com.scanpang.app.components.ProfileSettingsSectionLabel
 import com.scanpang.app.components.ProfileSettingsToggleRow
 import com.scanpang.app.data.AppSettingsPreferences
+import com.scanpang.app.i18n.LocalStrings
 import com.scanpang.app.ui.theme.ScanPangColors
 import com.scanpang.app.ui.theme.ScanPangDimens
 import com.scanpang.app.ui.theme.ScanPangSpacing
@@ -38,6 +39,7 @@ fun NotificationSettingsScreen(
     navController: NavController,
     modifier: Modifier = Modifier,
 ) {
+    val s = LocalStrings.current
     val context = LocalContext.current
     val prefs = remember { AppSettingsPreferences(context) }
 
@@ -57,7 +59,7 @@ fun NotificationSettingsScreen(
                 .statusBarsPadding(),
         ) {
             SettingsTitleBar(
-                title = "알림 설정",
+                title = s.profileNotificationSettings,
                 onBack = { navController.popBackStack() },
             )
             Column(
@@ -71,11 +73,11 @@ fun NotificationSettingsScreen(
             ) {
                 // ── 알림 받기 ──────────────────────────────────────────
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    ProfileSettingsSectionLabel(text = "알림 받기")
+                    ProfileSettingsSectionLabel(text = s.notifReceive)
                     ProfileSettingsCard(bordered = false) {
                         ProfileSettingsToggleRow(
-                            label = "푸시 알림",
-                            subtitle = "모든 알림을 한 번에 켜고 끕니다",
+                            label = s.notifPush,
+                            subtitle = s.notifPushDesc,
                             icon = Icons.Rounded.Notifications,
                             iconTint = ScanPangColors.Primary,
                             checked = pushEnabled,
@@ -90,10 +92,10 @@ fun NotificationSettingsScreen(
 
                 // ── 알림 종류 ──────────────────────────────────────────
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    ProfileSettingsSectionLabel(text = "알림 종류")
+                    ProfileSettingsSectionLabel(text = s.notifTypes)
                     ProfileSettingsCard(bordered = false) {
                         ProfileSettingsToggleRow(
-                            label = "이벤트 및 프로모션",
+                            label = s.notifPromo,
                             icon = Icons.Rounded.Campaign,
                             iconTint = ScanPangColors.Primary,
                             checked = eventPromoEnabled,
@@ -108,11 +110,11 @@ fun NotificationSettingsScreen(
 
                 // ── 방해 금지 ──────────────────────────────────────────
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    ProfileSettingsSectionLabel(text = "방해 금지")
+                    ProfileSettingsSectionLabel(text = s.notifDnd)
                     ProfileSettingsCard(bordered = false) {
                         ProfileSettingsToggleRow(
-                            label = "방해 금지 모드",
-                            subtitle = "22:00 - 07:00 동안 알림을 받지 않습니다",
+                            label = s.notifDndMode,
+                            subtitle = s.notifDndDesc,
                             icon = Icons.Rounded.DoNotDisturbOn,
                             iconTint = ScanPangColors.Primary,
                             checked = dndEnabled,

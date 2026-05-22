@@ -25,6 +25,7 @@ import androidx.compose.ui.unit.dp
 import com.scanpang.app.data.AuthProvider
 import com.scanpang.app.data.OnboardingPreferences
 import com.scanpang.app.data.auth.AuthRepository
+import com.scanpang.app.i18n.LocalStrings
 import com.scanpang.app.ui.theme.ScanPangColors
 import com.scanpang.app.ui.theme.ScanPangTheme
 import com.scanpang.app.ui.theme.ScanPangType
@@ -89,11 +90,12 @@ fun OAuthLoadingScreen(
         }
     }
 
-    val title = "잠시만 기다려주세요"
+    val s = LocalStrings.current
+    val title = s.authLoadingDefault
     val subtitle = when (provider) {
-        AuthProvider.KAKAO -> "카카오 인증 중입니다..."
-        AuthProvider.GOOGLE -> "구글 인증 중입니다..."
-        null -> "인증 중입니다..."
+        AuthProvider.KAKAO -> s.authLoadingKakao
+        AuthProvider.GOOGLE -> s.authLoadingGoogle
+        null -> s.authLoadingGeneric
     }
     Scaffold(
         modifier = modifier.fillMaxSize(),

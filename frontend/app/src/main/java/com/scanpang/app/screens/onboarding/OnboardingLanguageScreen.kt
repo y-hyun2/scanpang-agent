@@ -22,6 +22,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.navigation.NavController
 import com.scanpang.app.data.OnboardingPreferences
+import com.scanpang.app.i18n.LocalStrings
 import com.scanpang.app.navigation.AppRoutes
 import com.scanpang.app.ui.theme.ScanPangColors
 import com.scanpang.app.ui.theme.ScanPangSpacing
@@ -41,7 +42,8 @@ fun OnboardingLanguageScreen(
 ) {
     val context = LocalContext.current
     val prefs = remember { OnboardingPreferences(context) }
-    val options = remember {
+    val s = LocalStrings.current
+    val options = remember(s) {
         listOf(
             LanguageOption(OnboardingPreferences.LANG_KO, "🇰🇷", "한국어", "Korean"),
             LanguageOption(OnboardingPreferences.LANG_EN, "🇺🇸", "English", "영어"),
@@ -72,13 +74,13 @@ fun OnboardingLanguageScreen(
                 OnboardingProgressHeader(step = 1)
                 Spacer(modifier = Modifier.height(ScanPangSpacing.lg))
                 Text(
-                    text = "사용 언어를 선택해주세요",
+                    text = s.onboardingLanguageTitle,
                     style = ScanPangType.titleLarge,
                     color = ScanPangColors.OnSurfaceStrong,
                 )
                 Spacer(modifier = Modifier.height(ScanPangSpacing.xs))
                 Text(
-                    text = "선택한 언어로 음성 안내와 텍스트가 제공됩니다",
+                    text = s.onboardingLanguageSubtitle,
                     style = ScanPangType.body14Regular,
                     color = ScanPangColors.OnSurfaceMuted,
                 )
@@ -102,7 +104,7 @@ fun OnboardingLanguageScreen(
                 Spacer(modifier = Modifier.height(ScanPangSpacing.lg))
             }
             OnboardingPrimaryButton(
-                text = "다음",
+                text = s.next,
                 enabled = selectedCode != null,
                 onClick = {
                     selectedCode?.let { prefs.setLanguageCode(it) }

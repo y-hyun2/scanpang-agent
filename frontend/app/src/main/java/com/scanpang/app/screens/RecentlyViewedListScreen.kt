@@ -48,6 +48,7 @@ import androidx.navigation.NavController
 import com.scanpang.app.components.RecentlyViewedRow
 import com.scanpang.app.components.toDetailRoute
 import com.scanpang.app.data.RecentlyViewedStore
+import com.scanpang.app.i18n.LocalStrings
 import com.scanpang.app.ui.theme.ScanPangColors
 import com.scanpang.app.ui.theme.ScanPangDimens
 import com.scanpang.app.ui.theme.ScanPangSpacing
@@ -63,6 +64,7 @@ fun RecentlyViewedListScreen(
     navController: NavController,
     modifier: Modifier = Modifier,
 ) {
+    val s = LocalStrings.current
     val context = LocalContext.current
     val store = remember(context) { RecentlyViewedStore(context) }
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -158,19 +160,19 @@ fun RecentlyViewedListScreen(
                     }) {
                         Icon(
                             imageVector = Icons.AutoMirrored.Rounded.ArrowBack,
-                            contentDescription = "뒤로",
+                            contentDescription = s.back,
                             tint = ScanPangColors.OnSurfaceStrong,
                         )
                     }
                     Text(
-                        text = "최근 본 장소",
+                        text = s.recentTitle,
                         style = ScanPangType.detailScreenTitle22,
                         color = ScanPangColors.OnSurfaceStrong,
                         modifier = Modifier.weight(1f),
                     )
                     if (items.isNotEmpty()) {
                         Text(
-                            text = if (isDeleteMode) "취소" else "지우기",
+                            text = if (isDeleteMode) s.cancel else s.recentClear,
                             style = ScanPangType.body14Regular,
                             color = ScanPangColors.Primary,
                             modifier = Modifier
@@ -207,12 +209,12 @@ fun RecentlyViewedListScreen(
                         ) {
                             Icon(
                                 imageVector = if (allSelected) Icons.Rounded.CheckCircle else Icons.Rounded.RadioButtonUnchecked,
-                                contentDescription = "전체 선택",
+                                contentDescription = s.recentSelectAll,
                                 modifier = Modifier.size(20.dp),
                                 tint = if (allSelected) ScanPangColors.Primary else ScanPangColors.OnSurfacePlaceholder,
                             )
                             Text(
-                                text = "전체선택",
+                                text = s.recentSelectAll,
                                 style = ScanPangType.body14Regular,
                                 color = ScanPangColors.OnSurfaceStrong,
                             )
@@ -231,8 +233,8 @@ fun RecentlyViewedListScreen(
                             contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
                         ) {
                             Text(
-                                text = if (selectedIds.isEmpty()) "삭제"
-                                else "삭제 (${selectedIds.size}개)",
+                                text = if (selectedIds.isEmpty()) s.delete
+                                else s.recentDeleteCount(selectedIds.size),
                                 style = ScanPangType.body14Regular,
                             )
                         }
@@ -298,8 +300,9 @@ private fun RecentlyViewedListEmpty() {
             .padding(vertical = ScanPangSpacing.xl),
         contentAlignment = Alignment.Center,
     ) {
+        val rs = LocalStrings.current
         Text(
-            text = "아직 본 장소가 없어요",
+            text = rs.recentEmpty,
             style = ScanPangType.body14Regular,
             color = ScanPangColors.OnSurfaceMuted,
         )

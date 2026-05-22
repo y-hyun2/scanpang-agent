@@ -30,6 +30,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.navigation.NavController
 import com.scanpang.app.data.OnboardingPreferences
+import com.scanpang.app.i18n.LocalStrings
 import com.scanpang.app.screens.onboarding.OnboardingChoiceContent
 import com.scanpang.app.screens.onboarding.OnboardingSelectableCard
 import com.scanpang.app.ui.theme.ScanPangColors
@@ -53,6 +54,7 @@ fun LanguageSettingsScreen(
     navController: NavController,
     modifier: Modifier = Modifier,
 ) {
+    val s = LocalStrings.current
     val context = LocalContext.current
     val prefs = remember { OnboardingPreferences(context) }
     val options = remember {
@@ -75,7 +77,7 @@ fun LanguageSettingsScreen(
                 .statusBarsPadding(),
         ) {
             SettingsTitleBar(
-                title = "언어 설정",
+                title = s.profileLanguageSettings,
                 onBack = { navController.popBackStack() },
             )
             Column(
@@ -84,7 +86,7 @@ fun LanguageSettingsScreen(
                     .padding(top = 16.dp),
             ) {
             Text(
-                text = "앱에서 사용할 언어를 선택하세요. 선택한 언어로 음성 안내와 텍스트가 제공됩니다.",
+                text = s.settingsLanguageDesc,
                 style = ScanPangType.meta13.copy(lineHeight = 19.5.sp),
                 color = ScanPangColors.OnSurfaceMuted,
             )
@@ -131,10 +133,11 @@ internal fun SettingsTitleBar(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {
+        val sb = LocalStrings.current
         IconButton(onClick = onBack) {
             Icon(
                 imageVector = Icons.AutoMirrored.Rounded.ArrowBack,
-                contentDescription = "뒤로",
+                contentDescription = sb.back,
                 tint = ScanPangColors.OnSurfaceStrong,
             )
         }
