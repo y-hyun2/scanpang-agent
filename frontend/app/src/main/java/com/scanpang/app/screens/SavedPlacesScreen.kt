@@ -371,7 +371,10 @@ fun SavedPlacesScreen(
                         }
                     }
                 }
-                items(sortedRows) { row ->
+                // items 에 key 지정 — 같은 매장 id 인데 sortedRows 순서가 바뀔 때
+                // LazyColumn 이 재배치를 정확히 처리하도록. key 없으면 위치 기반
+                // diff 라 정렬 변경이 시각적으로 안 반영되는 케이스 발생 가능.
+                items(sortedRows, key = { it.id }) { row ->
                     SavedPlaceCard(
                         title = row.title,
                         categoryLabel = row.categoryLabel,
