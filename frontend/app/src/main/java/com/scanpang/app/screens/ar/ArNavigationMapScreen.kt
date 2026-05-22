@@ -77,6 +77,9 @@ fun ArNavigationMapScreen(
     var chatMessages by remember {
         mutableStateOf(listOf(ArAgentChatMessage(text = "길찾기 중 궁금한 점을 물어보세요!", isUser = false)))
     }
+    // 응답 도착 전 보내기 연타로 같은 query 가 backend 에 N번 전송되던 문제 차단.
+    // ArExploreScreen 과 동일 패턴.
+    var isChatSending by remember { mutableStateOf(false) }
 
     // ArRealSceneView가 매 프레임 보고하는 길안내 상태 (좌/우/직진, 거리, 도착 등)
     var navUiState by remember { mutableStateOf(ArNavUiState()) }
@@ -246,16 +249,39 @@ fun ArNavigationMapScreen(
                         query = aiQuery,
                         onQueryChange = { aiQuery = it },
                         onSend = { text ->
+                            if (isChatSending) return@ArNavAiGuideTabWithTextField
                             val q = text.trim()
                             if (q.isEmpty()) return@ArNavAiGuideTabWithTextField
+                            isChatSending = true
                             chatMessages = chatMessages + ArAgentChatMessage(text = q, isUser = true)
                             aiQuery = ""
+                            // 현재 길안내 상태를 nav_context 로 같이 전송 — backend
+                            // orchestrator 가 'nav_guide' 로 라우팅하면 LLM 이 이 데이터
+                            // 보고 "여기서 좌회전 맞아?" "거의 다 왔어?" 등에 정확 응답.
+                            val totalRemain = arCommand?.total_distance_m ?: 0
+                            val totalTime = arCommand?.total_time_min ?: 0
+                            val navCtx = com.scanpang.app.data.remote.NavContext(
+                                is_routing = isRouting,
+                                destination_name = displayDestinationName,
+                                direction = navUiState.turnDirection.name,
+                                current_speech = navUiState.currentSpeech,
+                                current_distance_m = navUiState.currentDistanceM,
+                                next_direction = navUiState.nextTurnDirection.name,
+                                next_distance_m = navUiState.nextDistanceM,
+                                remaining_distance_m = totalRemain,
+                                remaining_time_min = totalTime,
+                            )
                             scope.launch {
-                                val reply = agentService.sendMessage(q)
-                                chatMessages = chatMessages + ArAgentChatMessage(text = reply, isUser = false)
-                                ttsController.speakIfEnabled(reply, isTtsOn)
+                                try {
+                                    val reply = agentService.sendMessage(q, navCtx)
+                                    chatMessages = chatMessages + ArAgentChatMessage(text = reply, isUser = false)
+                                    ttsController.speakIfEnabled(reply, isTtsOn)
+                                } finally {
+                                    isChatSending = false
+                                }
                             }
                         },
+                        isSending = isChatSending,
                         messages = chatMessages,
                         placeholder = "무엇이든 물어보세요",
                     )

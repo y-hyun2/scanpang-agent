@@ -394,6 +394,21 @@ data class AgentChatRequest(
     val heading: Double = 0.0,
     val language: String = "ko",
     val session_id: String? = null,
+    // AR 길안내 화면에서 채팅 호출 시 현재 turn/거리/목적지를 함께 전송.
+    // backend orchestrator 가 nav_guide 로 라우팅하고 LLM 프롬프트에 주입.
+    val nav_context: NavContext? = null,
+)
+
+data class NavContext(
+    val is_routing: Boolean = false,
+    val destination_name: String = "",
+    val direction: String = "",
+    val current_speech: String = "",
+    val current_distance_m: Int = 0,
+    val next_direction: String = "",
+    val next_distance_m: Int = 0,
+    val remaining_distance_m: Int = 0,
+    val remaining_time_min: Int = 0,
 )
 
 data class AgentChatResponse(
