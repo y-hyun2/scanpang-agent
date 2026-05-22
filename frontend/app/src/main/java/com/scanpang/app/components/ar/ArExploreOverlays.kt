@@ -521,6 +521,8 @@ fun ArExploreInteractiveChatSection(
     onMicClick: () -> Unit,
     listState: LazyListState,
     modifier: Modifier = Modifier,
+    // 전송 진행 중일 때 버튼을 spinner 로 바꾸고 클릭 차단 — 연타 방지의 시각 보강.
+    isSending: Boolean = false,
 ) {
     Column(
         modifier = modifier
@@ -595,20 +597,30 @@ fun ArExploreInteractiveChatSection(
                     }
                 },
             )
+            // 보내기 버튼 — 전송 진행 중이면 spinner + 클릭 차단, 입력 빈 상태도 차단.
+            val canSend = inputText.isNotBlank() && !isSending
             Box(
                 modifier = Modifier
                     .size(36.dp)
                     .clip(RoundedCornerShape(16.dp))
                     .background(Color(0xFF6B7280).copy(alpha = 0.1f))
-                    .clickable(enabled = inputText.isNotBlank()) { onSend() },
+                    .clickable(enabled = canSend) { onSend() },
                 contentAlignment = Alignment.Center,
             ) {
-                Icon(
-                    imageVector = Icons.AutoMirrored.Rounded.Send,
-                    contentDescription = "전송",
-                    modifier = Modifier.size(ScanPangDimens.icon16),
-                    tint = if (inputText.isNotBlank()) ScanPangColors.Primary else ScanPangColors.OnSurfaceMuted,
-                )
+                if (isSending) {
+                    androidx.compose.material3.CircularProgressIndicator(
+                        modifier = Modifier.size(ScanPangDimens.icon16),
+                        strokeWidth = 2.dp,
+                        color = ScanPangColors.Primary,
+                    )
+                } else {
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Rounded.Send,
+                        contentDescription = "전송",
+                        modifier = Modifier.size(ScanPangDimens.icon16),
+                        tint = if (canSend) ScanPangColors.Primary else ScanPangColors.OnSurfaceMuted,
+                    )
+                }
             }
         }
     }

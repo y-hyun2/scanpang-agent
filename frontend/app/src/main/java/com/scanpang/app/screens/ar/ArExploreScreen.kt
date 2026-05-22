@@ -204,6 +204,9 @@ fun ArExploreScreen(
     val scope = rememberCoroutineScope()
     val chatListState = rememberLazyListState()
     var chatInput by remember { mutableStateOf("") }
+    // 응답 도착 전 보내기 연타로 같은 query 가 backend 에 N번 전송되던 버그
+    // (POST /ar/agent/chat 6번씩 찍힘) + UI 가 무반응으로 보이던 문제 차단.
+    var isChatSending by remember { mutableStateOf(false) }
     var chatMessages by remember {
         mutableStateOf(
             listOf(
@@ -263,15 +266,20 @@ fun ArExploreScreen(
         if (!isTtsOn) ttsController.stop()
     }
 
-    val onSttResult: (String) -> Unit = { text ->
-        chatInput = text
+    val onSttResult: (String) -> Unit = stt@{ text ->
+        if (isChatSending) return@stt
+        if (text.isBlank()) return@stt
+        isChatSending = true
+        chatInput = ""
+        chatMessages = chatMessages + ArAgentChatMessage(text = text, isUser = true)
         scope.launch {
-            val reply = sendVoiceMessage(text, agentService)
-            chatMessages = chatMessages +
-                    ArAgentChatMessage(text = text, isUser = true) +
-                    ArAgentChatMessage(text = reply, isUser = false)
-            chatInput = ""
-            ttsController.speakIfEnabled(reply, isTtsOn)
+            try {
+                val reply = sendVoiceMessage(text, agentService)
+                chatMessages = chatMessages + ArAgentChatMessage(text = reply, isUser = false)
+                ttsController.speakIfEnabled(reply, isTtsOn)
+            } finally {
+                isChatSending = false
+            }
         }
     }
     val latestOnSttResult = rememberUpdatedState(onSttResult)
@@ -986,17 +994,23 @@ fun ArExploreScreen(
                     inputText = chatInput,
                     onInputChange = { chatInput = it },
                     onSend = send@{
+                        if (isChatSending) return@send
                         val q = chatInput.trim()
                         if (q.isEmpty()) return@send
+                        isChatSending = true
+                        chatInput = ""
+                        chatMessages = chatMessages + ArAgentChatMessage(text = q, isUser = true)
                         scope.launch {
-                            val reply = agentService.sendMessage(q)
-                            chatMessages = chatMessages +
-                                    ArAgentChatMessage(text = q, isUser = true) +
-                                    ArAgentChatMessage(text = reply, isUser = false)
-                            chatInput = ""
-                            ttsController.speakIfEnabled(reply, isTtsOn)
+                            try {
+                                val reply = agentService.sendMessage(q)
+                                chatMessages = chatMessages + ArAgentChatMessage(text = reply, isUser = false)
+                                ttsController.speakIfEnabled(reply, isTtsOn)
+                            } finally {
+                                isChatSending = false
+                            }
                         }
                     },
+                    isSending = isChatSending,
                     isSttListening = isSttListening,
                     onMicClick = mic@{
                         val h = speechHelperRef

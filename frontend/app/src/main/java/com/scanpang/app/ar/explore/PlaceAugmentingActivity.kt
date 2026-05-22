@@ -733,6 +733,7 @@ fun GeospatialARExploreScreen(
                             }
                         }
                     },
+                    isSending = isChatSending,
                     isSttListening = isSttListening,
                     onMicClick = mic@{
                         val h = speechHelperRef
