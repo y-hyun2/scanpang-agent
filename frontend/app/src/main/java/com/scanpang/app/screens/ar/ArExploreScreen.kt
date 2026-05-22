@@ -326,6 +326,9 @@ fun ArExploreScreen(
     var selectedPoiOverlay by remember { mutableStateOf<ArOverlay?>(null) }
     var activeDetailTab by remember { mutableStateOf(ArPoiTabBuilding) }
     var selectedStore by remember { mutableStateOf<String?>(null) }
+    // 층별탭에서 매장 패널로 전환 시 건물 패널 상태 보존 — X 닫을 때 복원
+    var previousPoi by remember { mutableStateOf<String?>(null) }
+    var previousPoiOverlay by remember { mutableStateOf<ArOverlay?>(null) }
     var storeListPoi by remember { mutableStateOf<DynamicPoi?>(null) }
 
     BackHandler(enabled = selectedPoi != null && selectedStore == null) {
@@ -334,6 +337,12 @@ fun ArExploreScreen(
     }
     BackHandler(enabled = selectedStore != null) {
         selectedStore = null
+        if (previousPoi != null) {
+            selectedPoi = previousPoi
+            selectedPoiOverlay = previousPoiOverlay
+            previousPoi = null
+            previousPoiOverlay = null
+        }
     }
 
     val categoryChipSpecs = remember { arExploreCategoryChipSpecs() }
@@ -984,13 +993,16 @@ fun ArExploreScreen(
             )
 
             // ── 하단 채팅 섹션 ──
+            // 키보드가 올라와 있으면 imePadding() 이 이미 키보드 위로 위치를 맞춰주므로
+            // 탭 바 여유분 padding 은 추가하지 않는다.
+            val imeVisible = WindowInsets.isImeVisible
             Column(
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
                     .fillMaxWidth()
                     .navigationBarsPadding()
                     .imePadding()
-                    .padding(bottom = ScanPangDimens.mainTabContentBottomInset - 16.dp),
+                    .padding(bottom = if (imeVisible) 0.dp else ScanPangDimens.mainTabContentBottomInset - 16.dp),
             ) {
                 ArExploreInteractiveChatSection(
                     messages = chatMessages,
@@ -1157,11 +1169,16 @@ fun ArExploreScreen(
                         selectedPoi = null
                         selectedPoiOverlay = null
                         selectedStore = null
+                        previousPoi = null
+                        previousPoiOverlay = null
                         activeDetailTab = ArPoiTabBuilding
                     },
                     onFloorStoreClick = {
                         // 건물 패널 닫고 매장 floating 으로 전환 — 두 fillMaxSize 패널이
                         // 동시에 그려지면 겹쳐서 매장 카드가 잘려보임.
+                        // 건물 상태를 백업해두고 매장 X 닫을 때 복원.
+                        previousPoi = selectedPoi
+                        previousPoiOverlay = selectedPoiOverlay
                         selectedStore = it
                         selectedPoi = null
                     },
@@ -1182,7 +1199,15 @@ fun ArExploreScreen(
                 val s = storeResult?.takeIf { it.store_name == store }
                 ArFloorStoreGuideOverlay(
                     storeName = store,
-                    onDismiss = { selectedStore = null },
+                    onDismiss = {
+                        selectedStore = null
+                        if (previousPoi != null) {
+                            selectedPoi = previousPoi
+                            selectedPoiOverlay = previousPoiOverlay
+                            previousPoi = null
+                            previousPoiOverlay = null
+                        }
+                    },
                     onStartNavigation = {
                         navController.navigate(AppRoutes.arNavMapRoute(store)) { launchSingleTop = true }
                         selectedStore = null

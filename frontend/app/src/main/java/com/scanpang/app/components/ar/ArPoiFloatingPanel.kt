@@ -596,18 +596,6 @@ private fun ArPoiFloorsTabBody(
                         style = ScanPangType.caption12Medium,
                         color = ScanPangColors.OnSurfaceMuted,
                     )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Surface(
-                        shape = ScanPangShapes.badge6,
-                        color = ScanPangColors.PrimarySoft,
-                    ) {
-                        Text(
-                            text = floor.categoryLabel,
-                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
-                            style = ScanPangType.meta11Medium,
-                            color = ScanPangColors.Primary,
-                        )
-                    }
                     Spacer(modifier = Modifier.weight(1f))
                     Icon(
                         imageVector = if (isOpen) Icons.Rounded.ExpandLess else Icons.Rounded.ExpandMore,
