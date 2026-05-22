@@ -77,6 +77,9 @@ fun RecentlyViewedRow(
     entry: RecentlyViewedEntry,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
+    // 호출처가 현재 위치 기준 거리 라벨(예: '120m') 을 계산해 전달. 좌표 없거나
+    // GPS 미수신이면 빈 string → subtitle 은 category 만 보임.
+    distanceLabel: String = "",
 ) {
     Row(
         modifier = modifier
@@ -113,7 +116,7 @@ fun RecentlyViewedRow(
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
-            val subtitle = entry.distanceLine.ifBlank { entry.category }
+            val subtitle = distanceLabel.ifBlank { entry.category }
             if (subtitle.isNotBlank()) {
                 Text(
                     text = subtitle,
