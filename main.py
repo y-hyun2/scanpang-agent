@@ -1,14 +1,13 @@
 from typing import Optional
 
 from fastapi import FastAPI, HTTPException
-from sse_starlette.sse import EventSourceResponse
 from pydantic import BaseModel
 from schemas.navigation import NavRequest, RouteRequest
 from agents.navigation_agent import run_route_search, run_route_agent
 from schemas.place import PlaceRequest
 from agents.place_insight_agent import run_place_insight_agent
 from schemas.store import StoreRequest
-from tools.store_tools import get_store_detail, stream_store_detail
+from tools.store_tools import get_store_detail
 from schemas.convenience import ConvenienceRequest
 from agents.search_agent import run_search_agent
 from schemas.halal import HalalRequest
@@ -122,34 +121,6 @@ async def place_store(req: StoreRequest):
         )
     return detail
 
-
-@app.post("/place/store/stream")
-async def place_store_stream(req: StoreRequest):
-    """
-    매장 상세 정보 — SSE 스트리밍.
-    progress 이벤트로 진행률(0~1) 전송, 마지막에 result 이벤트로 전체 데이터 전송.
-    """
-    async def event_generator():
-        async for event in stream_store_detail(req.place_id, req.store_name):
-            if "result" in event:
-                detail = event["result"]
-                if isinstance(detail, dict):
-                    details = detail.get("details") or {}
-                    schedule = details.get("schedule") if isinstance(details, dict) else None
-                    detail["is_open_now"] = _is_open_now_combined(
-                        detail.get("open_hours") or "", schedule,
-                    )
-                yield {
-                    "event": "result",
-                    "data": _json.dumps(detail, ensure_ascii=False, default=str),
-                }
-            else:
-                yield {
-                    "event": "progress",
-                    "data": _json.dumps(event, ensure_ascii=False),
-                }
-
-    return EventSourceResponse(event_generator())
 
 
 @app.post("/user/preferences", response_model=UserPreferencesResponse)
@@ -478,14 +449,26 @@ async def place_search(req: SearchRequest):
                    END AS dist_m
             FROM store_details
             WHERE store_name ILIKE $1
+               OR similarity(
+                    regexp_replace(store_name, '\s+', '', 'g'),
+                    regexp_replace($6, '\s+', '', 'g')
+                  ) >= 0.3
                OR ($3 != 'other' AND category_key = $3)
-            ORDER BY dist_m NULLS LAST, last_updated DESC NULLS LAST
+            ORDER BY
+              CASE WHEN store_name ILIKE $1 THEN 0 ELSE 1 END,
+              similarity(
+                regexp_replace(store_name, '\s+', '', 'g'),
+                regexp_replace($6, '\s+', '', 'g')
+              ) DESC,
+              dist_m NULLS LAST,
+              last_updated DESC NULLS LAST
             LIMIT $2
             """,
             f"%{q}%",
             req.limit,
             category_key,
             user_lng, user_lat,
+            q,
         )
 
     results: list[SearchResultItem] = []
