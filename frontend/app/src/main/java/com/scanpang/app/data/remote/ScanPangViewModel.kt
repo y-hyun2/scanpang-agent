@@ -4,14 +4,28 @@ import android.location.Location
 import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.google.gson.Gson
+import com.google.gson.JsonObject
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.OkHttpClient
+import okhttp3.Request
+import okhttp3.RequestBody.Companion.toRequestBody
+import java.util.concurrent.TimeUnit
 
 class ScanPangViewModel : ViewModel() {
 
     private val api = RetrofitClient.api
+    private val gson = Gson()
+    private val sseClient: OkHttpClient by lazy {
+        RetrofitClient.httpClient.newBuilder()
+            .readTimeout(0, TimeUnit.MILLISECONDS)
+            .build()
+    }
 
     init {
         Log.d("ScanPangVM", "ViewModel CREATED, BASE_URL=${com.scanpang.app.BuildConfig.SERVER_URL}")
@@ -62,6 +76,10 @@ class ScanPangViewModel : ViewModel() {
 
     private val _storeResult = MutableStateFlow<StoreResponse?>(null)
     val storeResult: StateFlow<StoreResponse?> = _storeResult
+
+    // SSE 스트리밍 진행률 (0f~1f). null = 로딩 없음.
+    private val _storeProgress = MutableStateFlow<Float?>(null)
+    val storeProgress: StateFlow<Float?> = _storeProgress
 
     private val _storeLoadingAt = MutableStateFlow<Long?>(null)
     val storeLoadingAt: StateFlow<Long?> = _storeLoadingAt
@@ -234,6 +252,57 @@ class ScanPangViewModel : ViewModel() {
                 Log.e("ScanPangVM", "queryStore failed", e)
             } finally {
                 _storeLoadingAt.value = null
+            }
+        }
+    }
+
+    fun streamStore(placeId: String, storeName: String) {
+        viewModelScope.launch(Dispatchers.IO) {
+            _storeProgress.value = 0f
+            _storeResult.value = null
+            try {
+                val body = """{"place_id":"$placeId","store_name":"$storeName"}"""
+                    .toRequestBody("application/json; charset=utf-8".toMediaType())
+                val request = Request.Builder()
+                    .url("${RetrofitClient.BASE_URL}place/store/stream")
+                    .post(body)
+                    .header("Accept", "text/event-stream")
+                    .header("Cache-Control", "no-cache")
+                    .build()
+                val response = sseClient.newCall(request).execute()
+                if (!response.isSuccessful) {
+                    Log.e("ScanPangVM", "streamStore HTTP ${response.code}")
+                    return@launch
+                }
+                val source = response.body?.source() ?: return@launch
+                var currentEvent = ""
+                val dataBuf = StringBuilder()
+                while (!source.exhausted()) {
+                    val line = source.readUtf8Line() ?: break
+                    when {
+                        line.startsWith("event:") -> currentEvent = line.removePrefix("event:").trim()
+                        line.startsWith("data:") -> dataBuf.append(line.removePrefix("data:").trim())
+                        line.isEmpty() && dataBuf.isNotEmpty() -> {
+                            val data = dataBuf.toString()
+                            dataBuf.clear()
+                            when (currentEvent) {
+                                "progress" -> {
+                                    val obj = gson.fromJson(data, JsonObject::class.java)
+                                    obj.get("progress")?.asFloat?.let { _storeProgress.value = it }
+                                }
+                                "result" -> {
+                                    _storeResult.value = gson.fromJson(data, StoreResponse::class.java)
+                                    _storeProgress.value = null
+                                }
+                            }
+                            currentEvent = ""
+                        }
+                    }
+                }
+            } catch (e: Exception) {
+                Log.e("ScanPangVM", "streamStore failed", e)
+            } finally {
+                if (_storeProgress.value != null) _storeProgress.value = null
             }
         }
     }

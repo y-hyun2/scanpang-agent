@@ -12,7 +12,7 @@ import retrofit2.converter.gson.GsonConverterFactory
 import java.util.concurrent.TimeUnit
 
 object RetrofitClient {
-    private val BASE_URL: String = BuildConfig.SERVER_URL
+    val BASE_URL: String = BuildConfig.SERVER_URL
 
     init {
         Log.d("RetrofitClient", "BASE_URL = $BASE_URL")
@@ -51,7 +51,7 @@ object RetrofitClient {
         }
     }
 
-    private val client = OkHttpClient.Builder()
+    val httpClient = OkHttpClient.Builder()
         .connectTimeout(15, TimeUnit.SECONDS)
         .readTimeout(30, TimeUnit.SECONDS)
         .writeTimeout(30, TimeUnit.SECONDS)
@@ -72,7 +72,7 @@ object RetrofitClient {
         Log.d("RetrofitClient", "Creating ScanPangApi with baseUrl=$BASE_URL")
         Retrofit.Builder()
             .baseUrl(BASE_URL)
-            .client(client)
+            .client(httpClient)
             .addConverterFactory(GsonConverterFactory.create())
             .build()
             .create(ScanPangApi::class.java)
