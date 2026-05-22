@@ -92,7 +92,8 @@ class OnboardingPreferences(context: Context) {
         prefs.edit().apply {
             if (!displayName.isNullOrBlank()) putString(KEY_DISPLAY_NAME, displayName)
             if (!language.isNullOrBlank()) putString(KEY_LANGUAGE, language)
-            if (!valueAdded.isNullOrBlank()) putString(KEY_VALUE_ADDED, valueAdded)
+            // 서버에 대문자("HALAL")로 저장된 기존 데이터를 enum rawValue(소문자)로 정규화
+            if (!valueAdded.isNullOrBlank()) putString(KEY_VALUE_ADDED, valueAdded.lowercase())
         }.apply()
     }
 
@@ -108,7 +109,7 @@ class OnboardingPreferences(context: Context) {
             user_id = userId,
             display_name = getDisplayName(),
             language = getLanguageCode(),
-            value_added = getValueAdded()?.rawValue?.uppercase(),
+            value_added = getValueAdded()?.rawValue,
         )
         syncScope.launch {
             try {

@@ -993,13 +993,16 @@ fun ArExploreScreen(
             )
 
             // ── 하단 채팅 섹션 ──
+            // 키보드가 올라와 있으면 imePadding() 이 이미 키보드 위로 위치를 맞춰주므로
+            // 탭 바 여유분 padding 은 추가하지 않는다.
+            val imeVisible = WindowInsets.isImeVisible
             Column(
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
                     .fillMaxWidth()
                     .navigationBarsPadding()
                     .imePadding()
-                    .padding(bottom = ScanPangDimens.mainTabContentBottomInset - 16.dp),
+                    .padding(bottom = if (imeVisible) 0.dp else ScanPangDimens.mainTabContentBottomInset - 16.dp),
             ) {
                 ArExploreInteractiveChatSection(
                     messages = chatMessages,
