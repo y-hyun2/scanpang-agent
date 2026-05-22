@@ -25,6 +25,7 @@ from schemas.user import (
 )
 from tools.open_hours_parser import is_open_now_combined as _is_open_now_combined
 import json as _json
+import re as _re
 from datetime import datetime, timedelta, timezone
 
 
@@ -748,7 +749,7 @@ async def _accommodation_search(req: SearchRequest, lat: float, lng: float) -> S
     async with pool.acquire() as conn:
         rows = await conn.fetch(
             """
-            SELECT id, name_ko, category, addr, phone, lat, lng, open_hours, image_url,
+            SELECT id, name_ko, category, addr, phone, lat, lng, image_url,
                    CASE
                      WHEN lat IS NOT NULL AND lng IS NOT NULL THEN
                        ST_Distance(
@@ -775,7 +776,7 @@ async def _accommodation_search(req: SearchRequest, lat: float, lng: float) -> S
             lng=r["lng"],
             image_url=r["image_url"] or None,
             distance_m=round(float(r["dist_m"]), 1) if r["dist_m"] is not None else None,
-            is_open_now=_is_open_now_combined(r["open_hours"] or "", None),
+            is_open_now=None,
         )
         for r in rows
     ]
@@ -789,7 +790,7 @@ async def _tourist_search(req: SearchRequest, lat: float, lng: float) -> SearchR
     async with pool.acquire() as conn:
         rows = await conn.fetch(
             """
-            SELECT id, name_ko, category, addr, phone, lat, lng, open_hours, image_url,
+            SELECT id, name_ko, category, addr, phone, lat, lng, image_url,
                    CASE
                      WHEN lat IS NOT NULL AND lng IS NOT NULL THEN
                        ST_Distance(
@@ -821,7 +822,7 @@ async def _tourist_search(req: SearchRequest, lat: float, lng: float) -> SearchR
                 lng=r["lng"],
                 image_url=r["image_url"] or None,
                 distance_m=round(float(r["dist_m"]), 1) if r["dist_m"] is not None else None,
-                is_open_now=_is_open_now_combined(r["open_hours"] or "", None),
+                is_open_now=None,
             )
         )
     return SearchResponse(query=req.query, count=len(results), results=results)
@@ -833,20 +834,30 @@ async def _accommodation_detail(acc_id: str) -> PlaceDetailResponse:
     async with pool.acquire() as conn:
         row = await conn.fetchrow(
             """
-            SELECT id, kakao_id, name_ko, lat, lng, addr, phone, category,
-                   overview, image_url, homepage, open_hours, closed_days,
-                   parking_info, admission_fee, place_url, source, last_updated
+            SELECT id, content_id, name_ko, lat, lng, addr, phone, category,
+                   image_url, homepage, open_hours,
+                   checkintime, checkouttime, infocenterlodging, parkinglodging,
+                   reservationlodging, reservationurl,
+                   conveniences, source, last_updated
             FROM accommodation_places WHERE id = $1
             """,
             acc_id,
         )
     if row is None:
         raise HTTPException(status_code=404, detail=f"숙박업소 '{acc_id}' 없음")
-    open_hours = row["open_hours"] or ""
+    convs = row["conveniences"]
+    if isinstance(convs, str):
+        import json as _json
+        try:
+            convs = _json.loads(convs)
+        except Exception:
+            convs = []
+    open_hours_str = row["open_hours"] or ""
+    is_open = _is_open_now_combined(open_hours_str, None) if open_hours_str else None
     return PlaceDetailResponse(
         id=row["id"],
         store_name=row["name_ko"] or "",
-        place_id=row["kakao_id"] or None,
+        place_id=row["content_id"] or None,
         lat=float(row["lat"]) if row["lat"] is not None else None,
         lng=float(row["lng"]) if row["lng"] is not None else None,
         category=row["category"] or "숙박",
@@ -855,15 +866,19 @@ async def _accommodation_detail(acc_id: str) -> PlaceDetailResponse:
         phone=row["phone"] or "",
         floor=None,
         homepage=row["homepage"] or None,
-        place_url=row["place_url"] or None,
-        open_hours=open_hours,
-        closed_days=row["closed_days"] or None,
-        is_open_now=_is_open_now_combined(open_hours, None),
+        place_url=None,
+        open_hours=open_hours_str or None,
+        closed_days=None,
+        is_open_now=is_open,
         image_urls=[row["image_url"]] if row["image_url"] else [],
         details={
-            "overview":      row["overview"] or "",
-            "parking_info":  row["parking_info"] or "",
-            "admission_fee": row["admission_fee"] or "",
+            "checkintime":        row["checkintime"] or "",
+            "checkouttime":       row["checkouttime"] or "",
+            "infocenterlodging":  row["infocenterlodging"] or "",
+            "parkinglodging":     row["parkinglodging"] or "",
+            "reservationlodging": row["reservationlodging"] or "",
+            "reservationurl":     row["reservationurl"] or "",
+            "conveniences":       convs or [],
         },
         source=row["source"] or "accommodation_places",
         last_updated=row["last_updated"].isoformat() if row["last_updated"] else None,
@@ -877,9 +892,12 @@ async def _tourist_detail(tourist_id: str) -> PlaceDetailResponse:
     async with pool.acquire() as conn:
         row = await conn.fetchrow(
             """
-            SELECT id, kakao_id, name_ko, lat, lng, addr, phone, category,
-                   overview, image_url, homepage, open_hours, closed_days,
-                   parking_info, admission_fee, place_url, source, last_updated
+            SELECT id, content_id, content_type_id, name_ko, lat, lng, addr, phone, category,
+                   overview, image_url, homepage, open_hours,
+                   infocenter, opendate, parking, restdate, usetime,
+                   infocenterculture, parkingculture, parkingfee,
+                   restdateculture, usefee, usetimeculture,
+                   conveniences, source, last_updated
             FROM tourist_places WHERE id = $1
             """,
             tourist_id,
@@ -889,11 +907,39 @@ async def _tourist_detail(tourist_id: str) -> PlaceDetailResponse:
     key = classify_category(row["category"] or "", row["name_ko"] or "")
     if key not in ("tourist", "cultural"):
         key = "tourist"
-    open_hours = row["open_hours"] or ""
+    convs = row["conveniences"]
+    if isinstance(convs, str):
+        import json as _json
+        try:
+            convs = _json.loads(convs)
+        except Exception:
+            convs = []
+    ctype = row["content_type_id"]
+    if ctype == 14:
+        type_details = {
+            "infocenterculture": row["infocenterculture"] or "",
+            "parkingculture":    row["parkingculture"] or "",
+            "parkingfee":        row["parkingfee"] or "",
+            "restdateculture":   row["restdateculture"] or "",
+            "usefee":            row["usefee"] or "",
+            "usetimeculture":    row["usetimeculture"] or "",
+        }
+    else:
+        type_details = {
+            "infocenter": row["infocenter"] or "",
+            "opendate":   row["opendate"] or "",
+            "parking":    row["parking"] or "",
+            "restdate":   row["restdate"] or "",
+            "usetime":    row["usetime"] or "",
+        }
+    open_hours_str = row["open_hours"] or ""
+    is_open = _is_open_now_combined(open_hours_str, None) if open_hours_str else None
+    overview_raw = row["overview"] or ""
+    overview = _re.sub(r"<[^>]+>", "", overview_raw).strip()
     return PlaceDetailResponse(
         id=row["id"],
         store_name=row["name_ko"] or "",
-        place_id=row["kakao_id"] or None,
+        place_id=row["content_id"] or None,
         lat=float(row["lat"]) if row["lat"] is not None else None,
         lng=float(row["lng"]) if row["lng"] is not None else None,
         category=row["category"] or "관광지",
@@ -902,15 +948,15 @@ async def _tourist_detail(tourist_id: str) -> PlaceDetailResponse:
         phone=row["phone"] or "",
         floor=None,
         homepage=row["homepage"] or None,
-        place_url=row["place_url"] or None,
-        open_hours=open_hours,
-        closed_days=row["closed_days"] or None,
-        is_open_now=_is_open_now_combined(open_hours, None),
+        place_url=None,
+        open_hours=open_hours_str or None,
+        closed_days=None,
+        is_open_now=is_open,
         image_urls=[row["image_url"]] if row["image_url"] else [],
         details={
-            "overview":      row["overview"] or "",
-            "parking_info":  row["parking_info"] or "",
-            "admission_fee": row["admission_fee"] or "",
+            "overview":     overview,
+            "conveniences": convs or [],
+            **type_details,
         },
         source=row["source"] or "tourist_places",
         last_updated=row["last_updated"].isoformat() if row["last_updated"] else None,
@@ -924,8 +970,8 @@ async def place_detail(req: PlaceDetailRequest):
     - `restroom__{mng_no}` → public_restrooms 테이블
     - `halal__{restaurant_id}` → halal_restaurants 테이블
     - `prayer__{room_id}` → prayer_rooms 테이블
-    - `accommodation__{kakao_id}` → accommodation_places 테이블
-    - `tourist__{kakao_id}` → tourist_places 테이블
+    - `accommodation__{content_id}` → accommodation_places 테이블
+    - `tourist__{content_id}` → tourist_places 테이블
     - 그 외 → store_details 테이블 (건물 내 매장 캐시)
     """
     # outdoor 라우팅

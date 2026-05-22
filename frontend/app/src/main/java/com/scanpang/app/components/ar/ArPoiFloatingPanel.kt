@@ -507,6 +507,32 @@ private fun ArPoiBuildingTabBody(arOverlay: ArOverlay? = null) {
                 }
             }
         }
+        if (descText.isEmpty() && gridItems.isEmpty() && !hasImages) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 32.dp),
+                contentAlignment = Alignment.Center,
+            ) {
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(ScanPangSpacing.sm),
+                ) {
+                    Icon(
+                        imageVector = Icons.Rounded.Info,
+                        contentDescription = null,
+                        tint = ScanPangColors.OnSurfacePlaceholder,
+                        modifier = Modifier.size(32.dp),
+                    )
+                    Text(
+                        text = "해당 건물에 대한 정보가 없습니다.",
+                        style = ScanPangType.body14Regular,
+                        color = ScanPangColors.OnSurfaceMuted,
+                        textAlign = TextAlign.Center,
+                    )
+                }
+            }
+        }
     }
 }
 
@@ -556,6 +582,33 @@ private fun ArPoiFloorsTabBody(
     onToggle: (String) -> Unit,
     onStoreClick: (String) -> Unit,
 ) {
+    if (floors.isEmpty()) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(vertical = 32.dp),
+            contentAlignment = Alignment.Center,
+        ) {
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(ScanPangSpacing.sm),
+            ) {
+                Icon(
+                    imageVector = Icons.Rounded.Info,
+                    contentDescription = null,
+                    tint = ScanPangColors.OnSurfacePlaceholder,
+                    modifier = Modifier.size(32.dp),
+                )
+                Text(
+                    text = "해당 건물에 대한 정보가 없습니다.",
+                    style = ScanPangType.body14Regular,
+                    color = ScanPangColors.OnSurfaceMuted,
+                    textAlign = TextAlign.Center,
+                )
+            }
+        }
+        return
+    }
     floors.forEach { floor ->
         val isOpen = floor.label in expanded
         Surface(

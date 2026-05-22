@@ -591,8 +591,45 @@ async def fetch_place_detail(
                     )
                     if "/photo" not in photo_url:
                         photo_url = entry_frame.url.split("?")[0].rstrip("/") + "/photo"
-                    await page.goto(photo_url, timeout=15_000, wait_until="domcontentloaded")
-                    await page.wait_for_timeout(2_500)
+                    print(f"[naver_map_scraper] photo_url={photo_url!r}")
+                    await page.goto(photo_url, timeout=15_000, wait_until="networkidle")
+                    await page.wait_for_timeout(2_000)
+
+                    # 관광지·문화시설·숙박은 /photo 기본 뷰가 방문자 사진(pup-review-phinf)이라
+                    # '업체' 서브탭을 클릭해야 ldb-phinf 사진이 노출된다.
+                    tab_clicked = await page.evaluate(r"""
+                        () => {
+                            const tabs = document.querySelectorAll('a, button, li, span');
+                            for (const t of tabs) {
+                                if ((t.innerText || '').trim() === '업체') {
+                                    t.click();
+                                    return true;
+                                }
+                            }
+                            return false;
+                        }
+                    """)
+                    print(f"[naver_map_scraper] 업체 탭 클릭={'성공' if tab_clicked else '탭 없음'}")
+                    if tab_clicked:
+                        await page.wait_for_timeout(2_000)
+
+                    # 전체 img 태그 도메인 진단
+                    all_img_domains = await page.evaluate(r"""
+                        () => {
+                            const domains = {};
+                            document.querySelectorAll('img').forEach(img => {
+                                const src = img.src || img.dataset?.src || '';
+                                if (!src) return;
+                                try {
+                                    const h = new URL(src).hostname;
+                                    domains[h] = (domains[h] || 0) + 1;
+                                } catch {}
+                            });
+                            return domains;
+                        }
+                    """)
+                    print(f"[naver_map_scraper] photo 페이지 img 도메인: {all_img_domains}")
+
                     extra_imgs = await page.evaluate(r"""
                         () => {
                             const isBiz = (src) => {
