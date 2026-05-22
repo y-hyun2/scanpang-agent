@@ -22,6 +22,10 @@ data class SavedPlaceEntry(
     val tags: List<String>,
     val target: SavedPlaceNavTarget,
     val savedOrder: Long = System.currentTimeMillis(),
+    // 매장 좌표 — 표시 시점에 사용자 현재 위치와 Haversine 으로 거리 동적 계산.
+    // 0.0 이면 좌표 모름 (옛 저장 row) → distanceLine 의 박힌 값을 폴백 사용.
+    val lat: Double = 0.0,
+    val lng: Double = 0.0,
 )
 
 enum class SavedPlaceNavTarget {
@@ -102,6 +106,8 @@ class SavedPlacesStore(context: Context) {
                                 o.optString("target", SavedPlaceNavTarget.Restaurant.name),
                             ),
                             savedOrder = o.optLong("savedOrder", 0L),
+                            lat = o.optDouble("lat", 0.0),
+                            lng = o.optDouble("lng", 0.0),
                         ),
                     )
                 }
@@ -149,6 +155,8 @@ class SavedPlacesStore(context: Context) {
                     put("tags", JSONArray(e.tags))
                     put("target", e.target.name)
                     put("savedOrder", e.savedOrder)
+                    put("lat", e.lat)
+                    put("lng", e.lng)
                 },
             )
         }
@@ -170,6 +178,8 @@ class SavedPlacesStore(context: Context) {
                 "tags" to e.tags,
                 "target" to e.target.name,
                 "savedOrder" to e.savedOrder,
+                "lat" to e.lat,
+                "lng" to e.lng,
             )
         }
         savedPlacesSyncScope.launch {

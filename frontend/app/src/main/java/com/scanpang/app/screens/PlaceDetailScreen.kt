@@ -210,6 +210,8 @@ fun PlaceDetailScreen(
         distanceLine = "${displayCategory} · ${place.distance}",
         tags = place.tags,
         categoryKey = categoryKey,
+        lat = place.latitude,
+        lng = place.longitude,
     )
 
     if (fullscreenOpen && pagerState != null) {

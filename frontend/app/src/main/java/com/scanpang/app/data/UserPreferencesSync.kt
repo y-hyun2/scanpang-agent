@@ -51,6 +51,8 @@ object UserPreferencesSync {
                     tags = (m["tags"] as? List<*>)?.filterIsInstance<String>().orEmpty(),
                     target = parseSavedPlaceNavTarget((m["target"] as? String).orEmpty()),
                     savedOrder = (m["savedOrder"] as? Number)?.toLong() ?: 0L,
+                    lat = (m["lat"] as? Number)?.toDouble() ?: 0.0,
+                    lng = (m["lng"] as? Number)?.toDouble() ?: 0.0,
                 )
             }
             SavedPlacesStore(context).replaceAll(entries)
