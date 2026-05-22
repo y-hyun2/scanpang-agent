@@ -123,6 +123,7 @@ import com.scanpang.app.components.ar.arExploreCategoryChipSpecs
 import com.scanpang.app.components.ar.ArCategoryIconBadge
 import com.scanpang.app.components.ar.ArPoiCard
 import com.scanpang.app.data.AppSettingsPreferences
+import com.scanpang.app.data.OnboardingPreferences
 import com.scanpang.app.data.RecentlyViewedEntry
 import com.scanpang.app.data.RecentlyViewedStore
 import com.scanpang.app.data.SavedPlaceNavTarget
@@ -262,7 +263,12 @@ fun ArExploreScreen(
     var speechHelperRef by remember { mutableStateOf<ArSpeechRecognizerHelper?>(null) }
     var pendingMicAfterPermission by remember { mutableStateOf(false) }
 
-    val agentService = remember { ScanPangAgentService() }
+    val agentService = remember(appContext) {
+        // 영어 모드면 backend 응답도 영어로 받기 — onboarding 에서 고른 언어 그대로 전달.
+        // updateLanguage 안 호출하면 기본값 "ko" 라 UI 는 영어인데 AI 응답만 한국어로 와서 mixed 상태.
+        val langCode = OnboardingPreferences(appContext).getLanguageCode() ?: "ko"
+        ScanPangAgentService(language = langCode)
+    }
     val ttsController = remember(appContext) {
         ArExploreTtsController(appContext) { playing -> ttsPlayingState.value = playing }
     }

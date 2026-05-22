@@ -55,6 +55,7 @@ import com.scanpang.app.ui.theme.ScanPangDimens
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import com.scanpang.app.data.AppSettingsPreferences
+import com.scanpang.app.data.OnboardingPreferences
 import com.scanpang.app.data.RecentlyViewedEntry
 import com.scanpang.app.data.RecentlyViewedStore
 import com.scanpang.app.data.SavedPlaceNavTarget
@@ -79,7 +80,11 @@ fun ArNavigationMapScreen(
     val appContext = LocalContext.current
     val appSettingsPrefs = remember { AppSettingsPreferences(appContext) }
     val scope = rememberCoroutineScope()
-    val agentService = remember { ScanPangAgentService() }
+    val agentService = remember(appContext) {
+        // 영어 모드면 backend 응답도 영어로 받기. ArExploreScreen 과 동일 패턴.
+        val langCode = OnboardingPreferences(appContext).getLanguageCode() ?: "ko"
+        ScanPangAgentService(language = langCode)
+    }
     val ttsController = remember(appContext) { ArExploreTtsController(appContext) {} }
     var chatMessages by remember {
         mutableStateOf(listOf(ArAgentChatMessage(text = "길찾기 중 궁금한 점을 물어보세요!", isUser = false)))
