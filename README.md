@@ -221,6 +221,33 @@ python -m pytest tests/ -v
 # test_session.py:      8 passed, 1 skipped (Redis 없는 환경)
 ```
 
+### 운영 배포 (Docker Compose)
+
+`.env` 만 채우면 backend + Redis 두 컨테이너가 한 줄로 뜬다.
+
+```bash
+# 1) .env 준비 (.env.example 복사 후 키 채우기)
+cp .env.example .env
+$EDITOR .env
+
+# 2) backend + Redis 동시 기동 (백그라운드)
+docker compose up -d
+
+# 3) 상태 확인
+docker compose ps
+docker compose logs -f backend     # 실시간 로그
+curl http://localhost:8000/docs    # Swagger UI 200 OK 면 정상
+
+# 4) 중지 / 재기동
+docker compose stop      # 컨테이너만 중지 (볼륨/이미지 보존)
+docker compose down      # 컨테이너 + 네트워크 제거
+docker compose up -d --build  # 코드 변경 후 재빌드
+```
+
+**리소스 권장**: 1 vCPU / 1GB RAM (Playwright Chromium 포함). 트래픽 적은
+산학연계 데모 수준은 충분. HTTPS 는 Nginx / Caddy / Traefik 같은 리버스
+프록시를 8000 앞에 둬서 처리 권장.
+
 ---
 
 ## 8. API 엔드포인트

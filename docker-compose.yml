@@ -1,11 +1,10 @@
-version: "3.9"
-
 services:
   redis:
     image: redis:7-alpine
     container_name: scanpang_redis
-    ports:
-      - "6379:6379"
+    # 외부 노출 안 함 — backend 컨테이너만 내부 네트워크로 접근.
+    expose:
+      - "6379"
     command: redis-server --maxmemory 128mb --maxmemory-policy allkeys-lru --save ""
     restart: unless-stopped
     healthcheck:
@@ -13,3 +12,25 @@ services:
       interval: 10s
       timeout: 5s
       retries: 3
+
+  backend:
+    build: .
+    container_name: scanpang_backend
+    ports:
+      - "8000:8000"
+    environment:
+      # docker-compose 네트워크 안에서 redis 호스트명 = service 이름.
+      # .env 의 REDIS_URL 보다 우선 적용되어 컨테이너 간 통신 OK.
+      REDIS_URL: redis://redis:6379/0
+    env_file:
+      - .env
+    depends_on:
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/docs')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
