@@ -227,7 +227,7 @@ fun ArRealSceneView(
         if (route is NavRouteResponse) {
             val nodes = parseNavResponse(route)
             if (nodes.isNotEmpty()) {
-                clearArState(routeNodes, activeArNodes, activeChildNodes, activeBackChildNodes, renderedIndices)
+                clearArState(routeNodes, activeArNodes, activeChildNodes, activeBackChildNodes, renderedIndices, engine, animationOwnedNodes)
                 turnDirectionMap.clear()  // 새 라우트가 도착할 때만 이전 방향 정보 폐기
                 isArrivedState.value = false  // 새 라우트 시작 — 도착 상태 리셋
                 fullRouteNodes = nodes
@@ -769,7 +769,19 @@ private fun clearArState(
     activeChildNodes: MutableMap<Int, Node>,
     activeBackChildNodes: MutableMap<Int, Node>,
     renderedIndices: MutableSet<Int>,
+    engine: com.google.android.filament.Engine,
+    animationOwnedNodes: MutableSet<ViewNode2>,
 ) {
+    // ViewNode2를 먼저 destroy — onDispose와 동일한 순서 (Renderable → ViewNode2).
+    // clearArState 호출 시 이 맵에 남아있는 노드들이 destroy 없이 clear()되면
+    // MaterialInstance가 살아있는 채로 엔진이 정리되어 PreconditionPanic 발생.
+    (activeChildNodes.values + activeBackChildNodes.values + animationOwnedNodes).forEach { node ->
+        if (node is ViewNode2) {
+            runCatching { engine.renderableManager.destroy(node.entity) }
+            runCatching { node.destroy() }
+        }
+    }
+    animationOwnedNodes.clear()
     routeNodes.clear()
     activeArNodes.values.forEach { runCatching { it.destroy() } }
     activeArNodes.clear()
