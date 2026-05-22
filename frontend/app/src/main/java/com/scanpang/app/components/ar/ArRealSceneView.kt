@@ -211,6 +211,9 @@ fun ArRealSceneView(
     val activeArNodes = remember { mutableMapOf<Int, AnchorNode>() }
     val activeChildNodes = remember { mutableMapOf<Int, Node>() }       // 앞면 (정상 방향 아이콘)
     val activeBackChildNodes = remember { mutableMapOf<Int, Node>() }   // 뒷면 (거울상 방향 아이콘)
+    // 애니메이션이 소유한 ViewNode2 — 맵에서 제거된 원본 노드와 교체 생성된 green 노드를 추적.
+    // onDispose가 이 셋을 포함해 정리하므로 어떤 경로로 생성·교체되든 누락 없이 destroy된다.
+    val animationOwnedNodes = remember { mutableSetOf<ViewNode2>() }
     // 앵커 생성 시점의 카메라 고도 — 매 프레임 ViewNode2 child의 local Y를
     // (현재 cameraAlt - 생성 시 cameraAlt)로 갱신해 사용자 고도 변화 추적.
     val anchorCreationAltitudes = remember { mutableMapOf<Int, Double>() }
@@ -298,7 +301,7 @@ fun ArRealSceneView(
             //   "destroying MaterialInstance which is still in use by Renderable" Filament panic.
             //   우회: Renderable component를 먼저 destroy해서 material binding을 풀고
             //   그 다음 ViewNode2.destroy() 호출 (material → texture → stream 순으로 정리).
-            (activeChildNodes.values + activeBackChildNodes.values).forEach { node ->
+            (activeChildNodes.values + activeBackChildNodes.values + animationOwnedNodes).forEach { node ->
                 if (node is ViewNode2) {
                     runCatching { engine.renderableManager.destroy(node.entity) }
                     runCatching { node.destroy() }
@@ -308,6 +311,7 @@ fun ArRealSceneView(
             activeArNodes.clear()
             activeChildNodes.clear()
             activeBackChildNodes.clear()
+            animationOwnedNodes.clear()
             anchorCreationAltitudes.clear()
             renderedIndices.clear()
             navBuildingAnchors.clear()
@@ -546,9 +550,15 @@ fun ArRealSceneView(
                             }
                             else -> return@mapNotNull null
                         }
-                        Triple(front, back, Pair(anchor, dir))
-                    }.forEach { (front, back, anchorDir) ->
+                        // k를 포함한 4-tuple 반환 — 맵에서 제거 후 animationOwnedNodes로 소유권 이전
+                        Pair(k, Triple(front, back, Pair(anchor, dir)))
+                    }.forEach { (k, data) ->
+                        val (front, back, anchorDir) = data
                         val (anchor, dir) = anchorDir
+                        activeChildNodes.remove(k)
+                        activeBackChildNodes.remove(k)
+                        animationOwnedNodes.add(front)
+                        back?.let { animationOwnedNodes.add(it) }
                         launchBadgeSpinAnim(
                             front = front,
                             back = back,
@@ -561,6 +571,7 @@ fun ArRealSceneView(
                             materialLoader = materialLoader,
                             isMounted = isMounted,
                             scope = coroutineScope,
+                            animationOwnedNodes = animationOwnedNodes,
                         )
                     }
 
@@ -676,6 +687,8 @@ fun ArRealSceneView(
                         if (animFront != null && animAnchor != null) {
                             activeChildNodes.remove(animKey)
                             activeBackChildNodes.remove(animKey)
+                            animationOwnedNodes.add(animFront)
+                            animBack?.let { animationOwnedNodes.add(it) }
                             // ── 턴 통과: 해당 배지 단독 애니메이션 ──
                             launchBadgeSpinAnim(
                                 front = animFront,
@@ -689,6 +702,7 @@ fun ArRealSceneView(
                                 materialLoader = materialLoader,
                                 isMounted = isMounted,
                                 scope = coroutineScope,
+                                animationOwnedNodes = animationOwnedNodes,
                             )
                         }
                     }
@@ -974,6 +988,7 @@ private fun launchBadgeSpinAnim(
     materialLoader: MaterialLoader,
     isMounted: androidx.compose.runtime.State<Boolean>,
     scope: kotlinx.coroutines.CoroutineScope,
+    animationOwnedNodes: MutableSet<ViewNode2>,
 ) {
     val startY = front.rotation.y
     val startPitch = 0f
@@ -998,11 +1013,13 @@ private fun launchBadgeSpinAnim(
                         rotation = Float3(90f, startY, 0f)
                     }.also { n -> runCatching { n.materialInstance.setCullingMode(com.google.android.filament.Material.CullingMode.BACK) } }
                 }.getOrNull() ?: return@launch
+                animationOwnedNodes.remove(curFront)
                 runCatching { anchor.removeChildNode(curFront) }
                 runCatching { engine.renderableManager.destroy(curFront.entity) }
                 runCatching { curFront.destroy() }
                 anchor.addChildNode(newFront)
                 curFront = newFront
+                animationOwnedNodes.add(curFront)
 
                 curBack?.let { oldBack ->
                     val newBack = runCatching {
@@ -1014,11 +1031,15 @@ private fun launchBadgeSpinAnim(
                             rotation = Float3(90f, startY + 180f, 0f)
                         }.also { n -> runCatching { n.materialInstance.setCullingMode(com.google.android.filament.Material.CullingMode.BACK) } }
                     }.getOrNull()
+                    animationOwnedNodes.remove(oldBack)
                     runCatching { anchor.removeChildNode(oldBack) }
                     runCatching { engine.renderableManager.destroy(oldBack.entity) }
                     runCatching { oldBack.destroy() }
                     curBack = newBack
-                    if (newBack != null) anchor.addChildNode(newBack)
+                    if (newBack != null) {
+                        anchor.addChildNode(newBack)
+                        animationOwnedNodes.add(newBack)
+                    }
                 }
             }
 
