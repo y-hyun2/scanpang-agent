@@ -172,7 +172,6 @@ fun rememberDetailBookmark(
                     id = placeId,
                     name = placeName,
                     category = category,
-                    distanceLine = distanceLine,
                     tags = tags,
                     target = target,
                     lat = lat,

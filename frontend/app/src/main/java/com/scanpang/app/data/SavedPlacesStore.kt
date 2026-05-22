@@ -18,12 +18,12 @@ data class SavedPlaceEntry(
     val id: String,
     val name: String,
     val category: String,
-    val distanceLine: String,
     val tags: List<String>,
     val target: SavedPlaceNavTarget,
     val savedOrder: Long = System.currentTimeMillis(),
     // 매장 좌표 — 표시 시점에 사용자 현재 위치와 Haversine 으로 거리 동적 계산.
-    // 0.0 이면 좌표 모름 (옛 저장 row) → distanceLine 의 박힌 값을 폴백 사용.
+    // 거리값(distanceLine) 을 저장 시점 string 으로 박지 않고 항상 좌표로 계산해야
+    // 사용자 위치가 바뀌어도 정확. 좌표가 0.0 이면 옛 row → 거리 안 표시.
     val lat: Double = 0.0,
     val lng: Double = 0.0,
 )
@@ -100,7 +100,6 @@ class SavedPlacesStore(context: Context) {
                             id = o.getString("id"),
                             name = o.getString("name"),
                             category = o.getString("category"),
-                            distanceLine = o.optString("distanceLine", o.optString("distance", "")),
                             tags = o.optJSONArray("tags")?.toStringList().orEmpty(),
                             target = parseSavedPlaceNavTarget(
                                 o.optString("target", SavedPlaceNavTarget.Restaurant.name),
@@ -151,7 +150,6 @@ class SavedPlacesStore(context: Context) {
                     put("id", e.id)
                     put("name", e.name)
                     put("category", e.category)
-                    put("distanceLine", e.distanceLine)
                     put("tags", JSONArray(e.tags))
                     put("target", e.target.name)
                     put("savedOrder", e.savedOrder)
@@ -174,7 +172,6 @@ class SavedPlacesStore(context: Context) {
                 "id" to e.id,
                 "name" to e.name,
                 "category" to e.category,
-                "distanceLine" to e.distanceLine,
                 "tags" to e.tags,
                 "target" to e.target.name,
                 "savedOrder" to e.savedOrder,

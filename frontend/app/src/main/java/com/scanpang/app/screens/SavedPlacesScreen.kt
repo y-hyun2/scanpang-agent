@@ -124,17 +124,17 @@ private fun stripCategoryPrefix(line: String): String {
 
 /**
  * 사용자 현재 위치 기준 거리 동적 계산.
- *  - lat/lng 모두 있으면 Haversine 으로 실거리 계산
- *  - 좌표 없거나(0.0/0.0 = 옛 저장 row) GPS 미수신이면 distanceLine 의 박힌 값 사용
+ *  - 좌표 + GPS 모두 있으면 Haversine 으로 실거리 표시
+ *  - 좌표 없거나(옛 row, 0.0/0.0) GPS 미수신이면 거리 표시 안 함 (빈 string).
+ *    정렬 시엔 MAX 로 처리해 뒤로 밀어둠.
+ *  저장 시점에 박혔던 distanceLine 의 거리값은 stale 이라 사용하지 않는다.
  */
 private fun SavedPlaceEntry.toUiRow(userLat: Double?, userLng: Double?): SavedPlaceRow {
     val hasCoords = lat != 0.0 && lng != 0.0
-    val (meters, label) = if (hasCoords && userLat != null && userLng != null) {
-        val m = haversineMeters(userLat, userLng, lat, lng).toInt()
-        m to formatDistanceLabel(m)
-    } else {
-        parseDistanceMeters(distanceLine) to stripCategoryPrefix(distanceLine)
-    }
+    val canCompute = hasCoords && userLat != null && userLng != null
+    val meters = if (canCompute) haversineMeters(userLat!!, userLng!!, lat, lng).toInt()
+                 else Int.MAX_VALUE / 4
+    val label = if (canCompute) formatDistanceLabel(meters) else ""
     return SavedPlaceRow(
         id = id,
         title = name,

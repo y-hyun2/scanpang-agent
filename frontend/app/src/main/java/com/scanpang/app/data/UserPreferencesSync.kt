@@ -47,7 +47,6 @@ object UserPreferencesSync {
                     id = id,
                     name = name,
                     category = (m["category"] as? String).orEmpty(),
-                    distanceLine = (m["distanceLine"] as? String).orEmpty(),
                     tags = (m["tags"] as? List<*>)?.filterIsInstance<String>().orEmpty(),
                     target = parseSavedPlaceNavTarget((m["target"] as? String).orEmpty()),
                     savedOrder = (m["savedOrder"] as? Number)?.toLong() ?: 0L,
