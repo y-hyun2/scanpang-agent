@@ -118,6 +118,7 @@ fun ArPoiFloatingDetailOverlay(
     modifier: Modifier = Modifier,
     onSave: () -> Unit = {},
     arOverlay: ArOverlay? = null,
+    buildingLoadingStartedAt: Long? = null,
 ) {
     var expandedFloors by remember { mutableStateOf(setOf("B1")) }
     val floorData = remember(arOverlay) {
@@ -193,12 +194,19 @@ fun ArPoiFloatingDetailOverlay(
                         )
                     }
                 }
+                if (arOverlay == null) {
+                    com.scanpang.app.screens.PlaceLoadingScreen(
+                        modifier = Modifier.weight(1f).fillMaxWidth(),
+                        loadingStartedAt = buildingLoadingStartedAt,
+                    )
+                    return@Surface
+                }
                 Spacer(modifier = Modifier.height(6.dp))
                 ArPoiStatusMetaRow(
-                    category = arOverlay?.category ?: "",
-                    openHours = arOverlay?.open_hours ?: "",
-                    isEstimated = arOverlay?.is_estimated ?: false,
-                    distanceM = arOverlay?.distance_m,
+                    category = arOverlay.category,
+                    openHours = arOverlay.open_hours,
+                    isEstimated = arOverlay.is_estimated,
+                    distanceM = arOverlay.distance_m,
                 )
                 Spacer(modifier = Modifier.height(ScanPangSpacing.sm))
                 ArPoiDetailSegmentedTabs(
@@ -235,6 +243,11 @@ private fun formatArDistance(m: Double?): String = when {
     m < 1000  -> "${m.toInt()}m"
     else      -> "%.1fkm".format(m / 1000.0)
 }
+
+/** 주소 앞의 시/도, 시/군/구 행정구역 단위 제거. 예: "경기도 용인시 처인구 모현읍 ..." → "모현읍 ..." */
+private val adminPrefixRegex = Regex("""^(\S+(도|시|군|구)\s+)+""")
+private fun shortenAddress(address: String): String =
+    if (address.isBlank()) address else address.replace(adminPrefixRegex, "").trim()
 
 @Composable
 private fun ArPoiStatusMetaRow(
@@ -283,28 +296,24 @@ private fun ArPoiStatusMetaRow(
             }
         }
         if (openHours.isNotBlank()) {
-            Text(
-                text = openHours,
-                style = ScanPangType.body14Regular,
-                color = ScanPangColors.OnSurfaceMuted,
-            )
-        }
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(4.dp),
-        ) {
-            if (openHours.isNotBlank()) {
-                Box(
-                    modifier = Modifier
-                        .size(6.dp)
-                        .clip(CircleShape)
-                        .background(ScanPangColors.Success),
-                )
-                Text(
-                    text = "영업 중",
-                    style = ScanPangType.caption12Medium,
-                    color = ScanPangColors.Success,
-                )
+            val isOpen = OpenHoursUtils.isOpenNow(openHours)
+            if (isOpen != null) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(6.dp)
+                            .clip(CircleShape)
+                            .background(if (isOpen) ScanPangColors.Success else ScanPangColors.Error),
+                    )
+                    Text(
+                        text = if (isOpen) "영업 중" else "영업 종료",
+                        style = ScanPangType.caption12Medium,
+                        color = if (isOpen) ScanPangColors.Success else ScanPangColors.Error,
+                    )
+                }
             }
         }
     }
@@ -440,9 +449,12 @@ private fun ArPoiBuildingTabBody(arOverlay: ArOverlay? = null) {
             }
         }
         val gridItems = listOfNotNull(
-            arOverlay?.open_hours?.ifEmpty { null }?.let { Triple(Icons.Rounded.AccessTime, it, false) },
+            arOverlay?.open_hours?.ifEmpty { null }?.let {
+                val todayHours = OpenHoursUtils.todayHoursText(it)
+                todayHours.ifEmpty { null }?.let { h -> Triple(Icons.Rounded.AccessTime, h, false) }
+            },
             floorRange?.let { Triple(Icons.Rounded.Stairs, it, false) },
-            arOverlay?.address?.ifEmpty { null }?.let { Triple(Icons.Rounded.Place, it, false) },
+            arOverlay?.address?.ifEmpty { null }?.let { Triple(Icons.Rounded.Place, shortenAddress(it), false) },
             arOverlay?.phone?.ifEmpty { null }?.let { Triple(Icons.Rounded.LocalPhone, it, true) },
             arOverlay?.parking_info?.ifEmpty { null }?.let { Triple(Icons.Rounded.LocalParking, it, false) },
             arOverlay?.admission_fee?.ifEmpty { null }?.let { Triple(Icons.Rounded.ConfirmationNumber, it, false) },
@@ -697,6 +709,7 @@ fun ArFloorStoreGuideOverlay(
     isOpenNow: Boolean? = null,
     storeResult: com.scanpang.app.data.remote.StoreResponse? = null,
     distanceLabel: String = "",
+    storeLoadingStartedAt: Long? = null,
 ) {
     val categoryKey = storeResult?.category_key ?: ""
     val heroPhotoAllowed = categoryKey !in setOf(
@@ -764,6 +777,7 @@ fun ArFloorStoreGuideOverlay(
                 if (storeResult == null) {
                     com.scanpang.app.screens.PlaceLoadingScreen(
                         modifier = Modifier.fillMaxSize(),
+                        loadingStartedAt = storeLoadingStartedAt,
                     )
                     return@Surface
                 }
@@ -933,43 +947,51 @@ fun ArFloorStoreGuideOverlay(
                             }
                         }
                     }
-                    // ⑤ 오늘 영업 상태 — 헤더 없는 compact 한 줄 (Figma)
+                    // ⑤ 오늘 영업 상태 — 컬러 배경 카드 (detail screen과 동일)
                     if (showVisitStatus) {
                         val localIsOpen = remember(openHours) { OpenHoursUtils.isOpenNow(openHours) }
                         val effectiveIsOpen = localIsOpen ?: (displayOpenNow ?: false)
                         val statusColor = if (effectiveIsOpen) ScanPangColors.StatusOpen else ScanPangColors.Error
+                        val cardBg = if (effectiveIsOpen) ScanPangColors.DetailVisitOpenSurface else ScanPangColors.DetailVisitClosedSurface
                         val todayHours = remember(openHours) { OpenHoursUtils.todayHoursText(openHours) }
-                        DetailScreenDivider()
-                        Row(
+                        Surface(
                             modifier = Modifier.fillMaxWidth(),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(ScanPangSpacing.xs),
+                            shape = ScanPangShapes.radius12,
+                            color = cardBg,
                         ) {
-                            Box(
+                            Row(
                                 modifier = Modifier
-                                    .size(8.dp)
-                                    .clip(CircleShape)
-                                    .background(statusColor),
-                            )
-                            Icon(
-                                imageVector = Icons.Rounded.AccessTime,
-                                contentDescription = null,
-                                tint = ScanPangColors.OnSurfaceMuted,
-                                modifier = Modifier.size(14.dp),
-                            )
-                            Text(
-                                text = if (todayHours.isNotBlank()) "오늘 $todayHours"
-                                    else if (effectiveIsOpen) "영업 중" else "영업 종료",
-                                style = ScanPangType.title14,
-                                color = ScanPangColors.OnSurfaceStrong,
-                                modifier = Modifier.weight(1f),
-                            )
-                            if (lastOrder.isNotBlank()) {
-                                Text(
-                                    text = "라스트오더 $lastOrder",
-                                    style = ScanPangType.caption12Medium,
-                                    color = ScanPangColors.OnSurfaceMuted,
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 16.dp, vertical = 14.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(ScanPangSpacing.xs),
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(8.dp)
+                                        .clip(CircleShape)
+                                        .background(statusColor),
                                 )
+                                Icon(
+                                    imageVector = Icons.Rounded.AccessTime,
+                                    contentDescription = null,
+                                    tint = ScanPangColors.OnSurfaceMuted,
+                                    modifier = Modifier.size(14.dp),
+                                )
+                                Text(
+                                    text = if (todayHours.isNotBlank()) "오늘 $todayHours"
+                                        else if (effectiveIsOpen) "영업 중" else "영업 종료",
+                                    style = ScanPangType.title14,
+                                    color = ScanPangColors.OnSurfaceStrong,
+                                    modifier = Modifier.weight(1f),
+                                )
+                                if (lastOrder.isNotBlank()) {
+                                    Text(
+                                        text = "라스트오더 $lastOrder",
+                                        style = ScanPangType.caption12Medium,
+                                        color = ScanPangColors.OnSurfaceMuted,
+                                    )
+                                }
                             }
                         }
                     }
