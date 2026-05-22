@@ -73,7 +73,7 @@ async def test_classify_intent_fallback_on_llm_error():
         mock_llm.ainvoke = AsyncMock(side_effect=Exception("API timeout"))
         agent, _resolved, _sub = await classify_intent("알 수 없는 요청")
 
-    assert agent == "convenience"
+    assert agent == "smalltalk"
 
 
 @pytest.mark.asyncio
@@ -87,7 +87,7 @@ async def test_classify_intent_fallback_on_unknown_agent():
         )
         agent, _resolved, _sub = await classify_intent("이상한 메시지")
 
-    assert agent == "convenience"
+    assert agent == "smalltalk"
 
 
 # ── run_orchestrator 통합 라우팅 테스트 ──────────────────────────────────────
