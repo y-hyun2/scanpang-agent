@@ -30,6 +30,7 @@ import androidx.compose.material.icons.rounded.AccessTime
 import androidx.compose.material.icons.rounded.Bookmark
 import androidx.compose.material.icons.rounded.BookmarkBorder
 import androidx.compose.material.icons.rounded.Close
+import androidx.compose.material.icons.rounded.ChevronRight
 import androidx.compose.material.icons.rounded.ExpandLess
 import androidx.compose.material.icons.rounded.ExpandMore
 import androidx.compose.material.icons.rounded.Info
@@ -68,12 +69,11 @@ import com.scanpang.app.screens.DetailCategoryTagDistanceRow
 import com.scanpang.app.screens.resolveCategoryLabel
 import com.scanpang.app.screens.DetailFacilityTagRow
 import com.scanpang.app.screens.DetailImageFullscreenDialog
-import com.scanpang.app.screens.DetailInfoLine
-import com.scanpang.app.screens.DetailIntroBody
+import com.scanpang.app.screens.DetailMenuPriceRow
 import com.scanpang.app.screens.DetailScreenDivider
 import com.scanpang.app.screens.DetailSectionHeader
-import com.scanpang.app.screens.DetailTodayVisitStatus
 import com.scanpang.app.screens.rememberDetailBookmark
+import com.scanpang.app.util.OpenHoursUtils
 import com.scanpang.app.ui.theme.ScanPangColors
 import com.scanpang.app.ui.theme.ScanPangDimens
 import com.scanpang.app.ui.theme.ScanPangShapes
@@ -683,15 +683,18 @@ private fun ArPoiFloorsTabBody(
                                     .fillMaxWidth()
                                     .clip(RoundedCornerShape(8.dp))
                                     .clickable { onStoreClick(store.name) }
-                                    .padding(vertical = 2.dp),
+                                    .padding(vertical = 4.dp),
                                 verticalAlignment = Alignment.CenterVertically,
                             ) {
+                                val isGreenDot = store.category.contains("할랄", ignoreCase = true) ||
+                                    store.category.contains("비건", ignoreCase = true) ||
+                                    store.category.contains("vegan", ignoreCase = true)
                                 Box(
                                     modifier = Modifier
                                         .size(5.dp)
                                         .clip(CircleShape)
                                         .background(
-                                            if (store.isHalal) DetailHalalChipFg
+                                            if (isGreenDot) DetailHalalChipFg
                                             else ScanPangColors.OnSurfacePlaceholder,
                                         ),
                                 )
@@ -700,11 +703,37 @@ private fun ArPoiFloorsTabBody(
                                     text = store.name,
                                     style = ScanPangType.body15Medium,
                                     color = ScanPangColors.OnSurfaceStrong,
+                                    modifier = Modifier.weight(1f),
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
                                 )
-                                Text(
-                                    text = "  |  ${store.category}",
-                                    style = ScanPangType.caption12Medium,
-                                    color = if (store.isHalal) DetailHalalChipFg else ScanPangColors.OnSurfaceMuted,
+                                val chipLabel = store.category
+                                    .substringAfterLast(">").trim()
+                                    .ifBlank { store.category }
+                                if (chipLabel.isNotBlank()) {
+                                    val isGreen = store.category.contains("할랄", ignoreCase = true) ||
+                                        store.category.contains("비건", ignoreCase = true) ||
+                                        store.category.contains("vegan", ignoreCase = true)
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Surface(
+                                        shape = ScanPangShapes.badge6,
+                                        color = if (isGreen) DetailHalalChipBg else ScanPangColors.PrimarySoft,
+                                    ) {
+                                        Text(
+                                            text = chipLabel,
+                                            modifier = Modifier.padding(horizontal = 7.dp, vertical = 3.dp),
+                                            style = ScanPangType.meta11Medium,
+                                            color = if (isGreen) DetailHalalChipFg else ScanPangColors.Primary,
+                                            maxLines = 1,
+                                        )
+                                    }
+                                }
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Icon(
+                                    imageVector = Icons.Rounded.ChevronRight,
+                                    contentDescription = null,
+                                    tint = ScanPangColors.OnSurfacePlaceholder,
+                                    modifier = Modifier.size(18.dp),
                                 )
                             }
                         }
@@ -910,39 +939,173 @@ fun ArFloorStoreGuideOverlay(
                             isOpen = displayOpenNow,
                         )
                     }
-                    // ④ 소개
+                    // ④ 소개 — 파란 info 아이콘 카드 (Figma)
                     if (intro.isNotBlank()) {
-                        DetailIntroBody(text = intro)
+                        Surface(
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = ScanPangShapes.radius12,
+                            color = ScanPangColors.DetailVisitNeutralSurface,
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(ScanPangSpacing.md),
+                                horizontalArrangement = Arrangement.spacedBy(ScanPangSpacing.sm),
+                                verticalAlignment = Alignment.Top,
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Rounded.Info,
+                                    contentDescription = null,
+                                    tint = ScanPangColors.Primary,
+                                    modifier = Modifier.size(ScanPangDimens.icon18),
+                                )
+                                Text(
+                                    text = intro,
+                                    style = ScanPangType.body14Regular,
+                                    color = ScanPangColors.OnSurfaceStrong,
+                                    modifier = Modifier.weight(1f),
+                                )
+                            }
+                        }
                     }
-                    // ⑤ 오늘 방문 가능 여부 (PlaceDetailScreen 동일 구현)
+                    // ⑤ 오늘 영업 상태 — 헤더 없는 compact 한 줄 (Figma)
                     if (showVisitStatus) {
+                        val localIsOpen = remember(openHours) { OpenHoursUtils.isOpenNow(openHours) }
+                        val effectiveIsOpen = localIsOpen ?: (displayOpenNow ?: false)
+                        val statusColor = if (effectiveIsOpen) ScanPangColors.StatusOpen else ScanPangColors.Error
+                        val todayHours = remember(openHours) { OpenHoursUtils.todayHoursText(openHours) }
                         DetailScreenDivider()
-                        DetailTodayVisitStatus(
-                            isOpen = displayOpenNow ?: false,
-                            openHours = openHours,
-                            lastOrder = lastOrder,
-                        )
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(ScanPangSpacing.xs),
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(8.dp)
+                                    .clip(CircleShape)
+                                    .background(statusColor),
+                            )
+                            Icon(
+                                imageVector = Icons.Rounded.AccessTime,
+                                contentDescription = null,
+                                tint = ScanPangColors.OnSurfaceMuted,
+                                modifier = Modifier.size(14.dp),
+                            )
+                            Text(
+                                text = if (todayHours.isNotBlank()) "오늘 $todayHours"
+                                    else if (effectiveIsOpen) "영업 중" else "영업 종료",
+                                style = ScanPangType.title14,
+                                color = ScanPangColors.OnSurfaceStrong,
+                                modifier = Modifier.weight(1f),
+                            )
+                            if (lastOrder.isNotBlank()) {
+                                Text(
+                                    text = "라스트오더 $lastOrder",
+                                    style = ScanPangType.caption12Medium,
+                                    color = ScanPangColors.OnSurfaceMuted,
+                                )
+                            }
+                        }
                     }
-                    // ⑦ 상세 정보 행 (주소/전화/층/홈페이지)
+                    // ⑥ 상세 정보 행 — 헤더 없이 아이콘 + 값만 (Figma)
                     val infoLines = listOfNotNull(
-                        addr.takeIf { it.isNotBlank() }?.let { Triple(Icons.Rounded.Place, "주소", it) },
-                        phone.takeIf { it.isNotBlank() }?.let { Triple(Icons.Rounded.LocalPhone, "전화", it) },
-                        floor.takeIf { it.isNotBlank() }?.let { Triple(Icons.Rounded.Stairs, "층", it) },
-                        homepage.takeIf { it.isNotBlank() }?.let { Triple(Icons.Rounded.Language, "홈페이지", it) },
+                        addr.takeIf { it.isNotBlank() }?.let { Pair(Icons.Rounded.Place, it) },
+                        phone.takeIf { it.isNotBlank() }?.let { Pair(Icons.Rounded.LocalPhone, it) },
+                        floor.takeIf { it.isNotBlank() }?.let { Pair(Icons.Rounded.Stairs, it) },
+                        homepage.takeIf { it.isNotBlank() }?.let { Pair(Icons.Rounded.Language, it) },
                     )
                     if (infoLines.isNotEmpty()) {
                         DetailScreenDivider()
-                        DetailSectionHeader(title = "상세 정보")
-                        infoLines.forEach { (icon, label, value) ->
-                            DetailInfoLine(icon = icon, label = label, value = value)
+                        infoLines.forEach { (icon, value) ->
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Icon(
+                                    imageVector = icon,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(ScanPangDimens.icon16),
+                                    tint = ScanPangColors.OnSurfaceMuted,
+                                )
+                                Text(
+                                    text = value,
+                                    style = ScanPangType.caption12Medium,
+                                    color = ScanPangColors.OnSurfaceMuted,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                )
+                            }
                         }
                     }
-                    // 카테고리별 부가 정보
+                    // ⑦ 카테고리별 부가 정보
                     when (categoryKey) {
-                        "restaurant", "halal_restaurant", "cafe" -> {
-                            val menuList = (storeResult?.details?.get("menu") as? List<*>)
-                                ?.filterIsInstance<String>() ?: emptyList()
-                            if (menuList.isNotEmpty()) DetailFacilityTagRow(tags = menuList)
+                        "restaurant", "halal_restaurant", "cafe", "vegan_restaurant", "vegan_cafe" -> {
+                            // Naver 크롤링: details.menu = [{name, price}]
+                            // 할랄 식당: details.menu_examples = [{name_ko, name_en, price_krw}]
+                            val menuPairs = remember(storeResult) {
+                                val fromMenu = (storeResult?.details?.get("menu") as? List<*>)
+                                    ?.mapNotNull { entry ->
+                                        val m = entry as? Map<*, *> ?: return@mapNotNull null
+                                        val name = (m["name"] as? String)?.trim().orEmpty()
+                                        val price = (m["price"] as? String)?.trim().orEmpty()
+                                        if (name.isBlank()) null else Pair(name, price)
+                                    }
+                                if (!fromMenu.isNullOrEmpty()) return@remember fromMenu
+                                (storeResult?.details?.get("menu_examples") as? List<*>)
+                                    ?.mapNotNull { entry ->
+                                        val m = entry as? Map<*, *> ?: return@mapNotNull null
+                                        val name = ((m["name_ko"] as? String)
+                                            ?: (m["name_en"] as? String))?.trim().orEmpty()
+                                        val priceRaw = m["price_krw"]
+                                        val price = when (priceRaw) {
+                                            is Number -> "%,d원".format(priceRaw.toInt())
+                                            is String -> priceRaw.trim()
+                                            else -> ""
+                                        }
+                                        if (name.isBlank()) null else Pair(name, price)
+                                    } ?: emptyList()
+                            }
+                            if (menuPairs.isNotEmpty()) {
+                                DetailScreenDivider()
+                                DetailSectionHeader(title = "대표 메뉴")
+                                Spacer(modifier = Modifier.height(ScanPangSpacing.xs))
+                                Column(verticalArrangement = Arrangement.spacedBy(ScanPangSpacing.xs)) {
+                                    menuPairs.take(3).forEach { (name, price) ->
+                                        DetailMenuPriceRow(name = name, price = price)
+                                    }
+                                }
+                            }
+                        }
+                        "exchange", "atm", "bank" -> {
+                            val targetOrder = listOf("USD", "JPY", "EUR", "CNY")
+                            val exchangeRows = remember(storeResult) {
+                                (storeResult?.details?.get("rates_today") as? List<*>)
+                                    ?.mapNotNull { entry ->
+                                        val m = entry as? Map<*, *> ?: return@mapNotNull null
+                                        val ccy = (m["ccy"] as? String)?.trim().orEmpty()
+                                        if (ccy !in targetOrder) return@mapNotNull null
+                                        val flag = (m["flag"] as? String).orEmpty()
+                                        val baseRate = (m["base_rate"] as? String)?.trim().orEmpty()
+                                        if (baseRate.isBlank()) return@mapNotNull null
+                                        val rateText = baseRate.replace(",", "").toDoubleOrNull()
+                                            ?.let { "%,d원".format(it.toInt()) } ?: "${baseRate}원"
+                                        Triple(ccy, flag, rateText)
+                                    }
+                                    ?.sortedBy { triple ->
+                                        val idx = targetOrder.indexOf(triple.first)
+                                        if (idx >= 0) idx else Int.MAX_VALUE
+                                    } ?: emptyList()
+                            }
+                            if (exchangeRows.isNotEmpty()) {
+                                DetailScreenDivider()
+                                DetailSectionHeader(title = "오늘의 환율")
+                                Spacer(modifier = Modifier.height(ScanPangSpacing.xs))
+                                Column(verticalArrangement = Arrangement.spacedBy(ScanPangSpacing.xs)) {
+                                    exchangeRows.forEach { (ccy, flag, rateText) ->
+                                        DetailMenuPriceRow(name = "$flag $ccy → KRW", price = rateText)
+                                    }
+                                }
+                            }
                         }
                         "restroom" -> {
                             val maleCnt = (storeResult?.details?.get("male_toilet_cnt") as? Double)?.toInt()
