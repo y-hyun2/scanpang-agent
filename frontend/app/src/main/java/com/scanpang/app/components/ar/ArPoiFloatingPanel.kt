@@ -1,6 +1,7 @@
 package com.scanpang.app.components.ar
 
 import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -41,7 +42,14 @@ import androidx.compose.material.icons.rounded.OpenInFull
 import androidx.compose.material.icons.rounded.Place
 import androidx.compose.material.icons.rounded.Restaurant
 import androidx.compose.material.icons.rounded.Stairs
+import androidx.compose.material.icons.automirrored.rounded.Accessible
 import androidx.compose.material.icons.rounded.ConfirmationNumber
+import androidx.compose.material.icons.rounded.Healing
+import androidx.compose.material.icons.rounded.MiscellaneousServices
+import androidx.compose.material.icons.rounded.Security
+import androidx.compose.material.icons.rounded.Star
+import androidx.compose.material.icons.rounded.Verified
+import androidx.compose.material.icons.rounded.Wc
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
@@ -349,21 +357,13 @@ private fun ArPoiDetailSegmentedTabs(
     }
 }
 
-@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun ArPoiBuildingTabBody(arOverlay: ArOverlay? = null) {
-    val buildingImageCount = 4
-    val buildingImageBg = listOf(
-        Color(0xFFE8E8E8),
-        Color(0xFFD8D8D8),
-        Color(0xFFC8C8C8),
-        Color(0xFFB8B8B8),
-    )
-    val pagerState = rememberPagerState(pageCount = { buildingImageCount })
+    val imageUrl = arOverlay?.image_url?.trim().orEmpty()
+    val hasImages = imageUrl.isNotBlank()
     var buildingGalleryFullscreen by remember { mutableStateOf(false) }
-    val currentBuildingPage = pagerState.currentPage
 
-    if (buildingGalleryFullscreen) {
+    if (hasImages && buildingGalleryFullscreen) {
         Dialog(
             onDismissRequest = { buildingGalleryFullscreen = false },
             properties = DialogProperties(usePlatformDefaultWidth = false),
@@ -373,35 +373,12 @@ private fun ArPoiBuildingTabBody(arOverlay: ArOverlay? = null) {
                     .fillMaxSize()
                     .background(Color.Black),
             ) {
-                HorizontalPager(
-                    state = pagerState,
+                coil.compose.AsyncImage(
+                    model = imageUrl,
+                    contentDescription = null,
                     modifier = Modifier.fillMaxSize(),
-                    pageNestedScrollConnection = PagerDefaults.pageNestedScrollConnection(
-                        state = pagerState,
-                        orientation = Orientation.Horizontal,
-                    ),
-                ) { page ->
-                    Box(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .background(buildingImageBg[page]),
-                    )
-                }
-                Surface(
-                    shape = RoundedCornerShape(6.dp),
-                    color = Color.Black.copy(alpha = 0.45f),
-                    modifier = Modifier
-                        .align(Alignment.TopStart)
-                        .statusBarsPadding()
-                        .padding(ScanPangSpacing.md),
-                ) {
-                    Text(
-                        text = "${currentBuildingPage + 1}/$buildingImageCount",
-                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
-                        style = ScanPangType.meta11Medium,
-                        color = Color.White,
-                    )
-                }
+                    contentScale = androidx.compose.ui.layout.ContentScale.Fit,
+                )
                 IconButton(
                     onClick = { buildingGalleryFullscreen = false },
                     modifier = Modifier
@@ -495,79 +472,38 @@ private fun ArPoiBuildingTabBody(arOverlay: ArOverlay? = null) {
             }
         }
 
-        Spacer(modifier = Modifier.height(ScanPangSpacing.md))
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(118.dp)
-                .clip(RoundedCornerShape(12.dp)),
-        ) {
-            HorizontalPager(
-                state = pagerState,
-                modifier = Modifier.fillMaxSize(),
-                pageNestedScrollConnection = PagerDefaults.pageNestedScrollConnection(
-                    state = pagerState,
-                    orientation = Orientation.Horizontal,
-                ),
-            ) { page ->
-                Box(
+        if (hasImages) {
+            Spacer(modifier = Modifier.height(ScanPangSpacing.md))
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(118.dp)
+                    .clip(RoundedCornerShape(12.dp)),
+            ) {
+                coil.compose.AsyncImage(
+                    model = imageUrl,
+                    contentDescription = null,
+                    modifier = Modifier.fillMaxSize(),
+                    contentScale = androidx.compose.ui.layout.ContentScale.Crop,
+                )
+                Surface(
                     modifier = Modifier
-                        .fillMaxSize()
-                        .background(buildingImageBg[page]),
-                )
-            }
-            Surface(
-                shape = RoundedCornerShape(6.dp),
-                color = Color.Black.copy(alpha = 0.45f),
-                modifier = Modifier
-                    .align(Alignment.TopStart)
-                    .padding(8.dp),
-            ) {
-                Text(
-                    text = "${currentBuildingPage + 1}/$buildingImageCount",
-                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
-                    style = ScanPangType.meta11Medium,
-                    color = Color.White,
-                )
-            }
-            Surface(
-                modifier = Modifier
-                    .align(Alignment.TopEnd)
-                    .padding(4.dp)
-                    .size(32.dp)
-                    .clip(CircleShape)
-                    .clickable { buildingGalleryFullscreen = true },
-                shape = CircleShape,
-                color = Color.Black.copy(alpha = 0.35f),
-            ) {
-                Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
-                    Icon(
-                        imageVector = Icons.Rounded.OpenInFull,
-                        contentDescription = "전체 보기",
-                        tint = Color.White,
-                        modifier = Modifier.size(18.dp),
-                    )
-                }
-            }
-            Row(
-                modifier = Modifier
-                    .align(Alignment.BottomCenter)
-                    .padding(bottom = 8.dp),
-                horizontalArrangement = Arrangement.spacedBy(4.dp),
-            ) {
-                repeat(buildingImageCount) { i ->
-                    Box(
-                        modifier = Modifier
-                            .size(if (i == currentBuildingPage) 6.dp else 5.dp)
-                            .clip(CircleShape)
-                            .background(
-                                if (i == currentBuildingPage) {
-                                    Color.White
-                                } else {
-                                    Color.White.copy(alpha = 0.45f)
-                                },
-                            ),
-                    )
+                        .align(Alignment.TopEnd)
+                        .padding(4.dp)
+                        .size(32.dp)
+                        .clip(CircleShape)
+                        .clickable { buildingGalleryFullscreen = true },
+                    shape = CircleShape,
+                    color = Color.Black.copy(alpha = 0.35f),
+                ) {
+                    Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
+                        Icon(
+                            imageVector = Icons.Rounded.OpenInFull,
+                            contentDescription = "전체 보기",
+                            tint = Color.White,
+                            modifier = Modifier.size(18.dp),
+                        )
+                    }
                 }
             }
         }
@@ -762,9 +698,16 @@ fun ArFloorStoreGuideOverlay(
     storeResult: com.scanpang.app.data.remote.StoreResponse? = null,
     distanceLabel: String = "",
 ) {
-    val imageUrls = (storeResult?.image_urls ?: emptyList()).filter { it.isNotBlank() }.take(6)
+    val categoryKey = storeResult?.category_key ?: ""
+    val heroPhotoAllowed = categoryKey !in setOf(
+        "atm", "subway", "subway_station", "restroom", "public_restroom", "lockers", "locker",
+    )
+    val canFullscreen = heroPhotoAllowed
+    val imageUrls = if (heroPhotoAllowed)
+        (storeResult?.image_urls ?: emptyList()).filter { it.isNotBlank() }.take(6)
+    else emptyList()
     val displayCategory = resolveCategoryLabel(
-        categoryKey = storeResult?.category_key ?: "",
+        categoryKey = categoryKey,
         rawCategory = storeResult?.category ?: category,
         veganLevel = (storeResult?.details?.get("vegan_level") as? String).orEmpty(),
     )
@@ -776,7 +719,6 @@ fun ArFloorStoreGuideOverlay(
     val phone = storeResult?.phone?.trim().orEmpty()
     val floor = storeResult?.floor?.trim().orEmpty()
     val homepage = storeResult?.homepage?.trim().orEmpty()
-    val categoryKey = storeResult?.category_key ?: ""
     val showVisitStatus = openHours.isNotBlank() && categoryKey in setOf(
         "restaurant", "halal_restaurant", "cafe",
         "shopping", "mall", "convenience", "convenience_store",
@@ -847,23 +789,25 @@ fun ArFloorStoreGuideOverlay(
                                 contentScale = androidx.compose.ui.layout.ContentScale.Crop,
                             )
                         }
-                        Surface(
-                            modifier = Modifier
-                                .align(Alignment.TopEnd)
-                                .padding(4.dp)
-                                .size(28.dp)
-                                .clip(CircleShape)
-                                .clickable { isFullscreen = true },
-                            shape = CircleShape,
-                            color = Color.Black.copy(alpha = 0.35f),
-                        ) {
-                            Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
-                                Icon(
-                                    imageVector = Icons.Rounded.OpenInFull,
-                                    contentDescription = "전체 보기",
-                                    tint = Color.White,
-                                    modifier = Modifier.size(14.dp),
-                                )
+                        if (canFullscreen) {
+                            Surface(
+                                modifier = Modifier
+                                    .align(Alignment.TopEnd)
+                                    .padding(4.dp)
+                                    .size(28.dp)
+                                    .clip(CircleShape)
+                                    .clickable { isFullscreen = true },
+                                shape = CircleShape,
+                                color = Color.Black.copy(alpha = 0.35f),
+                            ) {
+                                Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
+                                    Icon(
+                                        imageVector = Icons.Rounded.OpenInFull,
+                                        contentDescription = "전체 보기",
+                                        tint = Color.White,
+                                        modifier = Modifier.size(14.dp),
+                                    )
+                                }
                             }
                         }
                         if (imageUrls.size > 1) {
@@ -941,6 +885,27 @@ fun ArFloorStoreGuideOverlay(
                             isOpen = displayOpenNow,
                         )
                     }
+                    // ③-1 할랄 신뢰칩 (restaurant / halal_restaurant)
+                    if (categoryKey in setOf("restaurant", "halal_restaurant")) {
+                        val halalType = (storeResult?.details?.get("halal_type") as? String).orEmpty()
+                        val halalTags = buildList {
+                            if (storeResult?.details?.get("muslim_cooks_available") as? Boolean == true)
+                                add(Pair("무슬림 조리사", Icons.Rounded.Verified))
+                            if (storeResult?.details?.get("no_alcohol_sales") as? Boolean == true)
+                                add(Pair("주류 미판매", Icons.Rounded.Star))
+                        }
+                        if (halalType.isNotBlank() || halalTags.isNotEmpty()) {
+                            Row(
+                                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                if (halalType.isNotBlank()) StoreHalalCategoryChip(label = halalType)
+                                halalTags.take(2).forEach { (tag, icon) ->
+                                    StoreHalalTrustChip(text = tag, icon = icon)
+                                }
+                            }
+                        }
+                    }
                     // ④ 소개 — 파란 info 아이콘 카드 (Figma)
                     if (intro.isNotBlank()) {
                         Surface(
@@ -1008,12 +973,53 @@ fun ArFloorStoreGuideOverlay(
                             }
                         }
                     }
-                    // ⑥ 상세 정보 행 — 헤더 없이 아이콘 + 값만 (Figma)
+                    // ⑥ 상세 정보 — 헤더 없이 아이콘 + 값 (detail screen과 동일 항목)
+                    val facilityList = buildList {
+                        if (storeResult?.details?.get("has_disabled") as? Boolean == true) add("장애인 화장실")
+                        if (storeResult?.details?.get("has_child") as? Boolean == true) add("유아 화장실")
+                        if (storeResult?.details?.get("has_diaper_table") as? Boolean == true) add("기저귀 교환대")
+                        if (storeResult?.details?.get("wudu") as? Boolean == true) add("우두 시설")
+                        if (storeResult?.details?.get("gender_separation") as? Boolean == true) add("남녀 분리")
+                        if (storeResult?.details?.get("prayer_mat") as? Boolean == true) add("기도 매트")
+                        if (storeResult?.details?.get("quran_available") as? Boolean == true) add("꾸란 비치")
+                    }
+                    val safetyList = buildList {
+                        if (storeResult?.details?.get("has_cctv") as? Boolean == true) add("CCTV")
+                        if (storeResult?.details?.get("has_emergency_bell") as? Boolean == true) add("비상벨")
+                    }
+                    val conveniences = (storeResult?.details?.get("conveniences") as? List<*>)
+                        ?.filterIsInstance<String>() ?: emptyList()
+                    val convenienceServices = conveniences.filter { !it.contains("주차") }.joinToString(", ")
+                    val departments = (storeResult?.details?.get("departments") as? String)?.trim().orEmpty()
+                    // 화장실 칸 수 — key 오타("toilt") 양쪽 모두 시도
+                    val toiletMaleRaw = storeResult?.details?.get("male_toilet_cnt")
+                        ?: storeResult?.details?.get("male_toilt_cnt")
+                    val toiletFemaleRaw = storeResult?.details?.get("female_toilet_cnt")
+                        ?: storeResult?.details?.get("female_toilt_cnt")
+                    fun Any?.toToiletInt() = when (this) {
+                        is Double -> toInt(); is Int -> this; is String -> toIntOrNull(); else -> null
+                    }
+                    val toiletStr = buildList {
+                        val m = toiletMaleRaw.toToiletInt()
+                        val f = toiletFemaleRaw.toToiletInt()
+                        if ((m ?: 0) > 0) add("남성 ${m}칸")
+                        if ((f ?: 0) > 0) add("여성 ${f}칸")
+                    }.joinToString(", ")
+                    val isRestroom = categoryKey in setOf("restroom", "public_restroom")
                     val infoLines = listOfNotNull(
                         addr.takeIf { it.isNotBlank() }?.let { Pair(Icons.Rounded.Place, it) },
                         phone.takeIf { it.isNotBlank() }?.let { Pair(Icons.Rounded.LocalPhone, it) },
-                        floor.takeIf { it.isNotBlank() }?.let { Pair(Icons.Rounded.Stairs, it) },
+                        floor.takeIf { it.isNotBlank() && !isRestroom }?.let { Pair(Icons.Rounded.Stairs, it) },
                         homepage.takeIf { it.isNotBlank() }?.let { Pair(Icons.Rounded.Language, it) },
+                        toiletStr.takeIf { it.isNotBlank() }?.let { Pair(Icons.Rounded.Wc, it) },
+                        facilityList.joinToString(", ").takeIf { it.isNotBlank() }
+                            ?.let { Pair(Icons.AutoMirrored.Rounded.Accessible, it) },
+                        safetyList.joinToString(", ").takeIf { it.isNotBlank() }
+                            ?.let { Pair(Icons.Rounded.Security, it) },
+                        convenienceServices.takeIf { it.isNotBlank() }
+                            ?.let { Pair(Icons.Rounded.MiscellaneousServices, it) },
+                        departments.takeIf { it.isNotBlank() }
+                            ?.let { Pair(Icons.Rounded.Healing, it) },
                     )
                     if (infoLines.isNotEmpty()) {
                         DetailScreenDivider()
@@ -1109,15 +1115,6 @@ fun ArFloorStoreGuideOverlay(
                                 }
                             }
                         }
-                        "restroom" -> {
-                            val maleCnt = (storeResult?.details?.get("male_toilet_cnt") as? Double)?.toInt()
-                            val femaleCnt = (storeResult?.details?.get("female_toilet_cnt") as? Double)?.toInt()
-                            val tags = listOfNotNull(
-                                maleCnt?.let { "남 ${it}칸" },
-                                femaleCnt?.let { "여 ${it}칸" },
-                            )
-                            if (tags.isNotEmpty()) DetailFacilityTagRow(tags = tags)
-                        }
                         "subway" -> {
                             val tags = (storeResult?.details?.get("facilities") as? List<*>)
                                 ?.filterIsInstance<String>() ?: emptyList()
@@ -1136,5 +1133,62 @@ fun ArFloorStoreGuideOverlay(
                 onDismiss = { isFullscreen = false },
             )
         }
+    }
+}
+
+@Composable
+private fun StoreHalalCategoryChip(label: String) {
+    val (bg, fg) = when (label) {
+        "HALAL MEAT"  -> ScanPangColors.HalalMeatBadgeBackground  to ScanPangColors.HalalMeatBadgeText
+        "SEAFOOD"     -> ScanPangColors.SeafoodBadgeBackground     to ScanPangColors.Primary
+        "VEGGIE"      -> ScanPangColors.VeggieBadgeBackground      to ScanPangColors.VeggieBadgeText
+        "SALAM SEOUL" -> ScanPangColors.SalamSeoulBadgeBackground  to ScanPangColors.SalamSeoulBadgeText
+        else          -> ScanPangColors.HalalMeatBadgeBackground   to ScanPangColors.HalalMeatBadgeText
+    }
+    Surface(
+        shape = ScanPangShapes.badge6,
+        color = bg,
+        border = BorderStroke(ScanPangDimens.borderHairline, ScanPangColors.OutlineSubtle),
+    ) {
+        Text(
+            text = label,
+            modifier = Modifier.padding(
+                horizontal = ScanPangDimens.trustChipHorizontal,
+                vertical = ScanPangDimens.trustChipVertical,
+            ),
+            style = ScanPangType.badge9SemiBold,
+            color = fg,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+    }
+}
+
+@Composable
+private fun StoreHalalTrustChip(text: String, icon: ImageVector) {
+    Row(
+        modifier = Modifier
+            .clip(ScanPangShapes.badge6)
+            .background(ScanPangColors.TrustPillBackground)
+            .padding(
+                horizontal = ScanPangDimens.trustChipHorizontal,
+                vertical = ScanPangDimens.trustChipVertical,
+            ),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(ScanPangDimens.trustIconGap),
+    ) {
+        Icon(
+            imageVector = icon,
+            contentDescription = null,
+            modifier = Modifier.size(ScanPangDimens.icon10),
+            tint = ScanPangColors.TrustPillText,
+        )
+        Text(
+            text = text,
+            style = ScanPangType.badge9SemiBold,
+            color = ScanPangColors.TrustPillText,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
     }
 }

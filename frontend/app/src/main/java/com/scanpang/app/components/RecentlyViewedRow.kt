@@ -13,6 +13,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.AccountBalance
 import androidx.compose.material.icons.rounded.Atm
+import androidx.compose.material.icons.rounded.CheckCircle
 import androidx.compose.material.icons.rounded.ChevronRight
 import androidx.compose.material.icons.rounded.Coffee
 import androidx.compose.material.icons.rounded.CurrencyExchange
@@ -22,6 +23,7 @@ import androidx.compose.material.icons.rounded.LocalMall
 import androidx.compose.material.icons.rounded.Lock
 import androidx.compose.material.icons.rounded.Medication
 import androidx.compose.material.icons.rounded.Mosque
+import androidx.compose.material.icons.rounded.RadioButtonUnchecked
 import androidx.compose.material.icons.rounded.Restaurant
 import androidx.compose.material.icons.rounded.Train
 import androidx.compose.material.icons.rounded.Wc
@@ -71,12 +73,15 @@ fun RecentlyViewedEntry.toDetailRoute(): String =
 /**
  * 최근 본 장소 카드 행 — Home 미리보기/RecentlyViewedListScreen 전체 리스트가 동일하게 사용한다.
  * 좌측 카테고리 아이콘(원형 PrimarySoft 배경) + 이름/부제 + 우측 chevron.
+ * [isDeleteMode] 가 true 이면 chevron 대신 선택 체크박스를 노출한다.
  */
 @Composable
 fun RecentlyViewedRow(
     entry: RecentlyViewedEntry,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
+    isDeleteMode: Boolean = false,
+    isSelected: Boolean = false,
     // 호출처가 현재 위치 기준 거리 라벨(예: '120m') 을 계산해 전달. 좌표 없거나
     // GPS 미수신이면 빈 string → subtitle 은 category 만 보임.
     distanceLabel: String = "",
@@ -85,7 +90,10 @@ fun RecentlyViewedRow(
         modifier = modifier
             .fillMaxWidth()
             .clip(ScanPangShapes.radius14)
-            .background(ScanPangColors.Background)
+            .background(
+                if (isDeleteMode && isSelected) ScanPangColors.PrimarySoft
+                else ScanPangColors.Background,
+            )
             .clickable(onClick = onClick)
             .padding(horizontal = ScanPangSpacing.md, vertical = ScanPangDimens.recentRowVertical),
         verticalAlignment = Alignment.CenterVertically,
@@ -131,11 +139,20 @@ fun RecentlyViewedRow(
                 )
             }
         }
-        Icon(
-            imageVector = Icons.Rounded.ChevronRight,
-            contentDescription = null,
-            modifier = Modifier.size(ScanPangDimens.icon20),
-            tint = ScanPangColors.OnSurfacePlaceholder,
-        )
+        if (isDeleteMode) {
+            Icon(
+                imageVector = if (isSelected) Icons.Rounded.CheckCircle else Icons.Rounded.RadioButtonUnchecked,
+                contentDescription = if (isSelected) "선택됨" else "선택",
+                modifier = Modifier.size(ScanPangDimens.icon20),
+                tint = if (isSelected) ScanPangColors.Primary else ScanPangColors.OnSurfacePlaceholder,
+            )
+        } else {
+            Icon(
+                imageVector = Icons.Rounded.ChevronRight,
+                contentDescription = null,
+                modifier = Modifier.size(ScanPangDimens.icon20),
+                tint = ScanPangColors.OnSurfacePlaceholder,
+            )
+        }
     }
 }
