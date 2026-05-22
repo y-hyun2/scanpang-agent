@@ -29,6 +29,7 @@ import com.scanpang.app.components.ar.ArAgentChatMessage
 import com.scanpang.app.data.remote.ScanPangViewModel
 import androidx.compose.ui.Modifier
 import androidx.navigation.NavController
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import com.scanpang.app.components.ar.ArNavCompass
 import com.scanpang.app.components.ar.ArNavMiniMap
@@ -136,6 +137,13 @@ fun ArNavigationMapScreen(
     val isTtsOn by TtsState.enabled.collectAsState()
     var showStopNavSheet by remember { mutableStateOf(false) }
     var showStopConfirmDialog by remember { mutableStateOf(false) }
+
+    LaunchedEffect(navUiState.isArrived) {
+        if (navUiState.isArrived) {
+            delay(2000L)
+            showStopNavSheet = true
+        }
+    }
 
     BackHandler(enabled = showStopConfirmDialog) {
         showStopConfirmDialog = false
