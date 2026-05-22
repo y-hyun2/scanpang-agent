@@ -255,9 +255,25 @@ fun ArNavigationMapScreen(
                             isChatSending = true
                             chatMessages = chatMessages + ArAgentChatMessage(text = q, isUser = true)
                             aiQuery = ""
+                            // 현재 길안내 상태를 nav_context 로 같이 전송 — backend
+                            // orchestrator 가 'nav_guide' 로 라우팅하면 LLM 이 이 데이터
+                            // 보고 "여기서 좌회전 맞아?" "거의 다 왔어?" 등에 정확 응답.
+                            val totalRemain = arCommand?.total_distance_m ?: 0
+                            val totalTime = arCommand?.total_time_min ?: 0
+                            val navCtx = com.scanpang.app.data.remote.NavContext(
+                                is_routing = isRouting,
+                                destination_name = displayDestinationName,
+                                direction = navUiState.turnDirection.name,
+                                current_speech = navUiState.currentSpeech,
+                                current_distance_m = navUiState.currentDistanceM,
+                                next_direction = navUiState.nextTurnDirection.name,
+                                next_distance_m = navUiState.nextDistanceM,
+                                remaining_distance_m = totalRemain,
+                                remaining_time_min = totalTime,
+                            )
                             scope.launch {
                                 try {
-                                    val reply = agentService.sendMessage(q)
+                                    val reply = agentService.sendMessage(q, navCtx)
                                     chatMessages = chatMessages + ArAgentChatMessage(text = reply, isUser = false)
                                     ttsController.speakIfEnabled(reply, isTtsOn)
                                 } finally {

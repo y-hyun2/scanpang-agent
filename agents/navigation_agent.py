@@ -279,3 +279,74 @@ async def run_route_agent(req: RouteRequest) -> dict:
             "nearby_buildings": nearby_buildings,
         },
     }
+
+
+
+# ── AR 길안내 중 어시스턴트 (nav_guide) ─────────────────────────────────────
+# 사용자가 길안내 진행 중 채팅으로 "여기서 좌회전 맞아?" "거의 다 왔어?" 같이
+# 현재 경로 상태에 대해 묻는 케이스. frontend 가 nav_context (현재 턴/거리/
+# 목적지/남은 시간) 를 같이 보내고 LLM 이 그걸 보고 응답.
+
+_NAV_GUIDE_SYSTEM = """당신은 AR 도보 길안내 중인 사용자의 음성/채팅 어시스턴트입니다.
+사용자가 현재 진행 중인 경로에 대해 묻습니다. 아래 컨텍스트를 보고 짧게(1-2문장,
+TTS 친화) 답하세요. 친근하고 안심되는 톤.
+
+응답 언어: {language}  (ko=한국어, en=English, ar=Arabic, ja=日本語, zh=中文)
+
+길안내 상태:
+- 길안내 진행 중: {is_routing}
+- 목적지: {destination}
+- 다음 동작: {direction} ({current_distance_m}m 앞 — {current_speech})
+- 그 다음 동작: {next_direction} ({next_distance_m}m 앞)
+- 목적지까지 남은 거리: {remaining_distance_m}m
+- 예상 소요: 약 {remaining_time_min}분
+
+규칙:
+- "여기서 좌회전 맞아?" → 다음 동작의 direction 과 비교해 yes/no + 거리 명시.
+  예: "네, 80m 앞에서 좌회전이에요." / "아뇨, 직진하시다 다음 갈림길에서 우회전이에요."
+- "거의 다 왔어?" / "얼마나 남았어?" → remaining_distance_m + remaining_time_min 기준.
+- "다음은?" / "이 갈림길에서?" → current_speech 또는 next 안내.
+- 길안내 진행 중이 아니면(is_routing=false) 정중하게 "지금 길안내 중이 아니에요" 안내.
+- 컨텍스트 없는 일반 질문이 섞여 들어오면 길안내 관점에서만 답하고 더 일반적인 질문은
+  검색 메뉴로 안내."""
+
+
+async def run_nav_guide_agent(
+    message: str,
+    nav_context: dict | None,
+    language: str = "ko",
+) -> dict:
+    """길안내 중 어시스턴트 — nav_context + 사용자 발화 → 짧은 응답.
+    nav_context 없으면 안내 메시지 1줄 반환 (LLM 호출 X)."""
+    ctx = nav_context or {}
+    if not ctx.get("is_routing"):
+        msg = {
+            "ko": "지금 길안내 중이 아니에요. 검색에서 목적지를 먼저 정해주세요.",
+            "en": "You're not currently in navigation. Please choose a destination first.",
+            "ar": "أنت لست في وضع التنقل حاليًا. الرجاء اختيار وجهة أولاً.",
+            "ja": "現在ナビゲーション中ではありません。先に目的地を選んでください。",
+            "zh": "您目前未在导航中。请先选择目的地。",
+        }.get(language, "You're not currently in navigation.")
+        return {"speech": msg, "raw": ctx}
+
+    lang_label = {"ko": "ko", "en": "en", "ar": "ar", "ja": "ja", "zh": "zh"}.get(language, "ko")
+    system = _NAV_GUIDE_SYSTEM.format(
+        language          = lang_label,
+        is_routing        = ctx.get("is_routing", False),
+        destination       = ctx.get("destination_name", "") or "(없음)",
+        direction         = ctx.get("direction", "") or "(미정)",
+        current_distance_m = ctx.get("current_distance_m", 0),
+        current_speech    = ctx.get("current_speech", "") or "(없음)",
+        next_direction    = ctx.get("next_direction", "") or "(없음)",
+        next_distance_m   = ctx.get("next_distance_m", 0),
+        remaining_distance_m = ctx.get("remaining_distance_m", 0),
+        remaining_time_min   = ctx.get("remaining_time_min", 0),
+    )
+    try:
+        response = await llm.ainvoke([
+            {"role": "system", "content": system},
+            {"role": "user", "content": message},
+        ])
+        return {"speech": response.content.strip(), "raw": ctx}
+    except Exception as e:
+        return {"speech": f"답변 생성 중 오류가 발생했어요. 잠시 후 다시 시도해주세요.", "raw": {"error": str(e)}}

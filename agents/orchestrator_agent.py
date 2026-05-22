@@ -22,7 +22,7 @@ from typing_extensions import TypedDict
 
 from agents.convenience_agent import run_convenience_agent
 from agents.halal_agent import run_halal_agent
-from agents.navigation_agent import run_search_agent
+from agents.navigation_agent import run_search_agent, run_nav_guide_agent
 from agents.place_insight_agent import run_place_insight_agent
 from core.session_store import get_session_store
 from schemas.convenience import ConvenienceRequest
@@ -44,8 +44,9 @@ class OrchestratorState(TypedDict):
     language: str
     session_id: str
     session_context: str          # 프롬프트에 삽입할 이전 대화 이력 텍스트
-    selected_agent: Literal["place", "navigation", "halal", "convenience"]
+    selected_agent: Literal["place", "navigation", "nav_guide", "halal", "convenience"]
     sub_category: str             # halal/convenience 세부 카테고리 — sub-agent _extract 우회용
+    nav_context: dict             # AR 길안내 중 frontend 가 전달하는 현재 상태 (있으면 nav_guide 라우팅 후보)
     sub_agent_response: dict
     final_speech: str
     source_agent: str
@@ -63,8 +64,10 @@ _INTENT_SYSTEM = """당신은 AR 관광 앱의 요청 라우터입니다. 사용
 한 줄로만 출력하세요.
 
 에이전트 설명:
-- place     : 현재 바라보는 건물/장소 정보 (건물명, 운영시간, 층별 매장, 도슨트 해설)
-- navigation: 특정 목적지로 이동 (경로 안내, 길 찾기)
+- place     : 현재 바라보는 건물/장소 정보 (건물명, 운영시간, 층별 매장, 관광지 설명)
+- navigation: 특정 목적지로 이동 (경로 안내, 길 찾기) — "X로 가는 길", "X 어떻게 가"
+- nav_guide : AR 길안내 중 현재 경로/방향에 대한 질문 — "여기서 좌회전 맞아?", "다음 갈림길은?",
+              "거의 다 왔어?", "남은 거리는?" 등. 사용자가 이미 길안내 중일 때만 선택 가능.
 - halal     : 이슬람 관련 모든 것 (기도 시간, 키블라, 할랄 식당, 기도실/무슬라)
 - convenience: 일반 편의시설 (ATM, 카페, 약국, 화장실, 환전소, 지하철, 주차장 등)
 
@@ -73,7 +76,8 @@ _INTENT_SYSTEM = """당신은 AR 관광 앱의 요청 라우터입니다. 사용
 - 기도실/무슬라는 반드시 "halal"
 - 일반 식당/카페는 "convenience"
 - 건물 자체에 대한 질문(이게 뭐야, 여기 몇 층이야)은 "place"
-- 어디로 가고 싶다는 내용은 "navigation"
+- 새 목적지를 정하는 길 찾기는 "navigation"
+- 이미 진행 중인 길안내에 대한 질문(좌회전 맞아? 다음은? 얼마나 남았어?)은 "nav_guide"
 
 sub_category 값 (selected_agent 별):
 - halal       : "prayer_time" | "qibla" | "restaurant" | "prayer_room"
@@ -100,6 +104,15 @@ _FEW_SHOTS = [
     {"role": "assistant", "content": '{"selected_agent": "navigation", "resolved_message": "눈스퀘어 어떻게 가?", "sub_category": ""}'},
     {"role": "user",      "content": '메시지: "명동역으로 길 안내해줘"'},
     {"role": "assistant", "content": '{"selected_agent": "navigation", "resolved_message": "명동역으로 길 안내해줘", "sub_category": ""}'},
+    # nav_guide 예시 — AR 길안내 진행 중 사용자가 현재 경로에 대해 묻는 케이스
+    {"role": "user",      "content": '메시지: "여기서 좌회전 맞아?"'},
+    {"role": "assistant", "content": '{"selected_agent": "nav_guide", "resolved_message": "여기서 좌회전 맞아?", "sub_category": ""}'},
+    {"role": "user",      "content": '메시지: "이 갈림길에서 어디로 가?"'},
+    {"role": "assistant", "content": '{"selected_agent": "nav_guide", "resolved_message": "이 갈림길에서 어디로 가?", "sub_category": ""}'},
+    {"role": "user",      "content": '메시지: "거의 다 왔어?"'},
+    {"role": "assistant", "content": '{"selected_agent": "nav_guide", "resolved_message": "거의 다 왔어?", "sub_category": ""}'},
+    {"role": "user",      "content": '메시지: "얼마나 남았어?"'},
+    {"role": "assistant", "content": '{"selected_agent": "nav_guide", "resolved_message": "얼마나 남았어?", "sub_category": ""}'},
     {"role": "user",      "content": '메시지: "기도 시간 알려줘"'},
     {"role": "assistant", "content": '{"selected_agent": "halal", "resolved_message": "기도 시간 알려줘", "sub_category": "prayer_time"}'},
     {"role": "user",      "content": '메시지: "지금 아스르 기도 시간이야?"'},
@@ -134,7 +147,7 @@ _llm = ChatOpenAI(model="gpt-4o", temperature=0, response_format={"type": "json_
 async def classify_intent(
     message: str,
     session_context: str = "",
-) -> tuple[Literal["place", "navigation", "halal", "convenience"], str, str]:
+) -> tuple[Literal["place", "navigation", "nav_guide", "halal", "convenience"], str, str]:
     """
     사용자 메시지 → (에이전트, resolved_message, sub_category) 튜플.
     sub_category 는 halal/convenience 일 때만 값 있음, place/navigation 은 빈 문자열.
@@ -153,7 +166,7 @@ async def classify_intent(
         response = await _llm.ainvoke(messages)
         data = json.loads(response.content)
         agent = data.get("selected_agent", "convenience")
-        if agent not in ("place", "navigation", "halal", "convenience"):
+        if agent not in ("place", "navigation", "nav_guide", "halal", "convenience"):
             agent = "convenience"
         resolved = (data.get("resolved_message") or message).strip() or message
         sub_category = (data.get("sub_category") or "").strip()
@@ -208,6 +221,17 @@ async def _call_navigation_node(state: OrchestratorState) -> dict:
     return {"sub_agent_response": result if isinstance(result, dict) else result.model_dump()}
 
 
+async def _call_nav_guide_node(state: OrchestratorState) -> dict:
+    # AR 길안내 중 어시스턴트 — frontend 가 보낸 nav_context (현재 turn/거리/목적지)
+    # 를 그대로 LLM 프롬프트에 주입해서 응답 생성.
+    result = await run_nav_guide_agent(
+        message=_sub_message(state),
+        nav_context=state.get("nav_context", {}) or {},
+        language=state.get("language", "ko"),
+    )
+    return {"sub_agent_response": result if isinstance(result, dict) else result.model_dump()}
+
+
 async def _call_halal_node(state: OrchestratorState) -> dict:
     # category 가 채워져 있으면 halal_agent 의 _extract_category(LLM #2) 호출 스킵.
     # orchestrator 의 intent_classifier 가 이미 sub_category 까지 결정했음.
@@ -255,6 +279,7 @@ def _build_graph() -> StateGraph:
     g.add_node("intent_classifier", _intent_classifier_node)
     g.add_node("call_place",        _call_place_node)
     g.add_node("call_navigation",   _call_navigation_node)
+    g.add_node("call_nav_guide",    _call_nav_guide_node)
     g.add_node("call_halal",        _call_halal_node)
     g.add_node("call_convenience",  _call_convenience_node)
     g.add_node("response_synthesizer", _response_synthesizer_node)
@@ -266,12 +291,14 @@ def _build_graph() -> StateGraph:
         {
             "place":        "call_place",
             "navigation":   "call_navigation",
+            "nav_guide":    "call_nav_guide",
             "halal":        "call_halal",
             "convenience":  "call_convenience",
         },
     )
     g.add_edge("call_place",       "response_synthesizer")
     g.add_edge("call_navigation",  "response_synthesizer")
+    g.add_edge("call_nav_guide",   "response_synthesizer")
     g.add_edge("call_halal",       "response_synthesizer")
     g.add_edge("call_convenience", "response_synthesizer")
     g.add_edge("response_synthesizer", END)
@@ -291,6 +318,7 @@ async def run_orchestrator(
     heading: float = 0.0,
     language: str = "ko",
     session_id: Optional[str] = None,
+    nav_context: Optional[dict] = None,
 ) -> dict:
     """
     단일 진입점: 메시지를 받아 적절한 에이전트로 라우팅하고 결과를 반환한다.
@@ -329,6 +357,7 @@ async def run_orchestrator(
         "selected_agent":  "convenience",
         "resolved_message": message,
         "sub_category":    "",
+        "nav_context":     nav_context or {},
         "sub_agent_response": {},
         "final_speech":    "",
         "source_agent":    "",

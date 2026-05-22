@@ -52,6 +52,20 @@ async def _shutdown():
 
 # ── Orchestrator 스키마 ───────────────────────────────────────────────────
 
+class NavContext(BaseModel):
+    """AR 길안내 중 채팅 호출에 frontend 가 같이 전송하는 현재 상태.
+    None 이면 일반 모드(검색/장소 정보 등), 값 있으면 nav_guide 라우팅 후보."""
+    is_routing: bool = False
+    destination_name: str = ""
+    direction: str = ""             # "LEFT" | "RIGHT" | "STRAIGHT" | "DESTINATION"
+    current_speech: str = ""        # 현재 턴 LLM 안내 ("스타벅스에서 좌회전")
+    current_distance_m: int = 0     # 다음 턴까지 거리
+    next_direction: str = ""
+    next_distance_m: int = 0
+    remaining_distance_m: int = 0   # 목적지까지 남은 총 거리
+    remaining_time_min: int = 0     # ETA
+
+
 class AgentChatRequest(BaseModel):
     message: str
     lat: float
@@ -59,6 +73,7 @@ class AgentChatRequest(BaseModel):
     heading: float = 0.0
     language: str = "ko"
     session_id: Optional[str] = None
+    nav_context: Optional[NavContext] = None
 
 
 class AgentChatResponse(BaseModel):
@@ -282,8 +297,9 @@ async def halal_query(req: HalalRequest):
 @app.post("/ar/agent/chat", response_model=AgentChatResponse)
 async def ar_agent_chat(req: AgentChatRequest):
     """
-    LangGraph Orchestrator: 단일 엔드포인트에서 4개 에이전트를 자동 라우팅.
-    intent_classifier(GPT-4o) → place | navigation | halal | convenience → 통합 응답
+    LangGraph Orchestrator: 단일 엔드포인트에서 5개 에이전트를 자동 라우팅.
+    intent_classifier(GPT-4o) → place | navigation | nav_guide | halal | convenience → 통합 응답.
+    nav_context 가 있으면 길안내 중 사용자 발화로 간주, nav_guide 후보로 분류.
     """
     result = await run_orchestrator(
         message=req.message,
@@ -292,6 +308,7 @@ async def ar_agent_chat(req: AgentChatRequest):
         heading=req.heading,
         language=req.language,
         session_id=req.session_id,
+        nav_context=req.nav_context.model_dump() if req.nav_context else None,
     )
     return result
 

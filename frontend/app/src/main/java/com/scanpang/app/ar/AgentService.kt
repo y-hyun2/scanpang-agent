@@ -1,13 +1,14 @@
 package com.scanpang.app.ar
 
 import com.scanpang.app.data.remote.AgentChatRequest
+import com.scanpang.app.data.remote.NavContext
 import com.scanpang.app.data.remote.RetrofitClient
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.util.UUID
 
 interface AgentService {
-    suspend fun sendMessage(text: String): String
+    suspend fun sendMessage(text: String, navContext: NavContext? = null): String
     suspend fun sendVoice(audioData: ByteArray): String
 }
 
@@ -32,7 +33,7 @@ class ScanPangAgentService(
         this.language = language
     }
 
-    override suspend fun sendMessage(text: String): String = withContext(Dispatchers.IO) {
+    override suspend fun sendMessage(text: String, navContext: NavContext?): String = withContext(Dispatchers.IO) {
         try {
             val response = api.agentChat(
                 AgentChatRequest(
@@ -42,6 +43,7 @@ class ScanPangAgentService(
                     heading = heading,
                     language = language,
                     session_id = sessionId,
+                    nav_context = navContext,
                 )
             )
             if (response.session_id.isNotEmpty()) sessionId = response.session_id
