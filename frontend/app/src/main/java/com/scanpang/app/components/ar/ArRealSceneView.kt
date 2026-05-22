@@ -59,7 +59,7 @@ import io.github.sceneview.rememberViewNodeManager
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
-private data class NavBuildingPin(val id: String, val name: String, val lat: Double, val lng: Double, val ufid: String?)
+private data class NavBuildingPin(val id: String, val name: String, val lat: Double, val lng: Double, val ufid: String?, val distanceM: Float = 0f, val category: String = "")
 
 private data class NavBuildingCandidate(
     val building: Building,
@@ -111,6 +111,9 @@ enum class TurnDirection { LEFT, RIGHT, STRAIGHT, DESTINATION }
 fun ArRealSceneView(
     modifier: Modifier = Modifier,
     targetDestination: String = "",
+    /** Supabase에서 가져온 정확한 목적지 좌표. 제공되면 /navigation/search 단계를 건너뜀. */
+    targetLat: Double? = null,
+    targetLng: Double? = null,
     onPoseUpdate: (latitude: Double, longitude: Double, heading: Double, altitude: Double, horizontalAccuracy: Double) -> Unit = { _, _, _, _, _ -> },
     onNavigationUpdate: (ArNavUiState) -> Unit = {},
     /** 라우트 응답 도착 시 한 번 호출. 미니맵 폴리라인/목적지 마커용. */
@@ -208,6 +211,9 @@ fun ArRealSceneView(
     val activeArNodes = remember { mutableMapOf<Int, AnchorNode>() }
     val activeChildNodes = remember { mutableMapOf<Int, Node>() }       // 앞면 (정상 방향 아이콘)
     val activeBackChildNodes = remember { mutableMapOf<Int, Node>() }   // 뒷면 (거울상 방향 아이콘)
+    // 애니메이션이 소유한 ViewNode2 — 맵에서 제거된 원본 노드와 교체 생성된 green 노드를 추적.
+    // onDispose가 이 셋을 포함해 정리하므로 어떤 경로로 생성·교체되든 누락 없이 destroy된다.
+    val animationOwnedNodes = remember { mutableSetOf<ViewNode2>() }
     // 앵커 생성 시점의 카메라 고도 — 매 프레임 ViewNode2 child의 local Y를
     // (현재 cameraAlt - 생성 시 cameraAlt)로 갱신해 사용자 고도 변화 추적.
     val anchorCreationAltitudes = remember { mutableMapOf<Int, Double>() }
@@ -221,7 +227,7 @@ fun ArRealSceneView(
         if (route is NavRouteResponse) {
             val nodes = parseNavResponse(route)
             if (nodes.isNotEmpty()) {
-                clearArState(routeNodes, activeArNodes, activeChildNodes, activeBackChildNodes, renderedIndices)
+                clearArState(routeNodes, activeArNodes, activeChildNodes, activeBackChildNodes, renderedIndices, engine, animationOwnedNodes)
                 turnDirectionMap.clear()  // 새 라우트가 도착할 때만 이전 방향 정보 폐기
                 isArrivedState.value = false  // 새 라우트 시작 — 도착 상태 리셋
                 fullRouteNodes = nodes
@@ -295,7 +301,7 @@ fun ArRealSceneView(
             //   "destroying MaterialInstance which is still in use by Renderable" Filament panic.
             //   우회: Renderable component를 먼저 destroy해서 material binding을 풀고
             //   그 다음 ViewNode2.destroy() 호출 (material → texture → stream 순으로 정리).
-            (activeChildNodes.values + activeBackChildNodes.values).forEach { node ->
+            (activeChildNodes.values + activeBackChildNodes.values + animationOwnedNodes).forEach { node ->
                 if (node is ViewNode2) {
                     runCatching { engine.renderableManager.destroy(node.entity) }
                     runCatching { node.destroy() }
@@ -305,6 +311,7 @@ fun ArRealSceneView(
             activeArNodes.clear()
             activeChildNodes.clear()
             activeBackChildNodes.clear()
+            animationOwnedNodes.clear()
             anchorCreationAltitudes.clear()
             renderedIndices.clear()
             navBuildingAnchors.clear()
@@ -372,7 +379,7 @@ fun ArRealSceneView(
             val isLookingDown = poseMatrix[9] > 0.5f
 
             // ── 건물 PIN: 300ms 스로틀로 FOV+Occlusion+FrontEdge 계산 (탐색모드 동일 로직) ──
-            if (buildingsCache.isNotEmpty() && pose.horizontalAccuracy < 3.0 && now - lastNavBuildingVisibilityTime > 300) {
+            if (buildingsCache.isNotEmpty() && pose.horizontalAccuracy < 2.0 && now - lastNavBuildingVisibilityTime > 300) {
                 lastNavBuildingVisibilityTime = now
 
                 val fov = buildFovPolygon(lat, lng, pose.heading)
@@ -430,7 +437,7 @@ fun ArRealSceneView(
                             val anchor = earth.createAnchor(entry.markerPos.first, entry.markerPos.second, labelAlt, 0f, 0f, 0f, 1f)
                             if (anchor != null) {
                                 navBuildingAnchors[id] = anchor
-                                navBuildingPins.add(NavBuildingPin(id, entry.b.bld_nm ?: "건물", entry.markerPos.first, entry.markerPos.second, entry.b.ufid.ifEmpty { null }))
+                                navBuildingPins.add(NavBuildingPin(id, entry.b.bld_nm ?: "건물", entry.markerPos.first, entry.markerPos.second, entry.b.ufid.ifEmpty { null }, entry.dist))
                             }
                         }
                     } else {
@@ -444,7 +451,7 @@ fun ArRealSceneView(
                                     navBuildingAnchors[id]?.runCatching { detach() }
                                     navBuildingAnchors[id] = newAnchor
                                     val idx = navBuildingPins.indexOfFirst { it.id == id }
-                                    if (idx != -1) navBuildingPins[idx] = navBuildingPins[idx].copy(lat = entry.markerPos.first, lng = entry.markerPos.second)
+                                    if (idx != -1) navBuildingPins[idx] = navBuildingPins[idx].copy(lat = entry.markerPos.first, lng = entry.markerPos.second, distanceM = entry.dist)
                                 }
                             }
                         }
@@ -478,11 +485,15 @@ fun ArRealSceneView(
 
             // 1) LOCALIZING + 정확도 확보 + 목적지 있음 → 백엔드 라우트 요청
             if (navState == NavigationState.LOCALIZING &&
-                pose.horizontalAccuracy < 3.0 &&
+                pose.horizontalAccuracy < 2.0 &&
                 targetDestination.isNotEmpty()
             ) {
                 mainViewModel.updateState(NavigationState.READY_TO_ROUTE)
-                mainViewModel.fetchRoute(lng.toString(), lat.toString(), targetDestination)
+                if (targetLat != null && targetLng != null) {
+                    mainViewModel.fetchRouteWithCoords(lng.toString(), lat.toString(), targetDestination, targetLat, targetLng)
+                } else {
+                    mainViewModel.fetchRoute(lng.toString(), lat.toString(), targetDestination)
+                }
                 onNavigationUpdate(
                     ArNavUiState(
                         phase = ArNavUiState.Phase.LOCALIZING,
@@ -539,9 +550,15 @@ fun ArRealSceneView(
                             }
                             else -> return@mapNotNull null
                         }
-                        Triple(front, back, Pair(anchor, dir))
-                    }.forEach { (front, back, anchorDir) ->
+                        // k를 포함한 4-tuple 반환 — 맵에서 제거 후 animationOwnedNodes로 소유권 이전
+                        Pair(k, Triple(front, back, Pair(anchor, dir)))
+                    }.forEach { (k, data) ->
+                        val (front, back, anchorDir) = data
                         val (anchor, dir) = anchorDir
+                        activeChildNodes.remove(k)
+                        activeBackChildNodes.remove(k)
+                        animationOwnedNodes.add(front)
+                        back?.let { animationOwnedNodes.add(it) }
                         launchBadgeSpinAnim(
                             front = front,
                             back = back,
@@ -554,6 +571,7 @@ fun ArRealSceneView(
                             materialLoader = materialLoader,
                             isMounted = isMounted,
                             scope = coroutineScope,
+                            animationOwnedNodes = animationOwnedNodes,
                         )
                     }
 
@@ -669,6 +687,8 @@ fun ArRealSceneView(
                         if (animFront != null && animAnchor != null) {
                             activeChildNodes.remove(animKey)
                             activeBackChildNodes.remove(animKey)
+                            animationOwnedNodes.add(animFront)
+                            animBack?.let { animationOwnedNodes.add(it) }
                             // ── 턴 통과: 해당 배지 단독 애니메이션 ──
                             launchBadgeSpinAnim(
                                 front = animFront,
@@ -682,6 +702,7 @@ fun ArRealSceneView(
                                 materialLoader = materialLoader,
                                 isMounted = isMounted,
                                 scope = coroutineScope,
+                                animationOwnedNodes = animationOwnedNodes,
                             )
                         }
                     }
@@ -722,7 +743,10 @@ fun ArRealSceneView(
             key(pin.id) {
                 ArPoiCard(
                     title = pin.name,
-                    subtitle = "건물",
+                    subtitle = buildString {
+                        if (pin.category.isNotEmpty()) append("${pin.category} · ")
+                        append("${"%.0f".format(pin.distanceM)}m")
+                    },
                     modifier = Modifier.offset(x = xDp - 60.dp, y = yDp - 32.dp),
                     onClick = { onBuildingPinClick(pin.name, pin.ufid) },
                 )
@@ -745,7 +769,19 @@ private fun clearArState(
     activeChildNodes: MutableMap<Int, Node>,
     activeBackChildNodes: MutableMap<Int, Node>,
     renderedIndices: MutableSet<Int>,
+    engine: com.google.android.filament.Engine,
+    animationOwnedNodes: MutableSet<ViewNode2>,
 ) {
+    // ViewNode2를 먼저 destroy — onDispose와 동일한 순서 (Renderable → ViewNode2).
+    // clearArState 호출 시 이 맵에 남아있는 노드들이 destroy 없이 clear()되면
+    // MaterialInstance가 살아있는 채로 엔진이 정리되어 PreconditionPanic 발생.
+    (activeChildNodes.values + activeBackChildNodes.values + animationOwnedNodes).forEach { node ->
+        if (node is ViewNode2) {
+            runCatching { engine.renderableManager.destroy(node.entity) }
+            runCatching { node.destroy() }
+        }
+    }
+    animationOwnedNodes.clear()
     routeNodes.clear()
     activeArNodes.values.forEach { runCatching { it.destroy() } }
     activeArNodes.clear()
@@ -964,6 +1000,7 @@ private fun launchBadgeSpinAnim(
     materialLoader: MaterialLoader,
     isMounted: androidx.compose.runtime.State<Boolean>,
     scope: kotlinx.coroutines.CoroutineScope,
+    animationOwnedNodes: MutableSet<ViewNode2>,
 ) {
     val startY = front.rotation.y
     val startPitch = 0f
@@ -988,11 +1025,13 @@ private fun launchBadgeSpinAnim(
                         rotation = Float3(90f, startY, 0f)
                     }.also { n -> runCatching { n.materialInstance.setCullingMode(com.google.android.filament.Material.CullingMode.BACK) } }
                 }.getOrNull() ?: return@launch
+                animationOwnedNodes.remove(curFront)
                 runCatching { anchor.removeChildNode(curFront) }
                 runCatching { engine.renderableManager.destroy(curFront.entity) }
                 runCatching { curFront.destroy() }
                 anchor.addChildNode(newFront)
                 curFront = newFront
+                animationOwnedNodes.add(curFront)
 
                 curBack?.let { oldBack ->
                     val newBack = runCatching {
@@ -1004,11 +1043,15 @@ private fun launchBadgeSpinAnim(
                             rotation = Float3(90f, startY + 180f, 0f)
                         }.also { n -> runCatching { n.materialInstance.setCullingMode(com.google.android.filament.Material.CullingMode.BACK) } }
                     }.getOrNull()
+                    animationOwnedNodes.remove(oldBack)
                     runCatching { anchor.removeChildNode(oldBack) }
                     runCatching { engine.renderableManager.destroy(oldBack.entity) }
                     runCatching { oldBack.destroy() }
                     curBack = newBack
-                    if (newBack != null) anchor.addChildNode(newBack)
+                    if (newBack != null) {
+                        anchor.addChildNode(newBack)
+                        animationOwnedNodes.add(newBack)
+                    }
                 }
             }
 
