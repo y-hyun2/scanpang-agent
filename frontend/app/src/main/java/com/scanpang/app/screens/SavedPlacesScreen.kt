@@ -98,6 +98,21 @@ private fun parseDistanceMeters(line: String): Int {
     return Int.MAX_VALUE / 4
 }
 
+private fun haversineMeters(lat1: Double, lng1: Double, lat2: Double, lng2: Double): Double {
+    val r = 6371000.0
+    val dLat = Math.toRadians(lat2 - lat1)
+    val dLng = Math.toRadians(lng2 - lng1)
+    val a = Math.sin(dLat / 2).let { it * it } +
+        Math.cos(Math.toRadians(lat1)) * Math.cos(Math.toRadians(lat2)) *
+        Math.sin(dLng / 2).let { it * it }
+    return 2 * r * Math.asin(Math.sqrt(a))
+}
+
+private fun formatDistanceLabel(meters: Int): String = when {
+    meters < 1000 -> "${meters}m"
+    else          -> "%.1fkm".format(meters / 1000.0)
+}
+
 // Detail 화면들이 distanceLine 을 "카테고리 · 80m" 처럼 카테고리 prefix 와 함께 저장한다.
 // 저장한 장소 카드는 이미 좌측에 파란 카테고리 pill 을 노출하므로, 회색 텍스트 영역에는
 // 거리값만 남기기 위해 " · " 직전의 카테고리 부분을 잘라낸다.
@@ -107,15 +122,29 @@ private fun stripCategoryPrefix(line: String): String {
     return if (idx >= 0) line.substring(idx + 3).trim() else line.trim()
 }
 
-private fun SavedPlaceEntry.toUiRow(): SavedPlaceRow = SavedPlaceRow(
-    id = id,
-    title = name,
-    categoryLabel = category,
-    distanceLine = stripCategoryPrefix(distanceLine),
-    distanceMeters = parseDistanceMeters(distanceLine),
-    savedOrder = savedOrder,
-    navTarget = target,
-)
+/**
+ * 사용자 현재 위치 기준 거리 동적 계산.
+ *  - 좌표 + GPS 모두 있으면 Haversine 으로 실거리 표시
+ *  - 좌표 없거나(옛 row, 0.0/0.0) GPS 미수신이면 거리 표시 안 함 (빈 string).
+ *    정렬 시엔 MAX 로 처리해 뒤로 밀어둠.
+ *  저장 시점에 박혔던 distanceLine 의 거리값은 stale 이라 사용하지 않는다.
+ */
+private fun SavedPlaceEntry.toUiRow(userLat: Double?, userLng: Double?): SavedPlaceRow {
+    val hasCoords = lat != 0.0 && lng != 0.0
+    val canCompute = hasCoords && userLat != null && userLng != null
+    val meters = if (canCompute) haversineMeters(userLat!!, userLng!!, lat, lng).toInt()
+                 else Int.MAX_VALUE / 4
+    val label = if (canCompute) formatDistanceLabel(meters) else ""
+    return SavedPlaceRow(
+        id = id,
+        title = name,
+        categoryLabel = category,
+        distanceLine = label,
+        distanceMeters = meters,
+        savedOrder = savedOrder,
+        navTarget = target,
+    )
+}
 
 private fun NavController.navigateToSavedDetail(target: SavedPlaceNavTarget, placeId: String) {
     navigate(AppRoutes.placeDetailRoute(target.toCategoryKey(), placeId)) { launchSingleTop = true }
@@ -131,6 +160,39 @@ fun SavedPlacesScreen(
     val store = remember { SavedPlacesStore(context) }
     var entries by remember { mutableStateOf(store.getAll()) }
 
+    // GPS — 저장된 각 장소까지의 거리 동적 계산용. 권한 없거나 lastLocation null
+    // 이면 distanceLine 의 박힌 값으로 폴백.
+    var userLat by remember { mutableStateOf<Double?>(null) }
+    var userLng by remember { mutableStateOf<Double?>(null) }
+    androidx.compose.runtime.LaunchedEffect(Unit) {
+        val hasPermission =
+            android.content.pm.PackageManager.PERMISSION_GRANTED ==
+                androidx.core.content.ContextCompat.checkSelfPermission(
+                    context, android.Manifest.permission.ACCESS_FINE_LOCATION
+                ) ||
+            android.content.pm.PackageManager.PERMISSION_GRANTED ==
+                androidx.core.content.ContextCompat.checkSelfPermission(
+                    context, android.Manifest.permission.ACCESS_COARSE_LOCATION
+                )
+        if (!hasPermission) return@LaunchedEffect
+        val client = com.google.android.gms.location.LocationServices
+            .getFusedLocationProviderClient(context)
+        client.lastLocation.addOnSuccessListener { loc ->
+            if (loc != null) {
+                userLat = loc.latitude; userLng = loc.longitude
+            } else {
+                client.getCurrentLocation(
+                    com.google.android.gms.location.Priority.PRIORITY_BALANCED_POWER_ACCURACY,
+                    null,
+                ).addOnSuccessListener { fresh ->
+                    if (fresh != null) {
+                        userLat = fresh.latitude; userLng = fresh.longitude
+                    }
+                }
+            }
+        }
+    }
+
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_RESUME) {
@@ -145,8 +207,8 @@ fun SavedPlacesScreen(
     var sort by remember { mutableStateOf(SavedSort.ByDistance) }
     var sortMenuExpanded by remember { mutableStateOf(false) }
 
-    val rows = remember(entries, filterIndex) {
-        val mapped = entries.map { it.toUiRow() }
+    val rows = remember(entries, filterIndex, userLat, userLng) {
+        val mapped = entries.map { it.toUiRow(userLat, userLng) }
         val filter = savedFilters[filterIndex]
         if (filter.targets.isEmpty()) mapped   // "전체"
         else mapped.filter { it.navTarget in filter.targets }
@@ -309,7 +371,10 @@ fun SavedPlacesScreen(
                         }
                     }
                 }
-                items(sortedRows) { row ->
+                // items 에 key 지정 — 같은 매장 id 인데 sortedRows 순서가 바뀔 때
+                // LazyColumn 이 재배치를 정확히 처리하도록. key 없으면 위치 기반
+                // diff 라 정렬 변경이 시각적으로 안 반영되는 케이스 발생 가능.
+                items(sortedRows, key = { it.id }) { row ->
                     SavedPlaceCard(
                         title = row.title,
                         categoryLabel = row.categoryLabel,

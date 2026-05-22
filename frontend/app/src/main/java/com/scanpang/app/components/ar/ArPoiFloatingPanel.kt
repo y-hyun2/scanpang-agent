@@ -767,6 +767,8 @@ fun ArFloorStoreGuideOverlay(
         distanceLine = distanceLabel,
         tags = emptyList(),
         categoryKey = categoryKey,
+        lat = storeResult?.lat ?: 0.0,
+        lng = storeResult?.lng ?: 0.0,
     )
 
     Box(modifier = modifier.fillMaxSize()) {
