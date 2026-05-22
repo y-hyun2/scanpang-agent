@@ -30,6 +30,7 @@ import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -193,6 +194,8 @@ fun ArExploreScreen(
     val placeResult by viewModel.placeResult.collectAsState()
     // 마커 탭 시 /place/store 응답 — ArFloorStoreGuideOverlay 메타 라인의 category·영업중 표시 원천
     val storeResult by viewModel.storeResult.collectAsState()
+    val storeLoadingAt by viewModel.storeLoadingAt.collectAsState()
+    val buildingLoadingAt by viewModel.buildingLoadingAt.collectAsState()
     val context = LocalContext.current
 
     val appContext = context.applicationContext
@@ -965,8 +968,9 @@ fun ArExploreScreen(
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
                     .fillMaxWidth()
-                    .padding(bottom = ScanPangDimens.mainTabContentBottomInset)
-                    .navigationBarsPadding(),
+                    .navigationBarsPadding()
+                    .imePadding()
+                    .padding(bottom = ScanPangDimens.mainTabContentBottomInset - 16.dp),
             ) {
                 ArExploreInteractiveChatSection(
                     messages = chatMessages,
@@ -1140,6 +1144,7 @@ fun ArExploreScreen(
                     },
                     modifier = Modifier.fillMaxSize(),
                     arOverlay = selectedPoiOverlay ?: placeResult?.ar_overlay,
+                    buildingLoadingStartedAt = buildingLoadingAt,
                 )
             }
 
@@ -1161,6 +1166,7 @@ fun ArExploreScreen(
                     category = s?.category.orEmpty(),
                     isOpenNow = s?.is_open_now,
                     storeResult = s,
+                    storeLoadingStartedAt = storeLoadingAt,
                 )
             }
 

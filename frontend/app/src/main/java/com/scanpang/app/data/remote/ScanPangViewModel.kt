@@ -63,6 +63,12 @@ class ScanPangViewModel : ViewModel() {
     private val _storeResult = MutableStateFlow<StoreResponse?>(null)
     val storeResult: StateFlow<StoreResponse?> = _storeResult
 
+    private val _storeLoadingAt = MutableStateFlow<Long?>(null)
+    val storeLoadingAt: StateFlow<Long?> = _storeLoadingAt
+
+    private val _buildingLoadingAt = MutableStateFlow<Long?>(null)
+    val buildingLoadingAt: StateFlow<Long?> = _buildingLoadingAt
+
     // ── Convenience ──
     private val _convenienceResult = MutableStateFlow<ConvenienceResponse?>(null)
     val convenienceResult: StateFlow<ConvenienceResponse?> = _convenienceResult
@@ -206,22 +212,28 @@ class ScanPangViewModel : ViewModel() {
     fun queryPlace(heading: Double, lat: Double, lng: Double, alt: Double = 0.0, pitch: Double = 0.0, message: String = "", ufid: String? = null) {
         setUserLocation(lat, lng)
         viewModelScope.launch {
+            _buildingLoadingAt.value = System.currentTimeMillis()
             try {
                 _placeResult.value = api.queryPlace(
                     PlaceQueryRequest(heading = heading, user_lat = lat, user_lng = lng, user_alt = alt, pitch = pitch, user_message = message, ufid = ufid)
                 )
             } catch (e: Exception) {
                 Log.e("ScanPangVM", "queryPlace failed", e)
+            } finally {
+                _buildingLoadingAt.value = null
             }
         }
     }
 
     fun queryStore(placeId: String, storeName: String) {
         viewModelScope.launch {
+            _storeLoadingAt.value = System.currentTimeMillis()
             try {
                 _storeResult.value = api.queryStore(StoreRequest(place_id = placeId, store_name = storeName))
             } catch (e: Exception) {
                 Log.e("ScanPangVM", "queryStore failed", e)
+            } finally {
+                _storeLoadingAt.value = null
             }
         }
     }
