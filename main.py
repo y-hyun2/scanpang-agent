@@ -765,6 +765,10 @@ async def place_detail(req: PlaceDetailRequest):
         )
 
     if row is None:
+        # 404 디버깅 — 어떤 id 가 store_details 에 없는지 콘솔에 노출.
+        # frontend(SavedPlace/Recent/Search) 가 보낸 id 가 store_details.id 와
+        # 매칭 안 되는 패턴인지 추적용.
+        print(f"[place_detail] 404 — store_details 에 매칭 없음: id={req.id!r}")
         raise HTTPException(status_code=404, detail=f"매장 '{req.id}' 정보를 찾을 수 없습니다.")
 
     # floor_info_seed 인 lightweight row → 카드 탭한 지금이 풀필드 fetch 타이밍.
