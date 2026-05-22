@@ -66,10 +66,8 @@ private fun navigateToHome(navController: androidx.navigation.NavController) {
 private fun navigateMainTab(navController: androidx.navigation.NavController, route: String) {
     navController.navigate(route) {
         popUpTo(AppRoutes.Home) {
-            saveState = true
             inclusive = false
         }
         launchSingleTop = true
-        restoreState = true
     }
 }

@@ -265,18 +265,27 @@ fun ArNavigationMapScreen(
                 selectedTab = ScanPangMainTab.Explore,
                 onHomeClick = {
                     navController.navigate(AppRoutes.Home) {
-                        popUpTo(AppRoutes.Home) { inclusive = false }
+                        popUpTo(AppRoutes.Home) { inclusive = true }
                         launchSingleTop = true
                     }
                 },
                 onSearchClick = {
-                    navController.navigate(AppRoutes.Search) { launchSingleTop = true }
+                    navController.navigate(AppRoutes.Search) {
+                        popUpTo(AppRoutes.Home) { inclusive = false }
+                        launchSingleTop = true
+                    }
                 },
                 onSavedClick = {
-                    navController.navigate(AppRoutes.Saved) { launchSingleTop = true }
+                    navController.navigate(AppRoutes.Saved) {
+                        popUpTo(AppRoutes.Home) { inclusive = false }
+                        launchSingleTop = true
+                    }
                 },
                 onProfileClick = {
-                    navController.navigate(AppRoutes.Profile) { launchSingleTop = true }
+                    navController.navigate(AppRoutes.Profile) {
+                        popUpTo(AppRoutes.Home) { inclusive = false }
+                        launchSingleTop = true
+                    }
                 },
                 onExploreClick = {
                     navController.navigate(AppRoutes.ArExplore) {
