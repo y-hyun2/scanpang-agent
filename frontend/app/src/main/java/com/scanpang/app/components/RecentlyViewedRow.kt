@@ -116,7 +116,11 @@ fun RecentlyViewedRow(
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
-            val subtitle = distanceLabel.ifBlank { entry.category }
+            // 피그마: '카테고리 · 거리' 둘 다. 한쪽만 있으면 그쪽만, 둘 다 없으면 행 숨김.
+            val subtitle = listOfNotNull(
+                entry.category.ifBlank { null },
+                distanceLabel.ifBlank { null },
+            ).joinToString(" · ")
             if (subtitle.isNotBlank()) {
                 Text(
                     text = subtitle,

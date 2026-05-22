@@ -35,9 +35,13 @@ class RecentlyViewedStore(context: Context) {
             buildList {
                 for (i in 0 until arr.length()) {
                     val o = arr.getJSONObject(i)
+                    val id = o.getString("id")
+                    // store_details.id 패턴 ('{place_id}__{store_name}' / outdoor sentinel)
+                    // 이 아닌 옛 깨진 row(매장명만 박혀 /place/detail 404) 는 표시에서 제외.
+                    if ("__" !in id) continue
                     add(
                         RecentlyViewedEntry(
-                            id = o.getString("id"),
+                            id = id,
                             name = o.getString("name"),
                             category = o.optString("category", ""),
                             target = parseSavedPlaceNavTarget(
