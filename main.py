@@ -21,6 +21,7 @@ from schemas.place_detail import PlaceDetailRequest, PlaceDetailResponse
 from schemas.user import (
     UserPreferencesUpsertRequest, UserPreferencesResponse,
     SavedPlacesUpdateRequest, SearchHistoryUpdateRequest,
+    RecentlyViewedUpdateRequest,
     InquirySubmitRequest, InquirySubmitResponse,
 )
 from tools.open_hours_parser import is_open_now_combined as _is_open_now_combined
@@ -136,8 +137,8 @@ async def user_preferences_upsert(req: UserPreferencesUpsertRequest):
             """
             INSERT INTO user_preferences
                 (user_id, display_name, language, value_added, saved_places,
-                 search_history, created_at, updated_at)
-            VALUES ($1, $2, $3, $4, '[]'::jsonb, '[]'::jsonb, NOW(), NOW())
+                 search_history, recently_viewed_places, created_at, updated_at)
+            VALUES ($1, $2, $3, $4, '[]'::jsonb, '[]'::jsonb, '[]'::jsonb, NOW(), NOW())
             ON CONFLICT (user_id) DO UPDATE SET
                 display_name = COALESCE(EXCLUDED.display_name, user_preferences.display_name),
                 language     = COALESCE(EXCLUDED.language,     user_preferences.language),
@@ -145,7 +146,8 @@ async def user_preferences_upsert(req: UserPreferencesUpsertRequest):
                 updated_at   = NOW()
             RETURNING user_id, display_name, language, value_added,
                       saved_places::text AS saved_places,
-                      search_history::text AS search_history
+                      search_history::text AS search_history,
+                      recently_viewed_places::text AS recently_viewed_places
             """,
             req.user_id, req.display_name, req.language, req.value_added,
         )
@@ -156,6 +158,7 @@ async def user_preferences_upsert(req: UserPreferencesUpsertRequest):
         value_added=row["value_added"],
         saved_places=_json.loads(row["saved_places"] or "[]"),
         search_history=_json.loads(row["search_history"] or "[]"),
+        recently_viewed_places=_json.loads(row["recently_viewed_places"] or "[]"),
     )
 
 
@@ -168,7 +171,8 @@ async def user_preferences_get(user_id: str):
             """
             SELECT user_id, display_name, language, value_added,
                    saved_places::text AS saved_places,
-                   search_history::text AS search_history
+                   search_history::text AS search_history,
+                   recently_viewed_places::text AS recently_viewed_places
             FROM user_preferences WHERE user_id = $1
             """,
             user_id,
@@ -182,6 +186,7 @@ async def user_preferences_get(user_id: str):
         value_added=row["value_added"],
         saved_places=_json.loads(row["saved_places"] or "[]"),
         search_history=_json.loads(row["search_history"] or "[]"),
+        recently_viewed_places=_json.loads(row["recently_viewed_places"] or "[]"),
     )
 
 
@@ -217,6 +222,25 @@ async def user_search_history_update(user_id: str, req: SearchHistoryUpdateReque
             ON CONFLICT (user_id) DO UPDATE SET
                 search_history = EXCLUDED.search_history,
                 updated_at     = NOW()
+            """,
+            user_id, req.items,
+        )
+    return {"user_id": user_id, "count": len(req.items)}
+
+
+@app.put("/user/preferences/{user_id}/recently-viewed")
+async def user_recently_viewed_update(user_id: str, req: RecentlyViewedUpdateRequest):
+    """RecentlyViewedStore 변경 시 호출. '최근 본 장소' list 전체 교체.
+    saved_places 와 동일 — jsonb codec 이 list 직렬화 담당, json.dumps 금지(더블 인코딩)."""
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        await conn.execute(
+            """
+            INSERT INTO user_preferences (user_id, recently_viewed_places, created_at, updated_at)
+            VALUES ($1, $2, NOW(), NOW())
+            ON CONFLICT (user_id) DO UPDATE SET
+                recently_viewed_places = EXCLUDED.recently_viewed_places,
+                updated_at             = NOW()
             """,
             user_id, req.items,
         )

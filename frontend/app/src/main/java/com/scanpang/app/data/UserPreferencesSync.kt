@@ -64,9 +64,30 @@ object UserPreferencesSync {
             SearchHistoryPreferences(context).replaceAll(items)
         }
 
+        // 4) recently_viewed_places — 서버 list 가 있으면 로컬 덮어쓰기.
+        //    빈 list 면 로컬 보존 (첫 로그인 + 게스트 데이터 보존 시나리오).
+        val recentRaw = resp.recently_viewed_places
+        if (recentRaw.isNotEmpty()) {
+            val entries = recentRaw.mapNotNull { raw ->
+                val m = raw as? Map<*, *> ?: return@mapNotNull null
+                val id = m["id"] as? String ?: return@mapNotNull null
+                val name = m["name"] as? String ?: return@mapNotNull null
+                RecentlyViewedEntry(
+                    id = id,
+                    name = name,
+                    category = (m["category"] as? String).orEmpty(),
+                    target = parseSavedPlaceNavTarget((m["target"] as? String).orEmpty()),
+                    viewedAt = (m["viewedAt"] as? Number)?.toLong() ?: 0L,
+                    lat = (m["lat"] as? Number)?.toDouble() ?: 0.0,
+                    lng = (m["lng"] as? Number)?.toDouble() ?: 0.0,
+                )
+            }
+            RecentlyViewedStore(context).replaceAll(entries)
+        }
+
         Log.d(
             "UserPrefsSync",
-            "pull OK — user=$userId saved=${savedRaw.size} history=${historyRaw.size}",
+            "pull OK — user=$userId saved=${savedRaw.size} history=${historyRaw.size} recent=${recentRaw.size}",
         )
     }
 }
