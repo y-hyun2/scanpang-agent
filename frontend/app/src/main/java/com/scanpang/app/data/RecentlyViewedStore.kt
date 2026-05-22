@@ -12,9 +12,12 @@ data class RecentlyViewedEntry(
     val id: String,
     val name: String,
     val category: String,
-    val distanceLine: String,
     val target: SavedPlaceNavTarget,
     val viewedAt: Long = System.currentTimeMillis(),
+    // 매장 좌표 — Home/RecentlyViewedListScreen 표시 시점에 현재 위치와 Haversine
+    // 으로 거리 동적 계산. 0.0/0.0 = 옛 row → 거리 미표시.
+    val lat: Double = 0.0,
+    val lng: Double = 0.0,
 )
 
 /**
@@ -32,16 +35,21 @@ class RecentlyViewedStore(context: Context) {
             buildList {
                 for (i in 0 until arr.length()) {
                     val o = arr.getJSONObject(i)
+                    val id = o.getString("id")
+                    // store_details.id 패턴 ('{place_id}__{store_name}' / outdoor sentinel)
+                    // 이 아닌 옛 깨진 row(매장명만 박혀 /place/detail 404) 는 표시에서 제외.
+                    if ("__" !in id) continue
                     add(
                         RecentlyViewedEntry(
-                            id = o.getString("id"),
+                            id = id,
                             name = o.getString("name"),
                             category = o.optString("category", ""),
-                            distanceLine = o.optString("distanceLine", ""),
                             target = parseSavedPlaceNavTarget(
                                 o.optString("target", SavedPlaceNavTarget.Restaurant.name),
                             ),
                             viewedAt = o.optLong("viewedAt", 0L),
+                            lat = o.optDouble("lat", 0.0),
+                            lng = o.optDouble("lng", 0.0),
                         ),
                     )
                 }
@@ -80,9 +88,10 @@ class RecentlyViewedStore(context: Context) {
                     put("id", e.id)
                     put("name", e.name)
                     put("category", e.category)
-                    put("distanceLine", e.distanceLine)
                     put("target", e.target.name)
                     put("viewedAt", e.viewedAt)
+                    put("lat", e.lat)
+                    put("lng", e.lng)
                 },
             )
         }

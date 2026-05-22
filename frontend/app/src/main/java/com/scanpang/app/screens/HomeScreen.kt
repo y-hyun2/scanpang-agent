@@ -128,6 +128,10 @@ fun HomeScreen(
 
     // 현재 위치 — GPS + 역지오코딩 (권한 없거나 실패 시 fallback 문구).
     var locationText by remember { mutableStateOf("현재 위치를 가져오는 중...") }
+    // 최근 본 장소 거리 계산용 raw 좌표. 위 viewModel.setUserLocation 과 별개로
+    // 이 화면 인스턴스 안에서 직접 보유 (NavHost destination 마다 viewModel 다름).
+    var userLat by remember { mutableStateOf<Double?>(null) }
+    var userLng by remember { mutableStateOf<Double?>(null) }
     LaunchedEffect(Unit) {
         val hasPermission =
             ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED ||
@@ -141,6 +145,8 @@ fun HomeScreen(
             if (loc != null) {
                 // SearchDefaultScreen 등 다른 화면이 outdoor 카테고리 거리 검색에 사용.
                 viewModel.setUserLocation(loc.latitude, loc.longitude)
+                userLat = loc.latitude
+                userLng = loc.longitude
                 try {
                     @Suppress("DEPRECATION")
                     val geocoder = Geocoder(context, Locale.KOREAN)
@@ -206,6 +212,8 @@ fun HomeScreen(
                 quickActions = quickActions,
                 recentlyViewed = recentlyViewed,
                 showMoreRecent = hasMoreRecent,
+                userLat = userLat,
+                userLng = userLng,
             )
         }
     }
@@ -222,6 +230,8 @@ private fun HomeTopSection(
     quickActions: List<HomeQuickAction>,
     recentlyViewed: List<RecentlyViewedEntry>,
     showMoreRecent: Boolean,
+    userLat: Double?,
+    userLng: Double?,
 ) {
     val greetingLine = if (!displayName.isNullOrBlank()) {
         "안녕하세요, ${displayName}님!"
@@ -337,6 +347,8 @@ private fun HomeTopSection(
             onItemClick = { entry ->
                 navController.navigate(entry.toDetailRoute())
             },
+            userLat = userLat,
+            userLng = userLng,
         )
     }
 }
@@ -430,6 +442,8 @@ private fun RecentlyViewedSection(
     showMore: Boolean,
     onMoreClick: () -> Unit,
     onItemClick: (RecentlyViewedEntry) -> Unit,
+    userLat: Double? = null,
+    userLng: Double? = null,
 ) {
     Column(
         modifier = Modifier
@@ -462,11 +476,33 @@ private fun RecentlyViewedSection(
         } else {
             Column(verticalArrangement = Arrangement.spacedBy(ScanPangSpacing.sm)) {
                 recentlyViewed.forEach { entry ->
-                    RecentlyViewedRow(entry = entry, onClick = { onItemClick(entry) })
+                    RecentlyViewedRow(
+                        entry = entry,
+                        onClick = { onItemClick(entry) },
+                        distanceLabel = recentlyViewedDistanceLabel(entry, userLat, userLng),
+                    )
                 }
             }
         }
     }
+}
+
+/** 현재 위치 ↔ entry 좌표 Haversine 결과를 '120m' / '1.2km' 로 포맷. 좌표나 GPS 없으면 빈 문자열. */
+private fun recentlyViewedDistanceLabel(
+    entry: RecentlyViewedEntry,
+    userLat: Double?,
+    userLng: Double?,
+): String {
+    if (userLat == null || userLng == null) return ""
+    if (entry.lat == 0.0 || entry.lng == 0.0) return ""
+    val r = 6371000.0
+    val dLat = Math.toRadians(entry.lat - userLat)
+    val dLng = Math.toRadians(entry.lng - userLng)
+    val a = Math.sin(dLat / 2).let { it * it } +
+        Math.cos(Math.toRadians(userLat)) * Math.cos(Math.toRadians(entry.lat)) *
+        Math.sin(dLng / 2).let { it * it }
+    val meters = (2 * r * Math.asin(Math.sqrt(a))).toInt()
+    return if (meters < 1000) "${meters}m" else "%.1fkm".format(meters / 1000.0)
 }
 
 @Composable

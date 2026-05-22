@@ -481,7 +481,7 @@ private fun SearchResultsBody(
         if (rows.isEmpty()) {
             item {
                 Text(
-                    text = "조건에 맞는 장소가 없습니다. 다른 검색어를 시도해 보세요.",
+                    text = emptyResultMessage(query),
                     style = ScanPangType.body15Medium,
                     color = ScanPangColors.OnSurfaceMuted,
                     modifier = Modifier.padding(top = ScanPangSpacing.md),
@@ -502,6 +502,31 @@ private fun SearchResultsBody(
         }
     }
 }
+
+/**
+ * 결과 0건 시 사용자 메시지. outdoor 카테고리(거리 기반 검색) 는 backend 가 일정
+ * 반경 안에서만 찾으므로 '주변에 X가 없어요' 로 명확히 안내.
+ *  - 지하철: 반경 1.5km
+ *  - 화장실/기도실: 반경 2km
+ *  - 물품보관함: 반경 1.5km
+ *  - 할랄식당/비건: 거리 제한 없음 (raw 테이블 전체) — '근처에' 로 일반화
+ *  - 그 외 일반 키워드: 기존 안내
+ */
+private fun emptyResultMessage(query: String): String {
+    val q = query.trim()
+    return when {
+        "지하철" in q                 -> "주변 1.5km 이내에 지하철역이 없어요."
+        "화장실" in q                 -> "주변 2km 이내에 화장실이 없어요."
+        "기도실" in q || "무슬라" in q -> "주변 2km 이내에 기도실이 없어요."
+        "물품보관" in q || "락커" in q -> "주변 1.5km 이내에 물품보관함이 없어요."
+        "환전" in q                   -> "주변에 환전소가 없어요."
+        "할랄" in q                   -> "근처에 할랄 식당이 없어요."
+        "비건" in q                   -> "근처에 비건 식당/카페가 없어요."
+        "ATM" in q || "atm" in q.lowercase() -> "주변에 ATM 이 없어요."
+        else                          -> "조건에 맞는 장소가 없습니다. 다른 검색어를 시도해 보세요."
+    }
+}
+
 
 // ────────────────────────────────────────────────────────────
 // 검색 결과 행 데이터 + 변환 + 매칭 로직 (옛 SearchResultsScreen 에서 머지)

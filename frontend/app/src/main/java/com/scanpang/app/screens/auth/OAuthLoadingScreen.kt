@@ -80,6 +80,8 @@ fun OAuthLoadingScreen(
         AuthRepository.sessionStatus
             .filterIsInstance<SessionStatus.Authenticated>()
             .first()
+        // 로그인 직후 user_preferences 서버 pull — 다기기/재설치 동기화.
+        com.scanpang.app.data.UserPreferencesSync.pullFromBackend(context)
         if (prefs.isOnboardingComplete()) {
             onAuthSuccessExistingUser()
         } else {

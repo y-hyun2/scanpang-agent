@@ -1,10 +1,9 @@
 """user_preferences 테이블 CRUD 스키마.
 
-장기적으론 Supabase Auth 의 auth.users.id 와 매핑되겠지만, 현재는 frontend
-에서 발급한 device UUID 를 그대로 사용하는 anonymous 모드. RLS 정책은 도입 시
-추가 — user_id == auth.uid().
+user_id 는 Supabase Auth 의 auth.users.id (Google/Kakao OAuth uid).
+RLS 정책은 도입 시 user_id == auth.uid() 로 처리.
 """
-from typing import Optional
+from typing import Optional, List
 from pydantic import BaseModel
 from uuid import UUID
 
@@ -23,3 +22,27 @@ class UserPreferencesResponse(BaseModel):
     value_added: Optional[str] = None
     saved_places: list = []
     search_history: list = []
+
+
+class SavedPlacesUpdateRequest(BaseModel):
+    """saved_places 전체 list 교체. frontend SavedPlacesStore 가 변경될 때 호출."""
+    items: List[dict] = []  # [{id, name, category, distanceLine, tags, target, savedOrder}]
+
+
+class SearchHistoryUpdateRequest(BaseModel):
+    """search_history 전체 list 교체. 최근 검색어(string) 목록."""
+    items: List[str] = []
+
+
+class InquirySubmitRequest(BaseModel):
+    """1:1 문의 — ContactScreen 의 카테고리/제목/내용."""
+    user_id: UUID
+    category: str
+    title: str
+    content: str
+
+
+class InquirySubmitResponse(BaseModel):
+    id: int
+    user_id: UUID
+    status: str
