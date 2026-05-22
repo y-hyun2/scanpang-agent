@@ -1,7 +1,7 @@
 package com.scanpang.app.data
 
 import android.content.Context
-import com.scanpang.app.auth.AuthRepository
+import com.scanpang.app.data.auth.AuthRepository
 import com.scanpang.app.data.remote.RetrofitClient
 import com.scanpang.app.data.remote.SearchHistoryUpdateRequest
 import kotlinx.coroutines.CoroutineScope
