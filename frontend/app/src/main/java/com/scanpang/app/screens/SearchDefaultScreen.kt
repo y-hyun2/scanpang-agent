@@ -67,6 +67,8 @@ import com.scanpang.app.data.OnboardingPreferences
 import com.scanpang.app.data.SearchHistoryPreferences
 import com.scanpang.app.data.ValueAdded
 import com.scanpang.app.data.remote.ScanPangViewModel
+import com.scanpang.app.i18n.AppStrings
+import com.scanpang.app.i18n.LocalStrings
 import com.scanpang.app.data.remote.SearchResultItem
 import com.scanpang.app.navigation.AppRoutes
 import com.scanpang.app.ui.theme.ScanPangColors
@@ -87,45 +89,30 @@ private data class SearchRecommendCategory(
     val searchQuery: String? = null,
 )
 
-private fun pinnedRecommendsFor(valueAdded: ValueAdded?): List<SearchRecommendCategory> = when (valueAdded) {
+private fun pinnedRecommendsFor(valueAdded: ValueAdded?, s: AppStrings): List<SearchRecommendCategory> = when (valueAdded) {
     ValueAdded.HALAL -> listOf(
-        SearchRecommendCategory(
-            label = "할랄 식당",
-            icon = Icons.Rounded.Restaurant,
-            iconTint = ScanPangColors.CategoryRestaurant,
-            searchQuery = "할랄 식당",
-        ),
-        SearchRecommendCategory(
-            label = "기도실",
-            icon = Icons.Rounded.Mosque,
-            iconTint = ScanPangColors.Primary,
-            searchQuery = "기도실",
-        ),
+        SearchRecommendCategory(label = s.catHalalRestaurant, icon = Icons.Rounded.Restaurant, iconTint = ScanPangColors.CategoryRestaurant, searchQuery = "할랄 식당"),
+        SearchRecommendCategory(label = s.catPrayerRoom, icon = Icons.Rounded.Mosque, iconTint = ScanPangColors.Primary, searchQuery = "기도실"),
     )
     ValueAdded.VEGAN -> listOf(
-        SearchRecommendCategory(
-            label = "비건 식당",
-            icon = Icons.Rounded.Restaurant,
-            iconTint = ScanPangColors.CategoryRestaurant,
-            searchQuery = "비건 식당",
-        ),
+        SearchRecommendCategory(label = s.catVeganRestaurant, icon = Icons.Rounded.Restaurant, iconTint = ScanPangColors.CategoryRestaurant, searchQuery = "비건 식당"),
     )
     ValueAdded.GENERAL, null -> emptyList()
 }
 
-private fun commonRecommendPool(): List<SearchRecommendCategory> = listOf(
-    SearchRecommendCategory("카페", Icons.Rounded.Coffee, ScanPangColors.CategoryCafe, searchQuery = "카페"),
-    SearchRecommendCategory("쇼핑", Icons.Rounded.LocalMall, ScanPangColors.CategoryMall, searchQuery = "쇼핑"),
-    SearchRecommendCategory("병원", Icons.Rounded.LocalHospital, ScanPangColors.CategoryMedical, searchQuery = "병원"),
-    SearchRecommendCategory("약국", Icons.Rounded.Medication, ScanPangColors.CategoryMedical, searchQuery = "약국"),
-    SearchRecommendCategory("환전소", Icons.Rounded.CurrencyExchange, ScanPangColors.CategoryExchange, searchQuery = "환전소"),
-    SearchRecommendCategory("관광지", Icons.Rounded.Place, ScanPangColors.Primary, searchQuery = "관광지"),
-    SearchRecommendCategory("편의점", Icons.Rounded.LocalConvenienceStore, ScanPangColors.CategoryRestaurant, searchQuery = "편의점"),
-    SearchRecommendCategory("ATM", Icons.Rounded.Atm, ScanPangColors.CategoryExchange, searchQuery = "ATM"),
-    SearchRecommendCategory("은행", Icons.Rounded.AccountBalance, ScanPangColors.CategoryExchange, searchQuery = "은행"),
-    SearchRecommendCategory("지하철역", Icons.Rounded.Train, ScanPangColors.Primary, searchQuery = "지하철역"),
-    SearchRecommendCategory("화장실", Icons.Rounded.Wc, ScanPangColors.Primary, searchQuery = "화장실"),
-    SearchRecommendCategory("물품보관함", Icons.Rounded.Lock, ScanPangColors.Primary, searchQuery = "물품보관함"),
+private fun commonRecommendPool(s: AppStrings): List<SearchRecommendCategory> = listOf(
+    SearchRecommendCategory(s.catCafe, Icons.Rounded.Coffee, ScanPangColors.CategoryCafe, searchQuery = "카페"),
+    SearchRecommendCategory(s.catShopping, Icons.Rounded.LocalMall, ScanPangColors.CategoryMall, searchQuery = "쇼핑"),
+    SearchRecommendCategory(s.catHospital, Icons.Rounded.LocalHospital, ScanPangColors.CategoryMedical, searchQuery = "병원"),
+    SearchRecommendCategory(s.catPharmacy, Icons.Rounded.Medication, ScanPangColors.CategoryMedical, searchQuery = "약국"),
+    SearchRecommendCategory(s.catExchange, Icons.Rounded.CurrencyExchange, ScanPangColors.CategoryExchange, searchQuery = "환전소"),
+    SearchRecommendCategory(s.catTouristSpot, Icons.Rounded.Place, ScanPangColors.Primary, searchQuery = "관광지"),
+    SearchRecommendCategory(s.catConvenienceStore, Icons.Rounded.LocalConvenienceStore, ScanPangColors.CategoryRestaurant, searchQuery = "편의점"),
+    SearchRecommendCategory(s.catAtm, Icons.Rounded.Atm, ScanPangColors.CategoryExchange, searchQuery = "ATM"),
+    SearchRecommendCategory(s.catBank, Icons.Rounded.AccountBalance, ScanPangColors.CategoryExchange, searchQuery = "은행"),
+    SearchRecommendCategory(s.catSubwayStation, Icons.Rounded.Train, ScanPangColors.Primary, searchQuery = "지하철역"),
+    SearchRecommendCategory(s.catRestroom, Icons.Rounded.Wc, ScanPangColors.Primary, searchQuery = "화장실"),
+    SearchRecommendCategory(s.catLocker, Icons.Rounded.Lock, ScanPangColors.Primary, searchQuery = "물품보관함"),
 )
 
 /** 추천 카테고리는 2행 × 4열 그리드 — 8개를 노출. (pinned + 셔플된 공통풀로 채움) */
@@ -161,6 +148,7 @@ fun SearchDefaultScreen(
     val keyboard = LocalSoftwareKeyboardController.current
     val historyPrefs = remember { SearchHistoryPreferences(context) }
     val onboardingPrefs = remember { OnboardingPreferences(context) }
+    val s = LocalStrings.current
     val valueAdded = remember { onboardingPrefs.getValueAdded() }
 
     // 화면을 떠났다 돌아와도(상세 화면 등) 입력값을 유지.
@@ -257,10 +245,10 @@ fun SearchDefaultScreen(
     }
 
     // 추천 카테고리 — 검색 탭 진입 시점에 한 번 섞고 동일 셔플 유지.
-    val recommendCategories = remember(valueAdded) {
-        val pinned = pinnedRecommendsFor(valueAdded)
+    val recommendCategories = remember(valueAdded, s) {
+        val pinned = pinnedRecommendsFor(valueAdded, s)
         val fillCount = (SEARCH_RECOMMEND_COUNT - pinned.size).coerceAtLeast(0)
-        val randomFill = commonRecommendPool().shuffled().take(fillCount)
+        val randomFill = commonRecommendPool(s).shuffled().take(fillCount)
         pinned + randomFill
     }
 
@@ -306,7 +294,7 @@ fun SearchDefaultScreen(
                     // X 는 결과 모드 → 기본 모드로 돌아가는 유일한 트리거. 단순히 query 만 비운다.
                     query = ""
                 },
-                placeholder = "장소, 식당, 카테고리 검색",
+                placeholder = s.searchPlaceholder,
             )
             Spacer(modifier = Modifier.height(ScanPangSpacing.xl))
 
@@ -326,6 +314,7 @@ fun SearchDefaultScreen(
                         .padding(bottom = ScanPangDimens.mainTabContentBottomInset + ScanPangSpacing.lg),
                     query = trimmedQuery,
                     rows = resultRows,
+                    strings = s,
                     onRowClick = { row ->
                         keyboard?.hide()
                         navController.navigate(row.detailRoute) { launchSingleTop = true }
@@ -371,6 +360,7 @@ private fun SearchDefaultBody(
     onClearAll: () -> Unit,
     onCategoryClick: (SearchRecommendCategory) -> Unit,
 ) {
+    val s = LocalStrings.current
     Column(
         modifier = modifier.verticalScroll(rememberScrollState()),
         verticalArrangement = Arrangement.spacedBy(ScanPangSpacing.xl),
@@ -382,13 +372,13 @@ private fun SearchDefaultBody(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text(
-                    text = "최근 검색",
+                    text = s.searchRecentLabel,
                     style = ScanPangType.sectionTitle16,
                     color = ScanPangColors.OnSurfaceStrong,
                 )
                 if (recent.isNotEmpty()) {
                     Text(
-                        text = "전체 삭제",
+                        text = s.searchClearAll,
                         style = ScanPangType.caption12Medium,
                         color = ScanPangColors.OnSurfacePlaceholder,
                         modifier = Modifier.clickable(onClick = onClearAll),
@@ -405,7 +395,7 @@ private fun SearchDefaultBody(
                     contentAlignment = Alignment.Center,
                 ) {
                     Text(
-                        text = "최근 검색 기록이 없어요",
+                        text = s.searchNoRecent,
                         style = ScanPangType.body14Regular,
                         color = ScanPangColors.OnSurfaceMuted,
                     )
@@ -430,7 +420,7 @@ private fun SearchDefaultBody(
         }
         Column(verticalArrangement = Arrangement.spacedBy(ScanPangSpacing.lg)) {
             Text(
-                text = "추천 카테고리",
+                text = s.searchRecommendedCategory,
                 style = ScanPangType.sectionTitle16,
                 color = ScanPangColors.OnSurfaceStrong,
             )
@@ -465,6 +455,7 @@ private fun SearchResultsBody(
     modifier: Modifier,
     query: String,
     rows: List<ResultRow>,
+    strings: AppStrings,
     onRowClick: (ResultRow) -> Unit,
 ) {
     LazyColumn(
@@ -473,7 +464,7 @@ private fun SearchResultsBody(
     ) {
         item {
             Text(
-                text = "‘$query’ 검색 결과 ${rows.size}개",
+                text = strings.searchResultCount(query, rows.size),
                 style = ScanPangType.link13,
                 color = ScanPangColors.OnSurfaceMuted,
             )
@@ -481,7 +472,7 @@ private fun SearchResultsBody(
         if (rows.isEmpty()) {
             item {
                 Text(
-                    text = emptyResultMessage(query),
+                    text = emptyResultMessage(query, strings),
                     style = ScanPangType.body15Medium,
                     color = ScanPangColors.OnSurfaceMuted,
                     modifier = Modifier.padding(top = ScanPangSpacing.md),
@@ -512,18 +503,18 @@ private fun SearchResultsBody(
  *  - 할랄식당/비건: 거리 제한 없음 (raw 테이블 전체) — '근처에' 로 일반화
  *  - 그 외 일반 키워드: 기존 안내
  */
-private fun emptyResultMessage(query: String): String {
+private fun emptyResultMessage(query: String, s: AppStrings): String {
     val q = query.trim()
     return when {
-        "지하철" in q                 -> "주변 1.5km 이내에 지하철역이 없어요."
-        "화장실" in q                 -> "주변 2km 이내에 화장실이 없어요."
-        "기도실" in q || "무슬라" in q -> "주변 2km 이내에 기도실이 없어요."
-        "물품보관" in q || "락커" in q -> "주변 1.5km 이내에 물품보관함이 없어요."
-        "환전" in q                   -> "주변에 환전소가 없어요."
-        "할랄" in q                   -> "근처에 할랄 식당이 없어요."
-        "비건" in q                   -> "근처에 비건 식당/카페가 없어요."
-        "ATM" in q || "atm" in q.lowercase() -> "주변에 ATM 이 없어요."
-        else                          -> "조건에 맞는 장소가 없습니다. 다른 검색어를 시도해 보세요."
+        "지하철" in q || "subway" in q.lowercase()                       -> s.searchNoSubway
+        "화장실" in q || "restroom" in q.lowercase()                     -> s.searchNoRestroom
+        "기도실" in q || "무슬라" in q || "prayer" in q.lowercase()      -> s.searchNoPrayerRoom
+        "물품보관" in q || "락커" in q || "locker" in q.lowercase()      -> s.searchNoLocker
+        "환전" in q || "exchange" in q.lowercase()                       -> s.searchNoExchange
+        "할랄" in q || "halal" in q.lowercase()                          -> s.searchNoHalal
+        "비건" in q || "vegan" in q.lowercase()                          -> s.searchNoVegan
+        "ATM" in q || "atm" in q.lowercase()                             -> s.searchNoAtm
+        else                                                              -> s.searchNoResults
     }
 }
 

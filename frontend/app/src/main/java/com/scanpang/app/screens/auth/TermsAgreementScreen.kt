@@ -38,6 +38,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import com.scanpang.app.i18n.LocalStrings
 import com.scanpang.app.ui.theme.ScanPangColors
 import com.scanpang.app.ui.theme.ScanPangSpacing
 import com.scanpang.app.ui.theme.ScanPangTheme
@@ -49,13 +50,6 @@ private data class TermItem(
     val required: Boolean,
 )
 
-private val Terms = listOf(
-    TermItem("age14", "만 14세 이상입니다", required = true),
-    TermItem("service", "서비스 이용약관", required = true),
-    TermItem("privacy", "개인정보 처리방침", required = true),
-    TermItem("location", "위치정보 이용약관", required = true),
-    TermItem("marketing", "마케팅 정보 수신", required = false),
-)
 
 /**
  * 약관 동의 화면.
@@ -70,11 +64,21 @@ fun TermsAgreementScreen(
     onTermDetailClick: (termId: String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val s = LocalStrings.current
+    val terms = remember(s) {
+        listOf(
+            TermItem("age14", s.termsAge, required = true),
+            TermItem("service", s.termsService, required = true),
+            TermItem("privacy", s.termsPrivacy, required = true),
+            TermItem("location", s.termsLocation, required = true),
+            TermItem("marketing", s.termsMarketing, required = false),
+        )
+    }
     var checks by remember {
-        mutableStateOf(Terms.associate { it.id to false })
+        mutableStateOf(terms.associate { it.id to false })
     }
     val allChecked = checks.values.all { it }
-    val requiredChecked = Terms.filter { it.required }.all { checks[it.id] == true }
+    val requiredChecked = terms.filter { it.required }.all { checks[it.id] == true }
 
     val permissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions(),
@@ -105,24 +109,26 @@ fun TermsAgreementScreen(
                         .verticalScroll(rememberScrollState()),
                 ) {
                     Text(
-                        text = "서비스 이용을 위해 동의가 필요합니다",
+                        text = s.termsRequiredNotice,
                         style = ScanPangType.detailScreenTitle22,
                         color = ScanPangColors.OnSurfaceStrong,
                     )
                     Spacer(modifier = Modifier.height(ScanPangSpacing.lg))
 
                     AllAgreeRow(
+                        label = s.termsAgreeAll,
                         checked = allChecked,
                         onToggle = {
                             val next = !allChecked
-                            checks = Terms.associate { it.id to next }
+                            checks = terms.associate { it.id to next }
                         },
                     )
                     Spacer(modifier = Modifier.height(ScanPangSpacing.md))
 
-                    Terms.forEachIndexed { index, term ->
+                    terms.forEachIndexed { index, term ->
                         TermsAgreeRow(
-                            label = if (term.required) "${term.label} (필수)" else "${term.label} (선택)",
+                            label = if (term.required) "${term.label} (${s.required})" else "${term.label} (${s.optional})",
+                            viewMoreLabel = s.termsViewMore,
                             checked = checks[term.id] == true,
                             onToggle = {
                                 checks = checks.toMutableMap().apply {
@@ -136,6 +142,7 @@ fun TermsAgreementScreen(
                     Spacer(modifier = Modifier.height(ScanPangSpacing.lg))
                 }
                 ContinueCta(
+                    label = s.termsAgreeAndContinue,
                     enabled = requiredChecked,
                     onClick = {
                         permissionLauncher.launch(
@@ -156,6 +163,7 @@ fun TermsAgreementScreen(
 
 @Composable
 private fun TermsHeader(onBack: () -> Unit) {
+    val s = LocalStrings.current
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -173,13 +181,13 @@ private fun TermsHeader(onBack: () -> Unit) {
         ) {
             Icon(
                 imageVector = Icons.AutoMirrored.Rounded.ArrowBackIos,
-                contentDescription = "뒤로",
+                contentDescription = s.back,
                 modifier = Modifier.size(20.dp),
                 tint = ScanPangColors.OnSurfaceStrong,
             )
         }
         Text(
-            text = "이용 약관",
+            text = s.termsScreenTitle,
             style = ScanPangType.profileName18,
             color = ScanPangColors.OnSurfaceStrong,
         )
@@ -188,6 +196,7 @@ private fun TermsHeader(onBack: () -> Unit) {
 
 @Composable
 private fun AllAgreeRow(
+    label: String,
     checked: Boolean,
     onToggle: () -> Unit,
 ) {
@@ -204,7 +213,7 @@ private fun AllAgreeRow(
     ) {
         CheckBoxRound(checked = checked, large = true)
         Text(
-            text = "전체 동의합니다",
+            text = label,
             style = ScanPangType.title16SemiBold,
             color = ScanPangColors.OnSurfaceStrong,
         )
@@ -214,6 +223,7 @@ private fun AllAgreeRow(
 @Composable
 private fun TermsAgreeRow(
     label: String,
+    viewMoreLabel: String,
     checked: Boolean,
     onToggle: () -> Unit,
     showDetail: Boolean,
@@ -236,7 +246,7 @@ private fun TermsAgreeRow(
         )
         if (showDetail) {
             Text(
-                text = "더보기",
+                text = viewMoreLabel,
                 style = ScanPangType.caption12Medium,
                 color = ScanPangColors.Primary,
                 modifier = Modifier.clickable(onClick = onDetailClick),
@@ -270,7 +280,7 @@ private fun CheckBoxRound(checked: Boolean, large: Boolean) {
 }
 
 @Composable
-private fun ContinueCta(enabled: Boolean, onClick: () -> Unit) {
+private fun ContinueCta(label: String, enabled: Boolean, onClick: () -> Unit) {
     val bg = if (enabled) ScanPangColors.Primary else ScanPangColors.DisabledSurface
     val labelColor =
         if (enabled) Color.White else ScanPangColors.OnSurfacePlaceholder
@@ -284,7 +294,7 @@ private fun ContinueCta(enabled: Boolean, onClick: () -> Unit) {
         contentAlignment = Alignment.Center,
     ) {
         Text(
-            text = "동의하고 계속",
+            text = label,
             style = ScanPangType.title16SemiBold,
             color = labelColor,
         )

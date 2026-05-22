@@ -128,6 +128,8 @@ import com.scanpang.app.data.RecentlyViewedStore
 import com.scanpang.app.data.SavedPlaceNavTarget
 import com.scanpang.app.data.SearchHistoryPreferences
 import com.scanpang.app.data.TtsState
+import com.scanpang.app.i18n.AppStrings
+import com.scanpang.app.i18n.LocalStrings
 import com.scanpang.app.navigation.AppRoutes
 import com.scanpang.app.ui.theme.ScanPangColors
 import com.scanpang.app.ui.theme.ScanPangDimens
@@ -198,6 +200,7 @@ fun ArExploreScreen(
     modifier: Modifier = Modifier,
     viewModel: ScanPangViewModel = viewModel(),
 ) {
+    val s = LocalStrings.current
     val placeResult by viewModel.placeResult.collectAsState()
     // 마커 탭 시 /place/store 응답 — ArFloorStoreGuideOverlay 메타 라인의 category·영업중 표시 원천
     val storeResult by viewModel.storeResult.collectAsState()
@@ -218,7 +221,7 @@ fun ArExploreScreen(
         mutableStateOf(
             listOf(
                 ArAgentChatMessage(
-                    text = "안녕하세요! 스캔팡입니다. 주변 장소를 AR로 안내해 드릴게요.",
+                    text = s.arInitialGreeting,
                     isUser = false,
                 ),
             ),
@@ -304,7 +307,7 @@ fun ArExploreScreen(
                     code != SpeechRecognizer.ERROR_SPEECH_TIMEOUT
                 ) {
                     latestScope.value.launch {
-                        latestSnackbar.value.showSnackbar("음성 인식 중 오류가 났어요")
+                        latestSnackbar.value.showSnackbar(s.arVoiceError)
                     }
                 }
             },
@@ -322,7 +325,7 @@ fun ArExploreScreen(
         if (granted && pendingMicAfterPermission) {
             speechHelperRef?.startListening()
         } else if (!granted) {
-            scope.launch { snackbarHostState.showSnackbar("마이크 권한이 필요해요") }
+            scope.launch { snackbarHostState.showSnackbar(s.arMicPermission) }
         }
         pendingMicAfterPermission = false
     }
@@ -689,8 +692,8 @@ fun ArExploreScreen(
                                         val poiToAdd: DynamicPoi? = if (categorySelection.isEmpty()) {
                                             DynamicPoi(
                                                 id = id,
-                                                name = cand.b.bld_nm ?: "이름 없는 건물",
-                                                category = "건물",
+                                                name = cand.b.bld_nm ?: s.arUnknownBuilding,
+                                                category = s.arBuilding,
                                                 distance = cand.dist,
                                                 latitude = markerPos.first,
                                                 longitude = markerPos.second,
@@ -862,7 +865,7 @@ fun ArExploreScreen(
                     contentAlignment = Alignment.Center,
                 ) {
                     Text(
-                        text = "위치 파악 중...",
+                        text = s.arLocating,
                         style = ScanPangType.arStatusPill15,
                         color = Color.White,
                     )
@@ -900,10 +903,10 @@ fun ArExploreScreen(
                 ) {
                     ArNavWhiteFab(
                         icon = if (isTtsOn) Icons.Rounded.Headset else Icons.Rounded.HeadsetOff,
-                        contentDescription = "음성 안내",
+                        contentDescription = s.profileTtsGuidance,
                         onClick = {
                             TtsState.toggle(appSettingsPrefs)
-                            val msg = if (isTtsOn) "음성 안내 꺼짐" else "음성 안내 켜짐"
+                            val msg = if (isTtsOn) s.arTtsOff else s.arTtsOn
                             scope.launch { snackbarHostState.showSnackbar(msg) }
                         },
                     )
@@ -925,7 +928,7 @@ fun ArExploreScreen(
                     }
                     ArNavWhiteFab(
                         icon = Icons.Rounded.Search,
-                        contentDescription = "검색",
+                        contentDescription = s.searchPlaceholder,
                         onClick = { isSearchOpen = true },
                     )
                 }
@@ -977,7 +980,7 @@ fun ArExploreScreen(
                 ) {
                     ArNavWhiteFab(
                         icon = Icons.Rounded.CameraAlt,
-                        contentDescription = "화면 고정",
+                        contentDescription = s.arScreenFreezing,
                         onClick = { isFrozen = !isFrozen },
                         isActive = isFrozen,
                     )
@@ -1036,13 +1039,13 @@ fun ArExploreScreen(
                         }
                         if (h == null) {
                             scope.launch {
-                                snackbarHostState.showSnackbar("음성 입력을 준비하지 못했어요")
+                                snackbarHostState.showSnackbar(s.arVoiceNotReady)
                             }
                             return@mic
                         }
                         if (!h.isRecognitionAvailable()) {
                             scope.launch {
-                                snackbarHostState.showSnackbar("이 기기에서 음성 인식을 쓸 수 없어요")
+                                snackbarHostState.showSnackbar(s.arVoiceNotAvailable)
                             }
                             return@mic
                         }
@@ -1184,7 +1187,7 @@ fun ArExploreScreen(
                         selectedPoi = null
                     },
                     onSave = {
-                        scope.launch { snackbarHostState.showSnackbar("저장되었습니다") }
+                        scope.launch { snackbarHostState.showSnackbar(s.arSaved) }
                     },
                     modifier = Modifier.fillMaxSize(),
                     arOverlay = selectedPoiOverlay ?: placeResult?.ar_overlay,
@@ -1287,6 +1290,7 @@ private fun BoxScope.ArDynamicPoiMarkers(
     anchorScreenPositions: Map<String, Offset>,
     onPoiClick: (DynamicPoi) -> Unit,
 ) {
+    val s = LocalStrings.current
     dynamicPois.forEach { poi ->
         val screenPos = anchorScreenPositions[poi.id] ?: return@forEach
         val xPx = screenPos.x.roundToInt()
@@ -1294,7 +1298,7 @@ private fun BoxScope.ArDynamicPoiMarkers(
 
         Box(modifier = Modifier.offset { IntOffset(xPx, yPx) }) {
             ArPoiCard(
-                title = if (poi.isPending) "분석 중..." else poi.name,
+                title = if (poi.isPending) s.arAnalyzing else poi.name,
                 subtitle = buildString {
                     if (poi.category.isNotEmpty()) append("${poi.category} · ")
                     append("${"%.0f".format(poi.distance)}m")
@@ -1334,8 +1338,9 @@ private fun ArFilteredStoreListOverlay(
                     .navigationBarsPadding()
                     .verticalScroll(rememberScrollState()),
             ) {
+                val fs = LocalStrings.current
                 Text(
-                    text = "${poi.category} ${poi.storeCount}개",
+                    text = fs.arFilterStoreCount(poi.category, poi.storeCount),
                     style = ScanPangType.arFilterTitle16,
                     color = ScanPangColors.OnSurfaceStrong,
                     modifier = Modifier.padding(bottom = ScanPangSpacing.sm),
@@ -1389,6 +1394,7 @@ private fun ArExploreStatusPill(
     hasHighAccuracy: Boolean = true,
     onClick: () -> Unit,
 ) {
+    val ps = LocalStrings.current
     when {
         isFrozen -> {
             Surface(
@@ -1411,7 +1417,7 @@ private fun ArExploreStatusPill(
                         tint = Color.White,
                     )
                     Text(
-                        text = "화면 고정 중",
+                        text = ps.arScreenFreezing,
                         style = ScanPangType.arStatusPill15,
                         color = Color.White,
                         maxLines = 1,
@@ -1447,7 +1453,7 @@ private fun ArExploreStatusPill(
                         tint = ScanPangColors.OnSurfaceStrong,
                     )
                     Text(
-                        text = "VPS 탐색 중...",
+                        text = ps.arVpsScanning,
                         style = ScanPangType.arStatusPill15,
                         color = ScanPangColors.OnSurfaceStrong,
                         maxLines = 1,
@@ -1477,7 +1483,7 @@ private fun ArExploreStatusPill(
                         tint = ScanPangColors.OnSurfaceStrong,
                     )
                     Text(
-                        text = "AR 탐색 중",
+                        text = ps.arExploring,
                         style = ScanPangType.arStatusPill15,
                         color = ScanPangColors.OnSurfaceStrong,
                         maxLines = 1,
@@ -1493,7 +1499,7 @@ private fun ArExploreStatusPill(
             }
         }
         else -> {
-            val label = buildFilterPillLabel(selectedFilters)
+            val label = buildFilterPillLabel(selectedFilters, ps)
             Surface(
                 modifier = Modifier
                     .height(ScanPangDimens.arStatusPillHeight)
@@ -1543,11 +1549,11 @@ private fun filterArExploreHits(query: String, all: List<ArExploreSearchHitUi>):
     return filtered.ifEmpty { all }
 }
 
-private fun buildFilterPillLabel(selected: Set<String>): String {
+private fun buildFilterPillLabel(selected: Set<String>, s: AppStrings): String {
     val list = selected.toList()
     if (list.isEmpty()) return ""
-    if (list.size == 1) return "${list[0]} 탐색 중"
-    return "${list[0]} 외 ${list.size - 1}개 탐색 중"
+    if (list.size == 1) return s.arFilterScanning(list[0])
+    return s.arFilterScanningMultiple(list[0], list.size - 1)
 }
 
 /**

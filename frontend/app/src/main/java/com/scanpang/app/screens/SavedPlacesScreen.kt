@@ -44,6 +44,7 @@ import com.scanpang.app.components.ScanPangFilterChip
 import com.scanpang.app.data.SavedPlaceEntry
 import com.scanpang.app.data.SavedPlaceNavTarget
 import com.scanpang.app.data.SavedPlacesStore
+import com.scanpang.app.i18n.LocalStrings
 import com.scanpang.app.navigation.AppRoutes
 import com.scanpang.app.ui.theme.ScanPangColors
 import com.scanpang.app.ui.theme.ScanPangDimens
@@ -51,30 +52,12 @@ import com.scanpang.app.ui.theme.ScanPangShapes
 import com.scanpang.app.ui.theme.ScanPangSpacing
 import com.scanpang.app.ui.theme.ScanPangType
 
-// 필터 chip 한국어 라벨 → 매칭할 target enum 집합.
+// 필터 chip 라벨 → 매칭할 target enum 집합.
 // SavedPlaceEntry.category 의 한국어 string contains 매칭은 표기 변동(예: "할랄 식당"
 // vs "식당") 에 약하므로 target enum (= category_key) 기반 정확 매칭으로 통일.
 // "식당" 탭은 일반 + 할랄 식당 둘 다 포함(SavedPlaceNavTarget.fromCategoryKey 에서
 // halal_restaurant 도 Restaurant 로 매핑됨).
 private data class SavedFilter(val label: String, val targets: Set<SavedPlaceNavTarget>)
-
-private val savedFilters = listOf(
-    SavedFilter("전체", emptySet()),  // 빈 set = 필터 안 함
-    SavedFilter("식당", setOf(SavedPlaceNavTarget.Restaurant)),
-    SavedFilter("카페", setOf(SavedPlaceNavTarget.Cafe)),
-    SavedFilter("편의점", setOf(SavedPlaceNavTarget.ConvenienceStore)),
-    SavedFilter("쇼핑", setOf(SavedPlaceNavTarget.Shopping)),
-    SavedFilter("관광지", setOf(SavedPlaceNavTarget.TouristSpot)),
-    SavedFilter("기도실", setOf(SavedPlaceNavTarget.PrayerRoom)),
-    SavedFilter("환전소", setOf(SavedPlaceNavTarget.Exchange)),
-    SavedFilter("은행", setOf(SavedPlaceNavTarget.Bank)),
-    SavedFilter("ATM", setOf(SavedPlaceNavTarget.Atm)),
-    SavedFilter("병원", setOf(SavedPlaceNavTarget.Hospital)),
-    SavedFilter("약국", setOf(SavedPlaceNavTarget.Pharmacy)),
-    SavedFilter("지하철역", setOf(SavedPlaceNavTarget.Subway)),
-    SavedFilter("화장실", setOf(SavedPlaceNavTarget.Restroom)),
-    SavedFilter("물품보관함", setOf(SavedPlaceNavTarget.Lockers)),
-)
 
 private enum class SavedSort {
     ByDistance,
@@ -155,10 +138,30 @@ fun SavedPlacesScreen(
     navController: NavController,
     modifier: Modifier = Modifier,
 ) {
+    val s = LocalStrings.current
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
     val store = remember { SavedPlacesStore(context) }
     var entries by remember { mutableStateOf(store.getAll()) }
+    val savedFilters = remember(s) {
+        listOf(
+            SavedFilter(s.catAll, emptySet()),
+            SavedFilter(s.catRestaurant, setOf(SavedPlaceNavTarget.Restaurant)),
+            SavedFilter(s.catCafe, setOf(SavedPlaceNavTarget.Cafe)),
+            SavedFilter(s.catConvenienceStore, setOf(SavedPlaceNavTarget.ConvenienceStore)),
+            SavedFilter(s.catShopping, setOf(SavedPlaceNavTarget.Shopping)),
+            SavedFilter(s.catTouristSpot, setOf(SavedPlaceNavTarget.TouristSpot)),
+            SavedFilter(s.catPrayerRoom, setOf(SavedPlaceNavTarget.PrayerRoom)),
+            SavedFilter(s.catExchange, setOf(SavedPlaceNavTarget.Exchange)),
+            SavedFilter(s.catBank, setOf(SavedPlaceNavTarget.Bank)),
+            SavedFilter(s.catAtm, setOf(SavedPlaceNavTarget.Atm)),
+            SavedFilter(s.catHospital, setOf(SavedPlaceNavTarget.Hospital)),
+            SavedFilter(s.catPharmacy, setOf(SavedPlaceNavTarget.Pharmacy)),
+            SavedFilter(s.catSubwayStation, setOf(SavedPlaceNavTarget.Subway)),
+            SavedFilter(s.catRestroom, setOf(SavedPlaceNavTarget.Restroom)),
+            SavedFilter(s.catLocker, setOf(SavedPlaceNavTarget.Lockers)),
+        )
+    }
 
     // GPS — 저장된 각 장소까지의 거리 동적 계산용. 권한 없거나 lastLocation null
     // 이면 distanceLine 의 박힌 값으로 폴백.
@@ -222,8 +225,8 @@ fun SavedPlacesScreen(
     }
 
     val sortLabel = when (sort) {
-        SavedSort.ByDistance -> "가까운 순"
-        SavedSort.ByRecent -> "최근 저장 순"
+        SavedSort.ByDistance -> s.savedSortDistance
+        SavedSort.ByRecent -> s.savedSortRecent
     }
 
     Scaffold(
@@ -241,7 +244,7 @@ fun SavedPlacesScreen(
                     .padding(bottom = ScanPangDimens.mainTabContentBottomInset),
             ) {
                 Text(
-                    text = "저장한 장소",
+                    text = s.savedTitle,
                     style = ScanPangType.homeGreeting,
                     color = ScanPangColors.OnSurfaceStrong,
                     modifier = Modifier.padding(top = ScanPangSpacing.sm),
@@ -253,7 +256,7 @@ fun SavedPlacesScreen(
                     contentAlignment = Alignment.Center,
                 ) {
                     Text(
-                        text = "저장한 장소가 없어요",
+                        text = s.savedNoPlaces,
                         style = ScanPangType.body15Medium,
                         color = ScanPangColors.OnSurfaceMuted,
                         textAlign = TextAlign.Center,
@@ -272,7 +275,7 @@ fun SavedPlacesScreen(
             ) {
                 item {
                     Text(
-                        text = "저장한 장소",
+                        text = s.savedTitle,
                         style = ScanPangType.homeGreeting,
                         color = ScanPangColors.OnSurfaceStrong,
                         modifier = Modifier.padding(top = ScanPangSpacing.sm),
@@ -298,7 +301,7 @@ fun SavedPlacesScreen(
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
                         Text(
-                            text = "${sortedRows.size}개의 장소",
+                            text = s.savedPlaceCount(sortedRows.size),
                             style = ScanPangType.link13,
                             color = ScanPangColors.OnSurfaceMuted,
                         )
@@ -344,7 +347,7 @@ fun SavedPlacesScreen(
                                 DropdownMenuItem(
                                     text = {
                                         Text(
-                                            "가까운 순",
+                                            s.savedSortDistance,
                                             style = ScanPangType.body15Medium,
                                             color = ScanPangColors.OnSurfaceStrong,
                                         )
@@ -357,7 +360,7 @@ fun SavedPlacesScreen(
                                 DropdownMenuItem(
                                     text = {
                                         Text(
-                                            "최근 저장 순",
+                                            s.savedSortRecent,
                                             style = ScanPangType.body15Medium,
                                             color = ScanPangColors.OnSurfaceStrong,
                                         )

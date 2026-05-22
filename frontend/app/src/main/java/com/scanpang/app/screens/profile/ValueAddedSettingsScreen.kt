@@ -25,6 +25,7 @@ import androidx.compose.ui.unit.sp
 import androidx.navigation.NavController
 import com.scanpang.app.data.OnboardingPreferences
 import com.scanpang.app.data.ValueAdded
+import com.scanpang.app.i18n.LocalStrings
 import com.scanpang.app.screens.onboarding.OnboardingChoiceContent
 import com.scanpang.app.screens.onboarding.OnboardingSelectableCard
 import com.scanpang.app.ui.theme.ScanPangColors
@@ -57,26 +58,27 @@ fun ValueAddedSettingsScreen(
     navController: NavController,
     modifier: Modifier = Modifier,
 ) {
+    val s = LocalStrings.current
     val context = LocalContext.current
     val prefs = remember { OnboardingPreferences(context) }
-    val options = remember {
+    val options = remember(s) {
         listOf(
             ValueAddedOption(
                 value = ValueAdded.HALAL,
                 emoji = "🕌",
-                title = "할랄",
-                subtitle = "할랄 식당, 기도실, 키블라 방향 등",
+                title = s.onboardingPreferenceHalal,
+                subtitle = s.onboardingPreferenceHalalDesc,
             ),
             ValueAddedOption(
                 value = ValueAdded.VEGAN,
                 emoji = "🌱",
-                title = "비건",
-                subtitle = "비건 식당, 채식 메뉴 등",
+                title = s.onboardingPreferenceVegan,
+                subtitle = s.onboardingPreferenceVeganDesc,
             ),
             ValueAddedOption(
                 value = ValueAdded.GENERAL,
                 emoji = "✨",
-                title = "괜찮아요",
+                title = s.onboardingPreferenceGeneral,
                 subtitle = null,
             ),
         )
@@ -95,7 +97,7 @@ fun ValueAddedSettingsScreen(
                 .statusBarsPadding(),
         ) {
             SettingsTitleBar(
-                title = "부가가치 설정",
+                title = s.profileValueAddedSettings,
                 onBack = { navController.popBackStack() },
             )
             Column(
@@ -104,7 +106,7 @@ fun ValueAddedSettingsScreen(
                     .padding(top = 16.dp),
             ) {
             Text(
-                text = "여행 중 우선할 항목을 선택하세요. 안내와 알림이 이 선택에 맞춰집니다.",
+                text = s.settingsValueAddedDesc,
                 style = ScanPangType.meta13.copy(lineHeight = 19.5.sp),
                 color = ScanPangColors.OnSurfaceMuted,
             )

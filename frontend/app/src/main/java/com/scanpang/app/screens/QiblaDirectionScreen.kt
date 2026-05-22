@@ -42,6 +42,8 @@ import com.scanpang.app.components.PrayerTimeCard
 import com.scanpang.app.components.PrayerTimeListCard
 import com.scanpang.app.components.QiblaCompass
 import com.scanpang.app.components.ScanPangHeaderWithBack
+import com.scanpang.app.i18n.AppStrings
+import com.scanpang.app.i18n.LocalStrings
 import com.scanpang.app.qibla.getMeccaDistanceKm
 import com.scanpang.app.qibla.getPrayerTimes
 import com.scanpang.app.qibla.getQiblaDirection
@@ -50,7 +52,6 @@ import com.scanpang.app.ui.theme.ScanPangColors
 import com.scanpang.app.ui.theme.ScanPangDimens
 import com.scanpang.app.ui.theme.ScanPangSpacing
 import com.scanpang.app.ui.theme.ScanPangType
-import java.util.Locale
 import kotlin.math.roundToInt
 
 @Composable
@@ -59,6 +60,7 @@ fun QiblaDirectionScreen(
     modifier: Modifier = Modifier,
     viewModel: ScanPangViewModel = viewModel(),
 ) {
+    val s = LocalStrings.current
     val context = LocalContext.current
 
     LaunchedEffect(Unit) { viewModel.loadPrayerTimesAndQibla() }
@@ -92,29 +94,24 @@ fun QiblaDirectionScreen(
         }
     }
 
-    var locationLine by remember { mutableStateOf("위치 권한을 허용해 주세요") }
+    var locationLine by remember { mutableStateOf(s.qiblaPermissionRequired) }
 
     LaunchedEffect(hasLocationPermission) {
         if (!hasLocationPermission) {
-            locationLine = "위치 권한을 허용해 주세요"
+            locationLine = s.qiblaPermissionRequired
             return@LaunchedEffect
         }
-        locationLine = "위치를 가져오는 중…"
+        locationLine = s.qiblaLocating
         fusedClient.lastLocation
             .addOnSuccessListener { loc ->
                 locationLine = if (loc != null) {
-                    String.format(
-                        Locale.getDefault(),
-                        "현재 위치: 위도 %.5f, 경도 %.5f",
-                        loc.latitude,
-                        loc.longitude,
-                    )
+                    s.qiblaLocationFormat(loc.latitude, loc.longitude)
                 } else {
-                    "현재 위치: 일시적으로 확인할 수 없습니다"
+                    s.qiblaLocationUnavailable
                 }
             }
             .addOnFailureListener {
-                locationLine = "현재 위치: 가져오기에 실패했습니다"
+                locationLine = s.qiblaLocationFailed
             }
     }
 
@@ -124,11 +121,7 @@ fun QiblaDirectionScreen(
 
     val prayerTimes = getPrayerTimes()
     val meccaKm = getMeccaDistanceKm()
-    val meccaLine = String.format(
-        Locale.getDefault(),
-        "메카까지 거리: %,.0f km",
-        meccaKm.toDouble(),
-    )
+    val meccaLine = s.qiblaDistanceFormat(meccaKm.toDouble())
 
     Scaffold(
         modifier = modifier.fillMaxSize(),
@@ -145,7 +138,7 @@ fun QiblaDirectionScreen(
             verticalArrangement = Arrangement.spacedBy(ScanPangSpacing.xl),
         ) {
             ScanPangHeaderWithBack(
-                title = "키블라 방향",
+                title = s.qiblaTitle,
                 onBackClick = { navController.popBackStack() },
             )
             Column(
@@ -158,7 +151,7 @@ fun QiblaDirectionScreen(
             ) {
                 QiblaCompass(azimuthDegrees = deviceAzimuth, qiblaFromNorth = qiblaFromNorth)
                 Text(
-                    text = formatQiblaLabel(qiblaFromNorth),
+                    text = formatQiblaLabel(qiblaFromNorth, s),
                     style = ScanPangType.directionDegree,
                     color = ScanPangColors.Primary,
                 )
@@ -206,7 +199,7 @@ fun QiblaDirectionScreen(
                     )
                 }
                 PrayerTimeCard(
-                    subtitle = "다음 기도 시간",
+                    subtitle = s.qiblaNextPrayer,
                     prayerNameTime = apiPrayerTimes?.let { "${it.next_prayer} ${it.next_prayer_time}" }
                         ?: "${prayerTimes.nextPrayerName} ${prayerTimes.nextPrayerTime}",
                     remainingLabel = prayerTimes.remainingLabel,
@@ -228,8 +221,8 @@ fun QiblaDirectionScreen(
     }
 }
 
-private fun formatQiblaLabel(degrees: Float): String {
-    val dirs = listOf("북", "북동", "동", "남동", "남", "남서", "서", "북서")
+private fun formatQiblaLabel(degrees: Float, s: AppStrings): String {
+    val dirs = listOf(s.dirN, s.dirNE, s.dirE, s.dirSE, s.dirS, s.dirSW, s.dirW, s.dirNW)
     val idx = ((degrees / 45f).roundToInt() % 8 + 8) % 8
     return "${dirs[idx]} ${degrees.roundToInt()}°"
 }

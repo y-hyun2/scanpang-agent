@@ -43,7 +43,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
@@ -58,6 +61,8 @@ import com.scanpang.app.data.RecentlyViewedEntry
 import com.scanpang.app.data.RecentlyViewedStore
 import com.scanpang.app.data.ValueAdded
 import com.scanpang.app.data.remote.ScanPangViewModel
+import com.scanpang.app.i18n.AppStrings
+import com.scanpang.app.i18n.LocalStrings
 import com.scanpang.app.navigation.AppRoutes
 import com.scanpang.app.navigation.navigateToSearchWithQuery
 import com.scanpang.app.ui.theme.ScanPangColors
@@ -77,21 +82,21 @@ private data class HomeQuickAction(
     val navigate: (NavController) -> Unit,
 )
 
-private fun quickActionsFor(value: ValueAdded): List<HomeQuickAction> = when (value) {
+private fun quickActionsFor(value: ValueAdded, s: AppStrings): List<HomeQuickAction> = when (value) {
     ValueAdded.HALAL -> listOf(
-        HomeQuickAction("할랄 식당", Icons.Rounded.Restaurant) { it.navigateToSearchWithQuery("할랄 식당") },
-        HomeQuickAction("기도실", Icons.Rounded.Mosque) { it.navigateToSearchWithQuery("기도실") },
-        HomeQuickAction("관광명소", Icons.Rounded.Whatshot) { it.navigateToSearchWithQuery("관광지") },
+        HomeQuickAction(s.catHalalRestaurant, Icons.Rounded.Restaurant) { it.navigateToSearchWithQuery("할랄 식당") },
+        HomeQuickAction(s.catPrayerRoom, Icons.Rounded.Mosque) { it.navigateToSearchWithQuery("기도실") },
+        HomeQuickAction(s.catTouristSpot, Icons.Rounded.Whatshot) { it.navigateToSearchWithQuery("관광지") },
     )
     ValueAdded.VEGAN -> listOf(
-        HomeQuickAction("비건 식당", Icons.Rounded.Restaurant) { it.navigateToSearchWithQuery("비건 식당") },
-        HomeQuickAction("비건 카페", Icons.Rounded.Coffee) { it.navigateToSearchWithQuery("비건 카페") },
-        HomeQuickAction("관광명소", Icons.Rounded.Whatshot) { it.navigateToSearchWithQuery("관광지") },
+        HomeQuickAction(s.catVeganRestaurant, Icons.Rounded.Restaurant) { it.navigateToSearchWithQuery("비건 식당") },
+        HomeQuickAction(s.catVeganCafe, Icons.Rounded.Coffee) { it.navigateToSearchWithQuery("비건 카페") },
+        HomeQuickAction(s.catTouristSpot, Icons.Rounded.Whatshot) { it.navigateToSearchWithQuery("관광지") },
     )
     ValueAdded.GENERAL -> listOf(
-        HomeQuickAction("식당", Icons.Rounded.Restaurant) { it.navigateToSearchWithQuery("식당") },
-        HomeQuickAction("카페", Icons.Rounded.Coffee) { it.navigateToSearchWithQuery("카페") },
-        HomeQuickAction("관광명소", Icons.Rounded.Whatshot) { it.navigateToSearchWithQuery("관광지") },
+        HomeQuickAction(s.catRestaurant, Icons.Rounded.Restaurant) { it.navigateToSearchWithQuery("식당") },
+        HomeQuickAction(s.catCafe, Icons.Rounded.Coffee) { it.navigateToSearchWithQuery("카페") },
+        HomeQuickAction(s.catTouristSpot, Icons.Rounded.Whatshot) { it.navigateToSearchWithQuery("관광지") },
     )
 }
 
@@ -107,9 +112,10 @@ fun HomeScreen(
     val lifecycleOwner = LocalLifecycleOwner.current
 
     // 미설정 사용자(예: 신규 데모) 는 GENERAL 로 본다 — 키블라 카드 미노출 + 일반 quick actions.
+    val s = LocalStrings.current
     val valueAdded = remember(context) { onboardingPrefs.getValueAdded() ?: ValueAdded.GENERAL }
     val displayName = remember(context) { onboardingPrefs.getDisplayName() }
-    val quickActions = remember(valueAdded) { quickActionsFor(valueAdded) }
+    val quickActions = remember(valueAdded, s) { quickActionsFor(valueAdded, s) }
     val showQiblaCard = valueAdded == ValueAdded.HALAL
 
     // ── 우리 백엔드 통합 ─────────────────────────────────────────────────────
@@ -120,11 +126,11 @@ fun HomeScreen(
     }
     val prayerTimes by viewModel.prayerTimes.collectAsState()
     val qibla by viewModel.qibla.collectAsState()
-    val qiblaText = qibla?.let { "키블라 방향: ${it.direction.toInt()}°" } ?: "키블라 방향: 292°"
+    val qiblaText = qibla?.let { "${s.homeQiblaDirection}: ${it.direction.toInt()}°" } ?: "${s.homeQiblaDirection}: 292°"
     val nextPrayerText = prayerTimes
         ?.takeIf { it.next_prayer.isNotBlank() }
-        ?.let { "다음 기도: ${it.next_prayer} ${it.next_prayer_time}" }
-        ?: "기도 시간을 불러올 수 없습니다. 잠시 후 다시 시도해 주세요"
+        ?.let { "${s.homeNextPrayer}: ${it.next_prayer} ${it.next_prayer_time}" }
+        ?: s.homeNoRecentlyViewed
 
     // 현재 위치 — GPS + 역지오코딩 (권한 없거나 실패 시 fallback 문구).
     var locationText by remember { mutableStateOf("현재 위치를 가져오는 중...") }
@@ -233,10 +239,11 @@ private fun HomeTopSection(
     userLat: Double?,
     userLng: Double?,
 ) {
+    val s = LocalStrings.current
     val greetingLine = if (!displayName.isNullOrBlank()) {
-        "안녕하세요, ${displayName}님!"
+        s.homeGreetingWithName(displayName)
     } else {
-        "안녕하세요!"
+        s.homeGreetingDefault
     }
     Column(
         modifier = Modifier
@@ -256,7 +263,7 @@ private fun HomeTopSection(
             verticalArrangement = Arrangement.spacedBy(ScanPangSpacing.sm),
         ) {
             Text(
-                text = "$greetingLine\n오늘 명동을 탐험해볼까요?",
+                text = "$greetingLine\n${s.homeSubtitle}",
                 style = ScanPangType.homeGreeting,
                 color = ScanPangColors.OnSurfaceStrong,
             )
@@ -303,7 +310,7 @@ private fun HomeTopSection(
                     tint = ScanPangColors.OnSurfacePlaceholder,
                 )
                 Text(
-                    text = "목적지 검색",
+                    text = s.homeSearchPlaceholder,
                     style = ScanPangType.searchPlaceholder,
                     color = ScanPangColors.OnSurfacePlaceholder,
                 )
@@ -413,12 +420,13 @@ private fun QuickActionChip(
 ) {
     Column(
         modifier = modifier
+            .height(88.dp)
             .clip(ScanPangShapes.radius14)
             .background(ScanPangColors.Background)
             .clickable(onClick = onClick)
-            .padding(horizontal = ScanPangDimens.homeQuickChipHorizontal, vertical = ScanPangSpacing.lg),
+            .padding(horizontal = ScanPangDimens.homeQuickChipHorizontal),
         horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(ScanPangSpacing.sm),
+        verticalArrangement = Arrangement.spacedBy(ScanPangSpacing.sm, Alignment.CenterVertically),
     ) {
         Icon(
             imageVector = icon,
@@ -428,16 +436,17 @@ private fun QuickActionChip(
         )
         Text(
             text = title,
-            style = ScanPangType.quickLabel12,
+            style = ScanPangType.quickLabel12.copy(fontSize = 10.sp, lineHeight = 12.sp),
             color = ScanPangColors.OnSurfaceStrong,
-            maxLines = 1,
+            maxLines = 2,
             overflow = TextOverflow.Ellipsis,
+            textAlign = TextAlign.Center,
         )
     }
 }
 
 @Composable
-private fun RecentlyViewedSection(
+private fun RecentlyViewedSection(  // uses LocalStrings.current internally
     recentlyViewed: List<RecentlyViewedEntry>,
     showMore: Boolean,
     onMoreClick: () -> Unit,
@@ -445,6 +454,7 @@ private fun RecentlyViewedSection(
     userLat: Double? = null,
     userLng: Double? = null,
 ) {
+    val s = LocalStrings.current
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -457,14 +467,13 @@ private fun RecentlyViewedSection(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Text(
-                text = "최근 본 장소",
+                text = s.homeRecentlyViewed,
                 style = ScanPangType.sectionTitle16,
                 color = ScanPangColors.OnSurfaceStrong,
             )
-            // "더보기" 는 누적 기록이 미리보기(2건)보다 많을 때만 의미가 있어 그때만 노출.
             if (showMore) {
                 Text(
-                    text = "더보기",
+                    text = s.homeMoreButton,
                     style = ScanPangType.caption12Medium,
                     color = ScanPangColors.Primary,
                     modifier = Modifier.clickable(onClick = onMoreClick),
@@ -507,6 +516,7 @@ private fun recentlyViewedDistanceLabel(
 
 @Composable
 private fun RecentlyViewedEmpty() {
+    val s = LocalStrings.current
     Box(
         modifier = Modifier
             .fillMaxWidth()
@@ -516,7 +526,7 @@ private fun RecentlyViewedEmpty() {
         contentAlignment = Alignment.Center,
     ) {
         Text(
-            text = "아직 본 장소가 없어요",
+            text = s.homeNoRecentlyViewed,
             style = ScanPangType.body14Regular,
             color = ScanPangColors.OnSurfaceMuted,
         )
