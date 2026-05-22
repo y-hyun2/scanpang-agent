@@ -42,6 +42,8 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.CameraAlt
 import androidx.compose.material.icons.rounded.Close
+import androidx.compose.material.icons.rounded.Headset
+import androidx.compose.material.icons.rounded.HeadsetOff
 import androidx.compose.material.icons.rounded.CropFree
 import androidx.compose.material.icons.rounded.FilterList
 import androidx.compose.material.icons.rounded.Home
@@ -114,6 +116,7 @@ import com.scanpang.app.components.ar.ArPoiFloatingDetailOverlay
 import com.scanpang.app.components.ar.ArPoiTabBuilding
 import com.scanpang.app.components.ar.ArExploreFilterPanelFigma
 import com.scanpang.app.components.ar.ArExploreSideColumn
+import com.scanpang.app.components.ar.ArNavWhiteFab
 import com.scanpang.app.components.ar.arExploreCategoryChipSpecs
 import com.scanpang.app.components.ar.ArCategoryIconBadge
 import com.scanpang.app.components.ar.ArPoiCard
@@ -871,12 +874,14 @@ fun ArExploreScreen(
                         ),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    ArCircleIconButton(
-                        icon = Icons.Rounded.CameraAlt,
-                        contentDescription = "화면 고정",
-                        onClick = { isFrozen = !isFrozen },
-                        surfaceColor = if (isFrozen) ScanPangColors.ArPrimaryTranslucent else ScanPangColors.ArOverlayWhite80,
-                        iconTint = if (isFrozen) Color.White else ScanPangColors.OnSurfaceStrong,
+                    ArNavWhiteFab(
+                        icon = if (isTtsOn) Icons.Rounded.Headset else Icons.Rounded.HeadsetOff,
+                        contentDescription = "음성 안내",
+                        onClick = {
+                            TtsState.toggle(appSettingsPrefs)
+                            val msg = if (isTtsOn) "음성 안내 꺼짐" else "음성 안내 켜짐"
+                            scope.launch { snackbarHostState.showSnackbar(msg) }
+                        },
                     )
                     Box(
                         modifier = Modifier
@@ -894,7 +899,7 @@ fun ArExploreScreen(
                             },
                         )
                     }
-                    ArCircleIconButton(
+                    ArNavWhiteFab(
                         icon = Icons.Rounded.Search,
                         contentDescription = "검색",
                         onClick = { isSearchOpen = true },
@@ -936,15 +941,23 @@ fun ArExploreScreen(
                     },
                 )
 
-                ArExploreSideColumn(
-                    onTtsClick = {
-                        TtsState.toggle(appSettingsPrefs)
-                        val msg = if (isTtsOn) "음성 안내 꺼짐" else "음성 안내 켜짐"
-                        scope.launch { snackbarHostState.showSnackbar(msg) }
-                    },
-                    isTtsOn = isTtsOn,
-                    isTtsPlaying = isTtsPlaying,
-                )
+                Column(
+                    modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        .padding(
+                            end = ScanPangDimens.arSideColumnEnd,
+                            top = ScanPangDimens.arSideColumnTop,
+                        ),
+                    verticalArrangement = Arrangement.spacedBy(ScanPangDimens.arSideIconGap),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                ) {
+                    ArNavWhiteFab(
+                        icon = Icons.Rounded.CameraAlt,
+                        contentDescription = "화면 고정",
+                        onClick = { isFrozen = !isFrozen },
+                        isActive = isFrozen,
+                    )
+                }
             }
 
             // 하단 그라데이션 — transparent → white 50%

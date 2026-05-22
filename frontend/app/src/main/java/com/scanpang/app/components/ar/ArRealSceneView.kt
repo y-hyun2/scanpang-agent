@@ -307,7 +307,6 @@ fun ArRealSceneView(
             activeBackChildNodes.clear()
             anchorCreationAltitudes.clear()
             renderedIndices.clear()
-            navBuildingAnchors.values.forEach { runCatching { it.detach() } }
             navBuildingAnchors.clear()
         }
     }
