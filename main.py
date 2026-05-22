@@ -4,13 +4,13 @@ from fastapi import FastAPI, HTTPException
 from sse_starlette.sse import EventSourceResponse
 from pydantic import BaseModel
 from schemas.navigation import NavRequest, RouteRequest
-from agents.navigation_agent import run_search_agent, run_route_agent
+from agents.navigation_agent import run_route_search, run_route_agent
 from schemas.place import PlaceRequest
 from agents.place_insight_agent import run_place_insight_agent
 from schemas.store import StoreRequest
 from tools.store_tools import get_store_detail, stream_store_detail
 from schemas.convenience import ConvenienceRequest
-from agents.convenience_agent import run_convenience_agent
+from agents.search_agent import run_search_agent
 from schemas.halal import HalalRequest
 from agents.halal_agent import run_halal_agent
 from agents.orchestrator_agent import run_orchestrator
@@ -89,7 +89,7 @@ async def navigation_search(req: NavRequest):
     1단계: 자연어 메시지 → POI 후보 목록 반환
     앱에서 사용자에게 목적지 확인/선택 후 /navigation/route 호출
     """
-    return await run_search_agent(req)
+    return await run_route_search(req)
 
 
 @app.post("/navigation/route")
@@ -282,7 +282,7 @@ async def convenience_query(req: ConvenienceRequest):
     카테고리 탭 or 텍스트 검색 → 주변 편의시설 목록 반환
     category 있으면 LLM 없이 바로 검색, message만 있으면 LLM으로 카테고리 추출
     """
-    return await run_convenience_agent(req)
+    return await run_search_agent(req)
 
 
 @app.post("/halal/query")

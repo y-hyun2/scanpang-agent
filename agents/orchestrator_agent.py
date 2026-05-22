@@ -20,9 +20,9 @@ from langchain_openai import ChatOpenAI
 from langgraph.graph import StateGraph, START, END
 from typing_extensions import TypedDict
 
-from agents.convenience_agent import run_convenience_agent
 from agents.halal_agent import run_halal_agent
-from agents.navigation_agent import run_search_agent, run_nav_guide_agent
+from agents.navigation_agent import run_route_search, run_nav_guide_agent
+from agents.search_agent import run_search_agent
 from agents.place_insight_agent import run_place_chat_agent
 from core.session_store import get_session_store
 from schemas.convenience import ConvenienceRequest
@@ -236,7 +236,7 @@ async def _call_navigation_node(state: OrchestratorState) -> dict:
         lat=state["user_lat"],
         lng=state["user_lng"],
     )
-    result = await run_search_agent(req)
+    result = await run_route_search(req)
     return {"sub_agent_response": result if isinstance(result, dict) else result.model_dump()}
 
 
@@ -266,7 +266,7 @@ async def _call_halal_node(state: OrchestratorState) -> dict:
 
 
 async def _call_convenience_node(state: OrchestratorState) -> dict:
-    # category 가 채워져 있으면 convenience_agent 의 _extract_category_and_language
+    # category 가 채워져 있으면 search_agent 의 _extract_category_and_language
     # (LLM #2) 호출 스킵.
     req = ConvenienceRequest(
         category=state.get("sub_category", ""),
@@ -275,7 +275,7 @@ async def _call_convenience_node(state: OrchestratorState) -> dict:
         lng=state["user_lng"],
         language=state.get("language", "ko"),
     )
-    result = await run_convenience_agent(req)
+    result = await run_search_agent(req)
     return {"sub_agent_response": result if isinstance(result, dict) else result.model_dump()}
 
 

@@ -1,6 +1,7 @@
 """
-convenience_agent.py
-편의시설 검색 에이전트.
+search_agent.py
+매장·편의시설·할랄식당·기도실 등 위치 기반 검색 에이전트.
+(이전 이름: convenience_agent — 책임 확장에 따라 개명)
 
 동작:
   1. category 파라미터 있음 → LLM 스킵, 바로 검색
@@ -114,7 +115,7 @@ async def _generate_speech(facilities: list[dict], category: str, language: str)
     return resp.choices[0].message.content.strip()
 
 
-async def run_convenience_agent(req: ConvenienceRequest) -> ConvenienceResponse:
+async def run_search_agent(req: ConvenienceRequest) -> ConvenienceResponse:
     # Step 1: category 결정
     category = req.category.strip()
     language = req.language

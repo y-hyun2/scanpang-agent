@@ -23,7 +23,7 @@ PRAYER_ROOMS_PATH = os.path.join(os.path.dirname(__file__), "..", "rag", "data",
 
 # 카테고리별 Kakao 그룹 코드 및 기본 반경(m).
 # Kakao 그룹 코드가 없는 카테고리(exchange, restroom, locker, prayer_room)는
-# convenience_agent에서 별도 라우팅 (kakao_keyword / seoul_openapi / static_json).
+# search_agent에서 별도 라우팅 (kakao_keyword / seoul_openapi / static_json).
 CATEGORY_CONFIG = {
     "convenience_store": {"code": "CS2", "radius": 300},
     "cafe":              {"code": "CE7", "radius": 300},

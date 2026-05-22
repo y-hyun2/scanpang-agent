@@ -263,7 +263,7 @@ def _trigger_background_pipeline(ufid: str) -> None:
 # `run_place_insight_agent` 는 /place/store endpoint 가 ufid 와 함께 호출하는
 # building scan 전용. orchestrator 채팅 흐름은 ufid 없이 lat/lng + 메시지만
 # 들고 오므로 별도 진입점이 필요하다. 매장 정보(상호명 발화)는 여기서 다루지
-# 않고 convenience_agent(=search) 로 라우팅된다 — 이 함수는 관광지/랜드마크/
+# 않고 search_agent 로 라우팅된다 — 이 함수는 관광지/랜드마크/
 # 지역 정보에만 답한다.
 
 _PLACE_CHAT_SYSTEM = (

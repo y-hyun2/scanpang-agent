@@ -116,10 +116,11 @@ async def _fetch_nearby_buildings(lat: float, lng: float) -> list[dict]:
         return []
 
 
-async def run_search_agent(req: NavRequest) -> dict:
+async def run_route_search(req: NavRequest) -> dict:
     """
-    1단계: 메시지 파싱 → POI 검색 → 후보 목록 + 추천 반환
-    사용자가 앱에서 확인/선택 후 /navigation/route 호출
+    경로 안내 1단계: 메시지 파싱 → POI 검색 → 후보 목록 + 추천 반환.
+    사용자가 앱에서 확인/선택 후 /navigation/route 호출.
+    (이전 이름: run_search_agent — 시설 검색 search_agent 와 구분 위해 개명)
     """
     # Step 0: 키워드 + 의도 + 언어 추출
     intent_resp = llm.invoke([
