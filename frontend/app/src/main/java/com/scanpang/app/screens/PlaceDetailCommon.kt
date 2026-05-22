@@ -139,14 +139,21 @@ fun rememberDetailBookmark(
     val target = remember(categoryKey) { SavedPlaceNavTarget.fromCategoryKey(categoryKey) }
     var bookmarked by remember(placeId) { mutableStateOf(store.isSaved(placeId)) }
 
+    // store_details.id 패턴은 항상 '{place_id}__{store_name}' 또는 outdoor sentinel
+    // ('restroom__...', '__outdoor__...') 형태로 '__' 를 포함. backend storeResult 가
+    // 아직 안 도착해 frontend 가 매장명 fallback (예: 'BHC치킨 용인모현점') 으로 부르면
+    // 그 invalid id 가 RecentlyViewed/Saved 에 들어가 다음 진입 시 /place/detail 404.
+    val isValidId = "__" in placeId
     LaunchedEffect(placeId) {
+        if (!isValidId) return@LaunchedEffect
         recentlyViewedStore.record(
             RecentlyViewedEntry(
                 id = placeId,
                 name = placeName,
                 category = category,
-                distanceLine = distanceLine,
                 target = target,
+                lat = lat,
+                lng = lng,
             ),
         )
     }
@@ -161,7 +168,11 @@ fun rememberDetailBookmark(
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
 
-    val onToggle: () -> Unit = {
+    val onToggle: () -> Unit = onToggle@{
+        if (!isValidId) {
+            Toast.makeText(context, "매장 정보를 불러오는 중입니다", Toast.LENGTH_SHORT).show()
+            return@onToggle
+        }
         if (bookmarked) {
             store.remove(placeId)
             bookmarked = false

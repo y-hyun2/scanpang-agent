@@ -1,6 +1,7 @@
 package com.scanpang.app.components.ar
 
 import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -30,6 +31,7 @@ import androidx.compose.material.icons.rounded.AccessTime
 import androidx.compose.material.icons.rounded.Bookmark
 import androidx.compose.material.icons.rounded.BookmarkBorder
 import androidx.compose.material.icons.rounded.Close
+import androidx.compose.material.icons.rounded.ChevronRight
 import androidx.compose.material.icons.rounded.ExpandLess
 import androidx.compose.material.icons.rounded.ExpandMore
 import androidx.compose.material.icons.rounded.Info
@@ -40,7 +42,14 @@ import androidx.compose.material.icons.rounded.OpenInFull
 import androidx.compose.material.icons.rounded.Place
 import androidx.compose.material.icons.rounded.Restaurant
 import androidx.compose.material.icons.rounded.Stairs
+import androidx.compose.material.icons.automirrored.rounded.Accessible
 import androidx.compose.material.icons.rounded.ConfirmationNumber
+import androidx.compose.material.icons.rounded.Healing
+import androidx.compose.material.icons.rounded.MiscellaneousServices
+import androidx.compose.material.icons.rounded.Security
+import androidx.compose.material.icons.rounded.Star
+import androidx.compose.material.icons.rounded.Verified
+import androidx.compose.material.icons.rounded.Wc
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
@@ -68,12 +77,11 @@ import com.scanpang.app.screens.DetailCategoryTagDistanceRow
 import com.scanpang.app.screens.resolveCategoryLabel
 import com.scanpang.app.screens.DetailFacilityTagRow
 import com.scanpang.app.screens.DetailImageFullscreenDialog
-import com.scanpang.app.screens.DetailInfoLine
-import com.scanpang.app.screens.DetailIntroBody
+import com.scanpang.app.screens.DetailMenuPriceRow
 import com.scanpang.app.screens.DetailScreenDivider
 import com.scanpang.app.screens.DetailSectionHeader
-import com.scanpang.app.screens.DetailTodayVisitStatus
 import com.scanpang.app.screens.rememberDetailBookmark
+import com.scanpang.app.util.OpenHoursUtils
 import com.scanpang.app.ui.theme.ScanPangColors
 import com.scanpang.app.ui.theme.ScanPangDimens
 import com.scanpang.app.ui.theme.ScanPangShapes
@@ -349,21 +357,13 @@ private fun ArPoiDetailSegmentedTabs(
     }
 }
 
-@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun ArPoiBuildingTabBody(arOverlay: ArOverlay? = null) {
-    val buildingImageCount = 4
-    val buildingImageBg = listOf(
-        Color(0xFFE8E8E8),
-        Color(0xFFD8D8D8),
-        Color(0xFFC8C8C8),
-        Color(0xFFB8B8B8),
-    )
-    val pagerState = rememberPagerState(pageCount = { buildingImageCount })
+    val imageUrl = arOverlay?.image_url?.trim().orEmpty()
+    val hasImages = imageUrl.isNotBlank()
     var buildingGalleryFullscreen by remember { mutableStateOf(false) }
-    val currentBuildingPage = pagerState.currentPage
 
-    if (buildingGalleryFullscreen) {
+    if (hasImages && buildingGalleryFullscreen) {
         Dialog(
             onDismissRequest = { buildingGalleryFullscreen = false },
             properties = DialogProperties(usePlatformDefaultWidth = false),
@@ -373,35 +373,12 @@ private fun ArPoiBuildingTabBody(arOverlay: ArOverlay? = null) {
                     .fillMaxSize()
                     .background(Color.Black),
             ) {
-                HorizontalPager(
-                    state = pagerState,
+                coil.compose.AsyncImage(
+                    model = imageUrl,
+                    contentDescription = null,
                     modifier = Modifier.fillMaxSize(),
-                    pageNestedScrollConnection = PagerDefaults.pageNestedScrollConnection(
-                        state = pagerState,
-                        orientation = Orientation.Horizontal,
-                    ),
-                ) { page ->
-                    Box(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .background(buildingImageBg[page]),
-                    )
-                }
-                Surface(
-                    shape = RoundedCornerShape(6.dp),
-                    color = Color.Black.copy(alpha = 0.45f),
-                    modifier = Modifier
-                        .align(Alignment.TopStart)
-                        .statusBarsPadding()
-                        .padding(ScanPangSpacing.md),
-                ) {
-                    Text(
-                        text = "${currentBuildingPage + 1}/$buildingImageCount",
-                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
-                        style = ScanPangType.meta11Medium,
-                        color = Color.White,
-                    )
-                }
+                    contentScale = androidx.compose.ui.layout.ContentScale.Fit,
+                )
                 IconButton(
                     onClick = { buildingGalleryFullscreen = false },
                     modifier = Modifier
@@ -495,79 +472,38 @@ private fun ArPoiBuildingTabBody(arOverlay: ArOverlay? = null) {
             }
         }
 
-        Spacer(modifier = Modifier.height(ScanPangSpacing.md))
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(118.dp)
-                .clip(RoundedCornerShape(12.dp)),
-        ) {
-            HorizontalPager(
-                state = pagerState,
-                modifier = Modifier.fillMaxSize(),
-                pageNestedScrollConnection = PagerDefaults.pageNestedScrollConnection(
-                    state = pagerState,
-                    orientation = Orientation.Horizontal,
-                ),
-            ) { page ->
-                Box(
+        if (hasImages) {
+            Spacer(modifier = Modifier.height(ScanPangSpacing.md))
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(118.dp)
+                    .clip(RoundedCornerShape(12.dp)),
+            ) {
+                coil.compose.AsyncImage(
+                    model = imageUrl,
+                    contentDescription = null,
+                    modifier = Modifier.fillMaxSize(),
+                    contentScale = androidx.compose.ui.layout.ContentScale.Crop,
+                )
+                Surface(
                     modifier = Modifier
-                        .fillMaxSize()
-                        .background(buildingImageBg[page]),
-                )
-            }
-            Surface(
-                shape = RoundedCornerShape(6.dp),
-                color = Color.Black.copy(alpha = 0.45f),
-                modifier = Modifier
-                    .align(Alignment.TopStart)
-                    .padding(8.dp),
-            ) {
-                Text(
-                    text = "${currentBuildingPage + 1}/$buildingImageCount",
-                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
-                    style = ScanPangType.meta11Medium,
-                    color = Color.White,
-                )
-            }
-            Surface(
-                modifier = Modifier
-                    .align(Alignment.TopEnd)
-                    .padding(4.dp)
-                    .size(32.dp)
-                    .clip(CircleShape)
-                    .clickable { buildingGalleryFullscreen = true },
-                shape = CircleShape,
-                color = Color.Black.copy(alpha = 0.35f),
-            ) {
-                Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
-                    Icon(
-                        imageVector = Icons.Rounded.OpenInFull,
-                        contentDescription = "전체 보기",
-                        tint = Color.White,
-                        modifier = Modifier.size(18.dp),
-                    )
-                }
-            }
-            Row(
-                modifier = Modifier
-                    .align(Alignment.BottomCenter)
-                    .padding(bottom = 8.dp),
-                horizontalArrangement = Arrangement.spacedBy(4.dp),
-            ) {
-                repeat(buildingImageCount) { i ->
-                    Box(
-                        modifier = Modifier
-                            .size(if (i == currentBuildingPage) 6.dp else 5.dp)
-                            .clip(CircleShape)
-                            .background(
-                                if (i == currentBuildingPage) {
-                                    Color.White
-                                } else {
-                                    Color.White.copy(alpha = 0.45f)
-                                },
-                            ),
-                    )
+                        .align(Alignment.TopEnd)
+                        .padding(4.dp)
+                        .size(32.dp)
+                        .clip(CircleShape)
+                        .clickable { buildingGalleryFullscreen = true },
+                    shape = CircleShape,
+                    color = Color.Black.copy(alpha = 0.35f),
+                ) {
+                    Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
+                        Icon(
+                            imageVector = Icons.Rounded.OpenInFull,
+                            contentDescription = "전체 보기",
+                            tint = Color.White,
+                            modifier = Modifier.size(18.dp),
+                        )
+                    }
                 }
             }
         }
@@ -683,15 +619,18 @@ private fun ArPoiFloorsTabBody(
                                     .fillMaxWidth()
                                     .clip(RoundedCornerShape(8.dp))
                                     .clickable { onStoreClick(store.name) }
-                                    .padding(vertical = 2.dp),
+                                    .padding(vertical = 4.dp),
                                 verticalAlignment = Alignment.CenterVertically,
                             ) {
+                                val isGreenDot = store.category.contains("할랄", ignoreCase = true) ||
+                                    store.category.contains("비건", ignoreCase = true) ||
+                                    store.category.contains("vegan", ignoreCase = true)
                                 Box(
                                     modifier = Modifier
                                         .size(5.dp)
                                         .clip(CircleShape)
                                         .background(
-                                            if (store.isHalal) DetailHalalChipFg
+                                            if (isGreenDot) DetailHalalChipFg
                                             else ScanPangColors.OnSurfacePlaceholder,
                                         ),
                                 )
@@ -700,11 +639,37 @@ private fun ArPoiFloorsTabBody(
                                     text = store.name,
                                     style = ScanPangType.body15Medium,
                                     color = ScanPangColors.OnSurfaceStrong,
+                                    modifier = Modifier.weight(1f),
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
                                 )
-                                Text(
-                                    text = "  |  ${store.category}",
-                                    style = ScanPangType.caption12Medium,
-                                    color = if (store.isHalal) DetailHalalChipFg else ScanPangColors.OnSurfaceMuted,
+                                val chipLabel = store.category
+                                    .substringAfterLast(">").trim()
+                                    .ifBlank { store.category }
+                                if (chipLabel.isNotBlank()) {
+                                    val isGreen = store.category.contains("할랄", ignoreCase = true) ||
+                                        store.category.contains("비건", ignoreCase = true) ||
+                                        store.category.contains("vegan", ignoreCase = true)
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Surface(
+                                        shape = ScanPangShapes.badge6,
+                                        color = if (isGreen) DetailHalalChipBg else ScanPangColors.PrimarySoft,
+                                    ) {
+                                        Text(
+                                            text = chipLabel,
+                                            modifier = Modifier.padding(horizontal = 7.dp, vertical = 3.dp),
+                                            style = ScanPangType.meta11Medium,
+                                            color = if (isGreen) DetailHalalChipFg else ScanPangColors.Primary,
+                                            maxLines = 1,
+                                        )
+                                    }
+                                }
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Icon(
+                                    imageVector = Icons.Rounded.ChevronRight,
+                                    contentDescription = null,
+                                    tint = ScanPangColors.OnSurfacePlaceholder,
+                                    modifier = Modifier.size(18.dp),
                                 )
                             }
                         }
@@ -733,9 +698,16 @@ fun ArFloorStoreGuideOverlay(
     storeResult: com.scanpang.app.data.remote.StoreResponse? = null,
     distanceLabel: String = "",
 ) {
-    val imageUrls = (storeResult?.image_urls ?: emptyList()).filter { it.isNotBlank() }.take(6)
+    val categoryKey = storeResult?.category_key ?: ""
+    val heroPhotoAllowed = categoryKey !in setOf(
+        "atm", "subway", "subway_station", "restroom", "public_restroom", "lockers", "locker",
+    )
+    val canFullscreen = heroPhotoAllowed
+    val imageUrls = if (heroPhotoAllowed)
+        (storeResult?.image_urls ?: emptyList()).filter { it.isNotBlank() }.take(6)
+    else emptyList()
     val displayCategory = resolveCategoryLabel(
-        categoryKey = storeResult?.category_key ?: "",
+        categoryKey = categoryKey,
         rawCategory = storeResult?.category ?: category,
         veganLevel = (storeResult?.details?.get("vegan_level") as? String).orEmpty(),
     )
@@ -747,7 +719,6 @@ fun ArFloorStoreGuideOverlay(
     val phone = storeResult?.phone?.trim().orEmpty()
     val floor = storeResult?.floor?.trim().orEmpty()
     val homepage = storeResult?.homepage?.trim().orEmpty()
-    val categoryKey = storeResult?.category_key ?: ""
     val showVisitStatus = openHours.isNotBlank() && categoryKey in setOf(
         "restaurant", "halal_restaurant", "cafe",
         "shopping", "mall", "convenience", "convenience_store",
@@ -818,23 +789,25 @@ fun ArFloorStoreGuideOverlay(
                                 contentScale = androidx.compose.ui.layout.ContentScale.Crop,
                             )
                         }
-                        Surface(
-                            modifier = Modifier
-                                .align(Alignment.TopEnd)
-                                .padding(4.dp)
-                                .size(28.dp)
-                                .clip(CircleShape)
-                                .clickable { isFullscreen = true },
-                            shape = CircleShape,
-                            color = Color.Black.copy(alpha = 0.35f),
-                        ) {
-                            Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
-                                Icon(
-                                    imageVector = Icons.Rounded.OpenInFull,
-                                    contentDescription = "전체 보기",
-                                    tint = Color.White,
-                                    modifier = Modifier.size(14.dp),
-                                )
+                        if (canFullscreen) {
+                            Surface(
+                                modifier = Modifier
+                                    .align(Alignment.TopEnd)
+                                    .padding(4.dp)
+                                    .size(28.dp)
+                                    .clip(CircleShape)
+                                    .clickable { isFullscreen = true },
+                                shape = CircleShape,
+                                color = Color.Black.copy(alpha = 0.35f),
+                            ) {
+                                Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
+                                    Icon(
+                                        imageVector = Icons.Rounded.OpenInFull,
+                                        contentDescription = "전체 보기",
+                                        tint = Color.White,
+                                        modifier = Modifier.size(14.dp),
+                                    )
+                                }
                             }
                         }
                         if (imageUrls.size > 1) {
@@ -912,48 +885,235 @@ fun ArFloorStoreGuideOverlay(
                             isOpen = displayOpenNow,
                         )
                     }
-                    // ④ 소개
+                    // ③-1 할랄 신뢰칩 (restaurant / halal_restaurant)
+                    if (categoryKey in setOf("restaurant", "halal_restaurant")) {
+                        val halalType = (storeResult?.details?.get("halal_type") as? String).orEmpty()
+                        val halalTags = buildList {
+                            if (storeResult?.details?.get("muslim_cooks_available") as? Boolean == true)
+                                add(Pair("무슬림 조리사", Icons.Rounded.Verified))
+                            if (storeResult?.details?.get("no_alcohol_sales") as? Boolean == true)
+                                add(Pair("주류 미판매", Icons.Rounded.Star))
+                        }
+                        if (halalType.isNotBlank() || halalTags.isNotEmpty()) {
+                            Row(
+                                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                if (halalType.isNotBlank()) StoreHalalCategoryChip(label = halalType)
+                                halalTags.take(2).forEach { (tag, icon) ->
+                                    StoreHalalTrustChip(text = tag, icon = icon)
+                                }
+                            }
+                        }
+                    }
+                    // ④ 소개 — 파란 info 아이콘 카드 (Figma)
                     if (intro.isNotBlank()) {
-                        DetailIntroBody(text = intro)
+                        Surface(
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = ScanPangShapes.radius12,
+                            color = ScanPangColors.DetailVisitNeutralSurface,
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(ScanPangSpacing.md),
+                                horizontalArrangement = Arrangement.spacedBy(ScanPangSpacing.sm),
+                                verticalAlignment = Alignment.Top,
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Rounded.Info,
+                                    contentDescription = null,
+                                    tint = ScanPangColors.Primary,
+                                    modifier = Modifier.size(ScanPangDimens.icon18),
+                                )
+                                Text(
+                                    text = intro,
+                                    style = ScanPangType.body14Regular,
+                                    color = ScanPangColors.OnSurfaceStrong,
+                                    modifier = Modifier.weight(1f),
+                                )
+                            }
+                        }
                     }
-                    // ⑤ 오늘 방문 가능 여부 (PlaceDetailScreen 동일 구현)
+                    // ⑤ 오늘 영업 상태 — 헤더 없는 compact 한 줄 (Figma)
                     if (showVisitStatus) {
+                        val localIsOpen = remember(openHours) { OpenHoursUtils.isOpenNow(openHours) }
+                        val effectiveIsOpen = localIsOpen ?: (displayOpenNow ?: false)
+                        val statusColor = if (effectiveIsOpen) ScanPangColors.StatusOpen else ScanPangColors.Error
+                        val todayHours = remember(openHours) { OpenHoursUtils.todayHoursText(openHours) }
                         DetailScreenDivider()
-                        DetailTodayVisitStatus(
-                            isOpen = displayOpenNow ?: false,
-                            openHours = openHours,
-                            lastOrder = lastOrder,
-                        )
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(ScanPangSpacing.xs),
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(8.dp)
+                                    .clip(CircleShape)
+                                    .background(statusColor),
+                            )
+                            Icon(
+                                imageVector = Icons.Rounded.AccessTime,
+                                contentDescription = null,
+                                tint = ScanPangColors.OnSurfaceMuted,
+                                modifier = Modifier.size(14.dp),
+                            )
+                            Text(
+                                text = if (todayHours.isNotBlank()) "오늘 $todayHours"
+                                    else if (effectiveIsOpen) "영업 중" else "영업 종료",
+                                style = ScanPangType.title14,
+                                color = ScanPangColors.OnSurfaceStrong,
+                                modifier = Modifier.weight(1f),
+                            )
+                            if (lastOrder.isNotBlank()) {
+                                Text(
+                                    text = "라스트오더 $lastOrder",
+                                    style = ScanPangType.caption12Medium,
+                                    color = ScanPangColors.OnSurfaceMuted,
+                                )
+                            }
+                        }
                     }
-                    // ⑦ 상세 정보 행 (주소/전화/층/홈페이지)
+                    // ⑥ 상세 정보 — 헤더 없이 아이콘 + 값 (detail screen과 동일 항목)
+                    val facilityList = buildList {
+                        if (storeResult?.details?.get("has_disabled") as? Boolean == true) add("장애인 화장실")
+                        if (storeResult?.details?.get("has_child") as? Boolean == true) add("유아 화장실")
+                        if (storeResult?.details?.get("has_diaper_table") as? Boolean == true) add("기저귀 교환대")
+                        if (storeResult?.details?.get("wudu") as? Boolean == true) add("우두 시설")
+                        if (storeResult?.details?.get("gender_separation") as? Boolean == true) add("남녀 분리")
+                        if (storeResult?.details?.get("prayer_mat") as? Boolean == true) add("기도 매트")
+                        if (storeResult?.details?.get("quran_available") as? Boolean == true) add("꾸란 비치")
+                    }
+                    val safetyList = buildList {
+                        if (storeResult?.details?.get("has_cctv") as? Boolean == true) add("CCTV")
+                        if (storeResult?.details?.get("has_emergency_bell") as? Boolean == true) add("비상벨")
+                    }
+                    val conveniences = (storeResult?.details?.get("conveniences") as? List<*>)
+                        ?.filterIsInstance<String>() ?: emptyList()
+                    val convenienceServices = conveniences.filter { !it.contains("주차") }.joinToString(", ")
+                    val departments = (storeResult?.details?.get("departments") as? String)?.trim().orEmpty()
+                    // 화장실 칸 수 — key 오타("toilt") 양쪽 모두 시도
+                    val toiletMaleRaw = storeResult?.details?.get("male_toilet_cnt")
+                        ?: storeResult?.details?.get("male_toilt_cnt")
+                    val toiletFemaleRaw = storeResult?.details?.get("female_toilet_cnt")
+                        ?: storeResult?.details?.get("female_toilt_cnt")
+                    fun Any?.toToiletInt() = when (this) {
+                        is Double -> toInt(); is Int -> this; is String -> toIntOrNull(); else -> null
+                    }
+                    val toiletStr = buildList {
+                        val m = toiletMaleRaw.toToiletInt()
+                        val f = toiletFemaleRaw.toToiletInt()
+                        if ((m ?: 0) > 0) add("남성 ${m}칸")
+                        if ((f ?: 0) > 0) add("여성 ${f}칸")
+                    }.joinToString(", ")
+                    val isRestroom = categoryKey in setOf("restroom", "public_restroom")
                     val infoLines = listOfNotNull(
-                        addr.takeIf { it.isNotBlank() }?.let { Triple(Icons.Rounded.Place, "주소", it) },
-                        phone.takeIf { it.isNotBlank() }?.let { Triple(Icons.Rounded.LocalPhone, "전화", it) },
-                        floor.takeIf { it.isNotBlank() }?.let { Triple(Icons.Rounded.Stairs, "층", it) },
-                        homepage.takeIf { it.isNotBlank() }?.let { Triple(Icons.Rounded.Language, "홈페이지", it) },
+                        addr.takeIf { it.isNotBlank() }?.let { Pair(Icons.Rounded.Place, it) },
+                        phone.takeIf { it.isNotBlank() }?.let { Pair(Icons.Rounded.LocalPhone, it) },
+                        floor.takeIf { it.isNotBlank() && !isRestroom }?.let { Pair(Icons.Rounded.Stairs, it) },
+                        homepage.takeIf { it.isNotBlank() }?.let { Pair(Icons.Rounded.Language, it) },
+                        toiletStr.takeIf { it.isNotBlank() }?.let { Pair(Icons.Rounded.Wc, it) },
+                        facilityList.joinToString(", ").takeIf { it.isNotBlank() }
+                            ?.let { Pair(Icons.AutoMirrored.Rounded.Accessible, it) },
+                        safetyList.joinToString(", ").takeIf { it.isNotBlank() }
+                            ?.let { Pair(Icons.Rounded.Security, it) },
+                        convenienceServices.takeIf { it.isNotBlank() }
+                            ?.let { Pair(Icons.Rounded.MiscellaneousServices, it) },
+                        departments.takeIf { it.isNotBlank() }
+                            ?.let { Pair(Icons.Rounded.Healing, it) },
                     )
                     if (infoLines.isNotEmpty()) {
                         DetailScreenDivider()
-                        DetailSectionHeader(title = "상세 정보")
-                        infoLines.forEach { (icon, label, value) ->
-                            DetailInfoLine(icon = icon, label = label, value = value)
+                        infoLines.forEach { (icon, value) ->
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Icon(
+                                    imageVector = icon,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(ScanPangDimens.icon16),
+                                    tint = ScanPangColors.OnSurfaceMuted,
+                                )
+                                Text(
+                                    text = value,
+                                    style = ScanPangType.caption12Medium,
+                                    color = ScanPangColors.OnSurfaceMuted,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                )
+                            }
                         }
                     }
-                    // 카테고리별 부가 정보
+                    // ⑦ 카테고리별 부가 정보
                     when (categoryKey) {
-                        "restaurant", "halal_restaurant", "cafe" -> {
-                            val menuList = (storeResult?.details?.get("menu") as? List<*>)
-                                ?.filterIsInstance<String>() ?: emptyList()
-                            if (menuList.isNotEmpty()) DetailFacilityTagRow(tags = menuList)
+                        "restaurant", "halal_restaurant", "cafe", "vegan_restaurant", "vegan_cafe" -> {
+                            // Naver 크롤링: details.menu = [{name, price}]
+                            // 할랄 식당: details.menu_examples = [{name_ko, name_en, price_krw}]
+                            val menuPairs = remember(storeResult) {
+                                val fromMenu = (storeResult?.details?.get("menu") as? List<*>)
+                                    ?.mapNotNull { entry ->
+                                        val m = entry as? Map<*, *> ?: return@mapNotNull null
+                                        val name = (m["name"] as? String)?.trim().orEmpty()
+                                        val price = (m["price"] as? String)?.trim().orEmpty()
+                                        if (name.isBlank()) null else Pair(name, price)
+                                    }
+                                if (!fromMenu.isNullOrEmpty()) return@remember fromMenu
+                                (storeResult?.details?.get("menu_examples") as? List<*>)
+                                    ?.mapNotNull { entry ->
+                                        val m = entry as? Map<*, *> ?: return@mapNotNull null
+                                        val name = ((m["name_ko"] as? String)
+                                            ?: (m["name_en"] as? String))?.trim().orEmpty()
+                                        val priceRaw = m["price_krw"]
+                                        val price = when (priceRaw) {
+                                            is Number -> "%,d원".format(priceRaw.toInt())
+                                            is String -> priceRaw.trim()
+                                            else -> ""
+                                        }
+                                        if (name.isBlank()) null else Pair(name, price)
+                                    } ?: emptyList()
+                            }
+                            if (menuPairs.isNotEmpty()) {
+                                DetailScreenDivider()
+                                DetailSectionHeader(title = "대표 메뉴")
+                                Spacer(modifier = Modifier.height(ScanPangSpacing.xs))
+                                Column(verticalArrangement = Arrangement.spacedBy(ScanPangSpacing.xs)) {
+                                    menuPairs.take(3).forEach { (name, price) ->
+                                        DetailMenuPriceRow(name = name, price = price)
+                                    }
+                                }
+                            }
                         }
-                        "restroom" -> {
-                            val maleCnt = (storeResult?.details?.get("male_toilet_cnt") as? Double)?.toInt()
-                            val femaleCnt = (storeResult?.details?.get("female_toilet_cnt") as? Double)?.toInt()
-                            val tags = listOfNotNull(
-                                maleCnt?.let { "남 ${it}칸" },
-                                femaleCnt?.let { "여 ${it}칸" },
-                            )
-                            if (tags.isNotEmpty()) DetailFacilityTagRow(tags = tags)
+                        "exchange", "atm", "bank" -> {
+                            val targetOrder = listOf("USD", "JPY", "EUR", "CNY")
+                            val exchangeRows = remember(storeResult) {
+                                (storeResult?.details?.get("rates_today") as? List<*>)
+                                    ?.mapNotNull { entry ->
+                                        val m = entry as? Map<*, *> ?: return@mapNotNull null
+                                        val ccy = (m["ccy"] as? String)?.trim().orEmpty()
+                                        if (ccy !in targetOrder) return@mapNotNull null
+                                        val flag = (m["flag"] as? String).orEmpty()
+                                        val baseRate = (m["base_rate"] as? String)?.trim().orEmpty()
+                                        if (baseRate.isBlank()) return@mapNotNull null
+                                        val rateText = baseRate.replace(",", "").toDoubleOrNull()
+                                            ?.let { "%,d원".format(it.toInt()) } ?: "${baseRate}원"
+                                        Triple(ccy, flag, rateText)
+                                    }
+                                    ?.sortedBy { triple ->
+                                        val idx = targetOrder.indexOf(triple.first)
+                                        if (idx >= 0) idx else Int.MAX_VALUE
+                                    } ?: emptyList()
+                            }
+                            if (exchangeRows.isNotEmpty()) {
+                                DetailScreenDivider()
+                                DetailSectionHeader(title = "오늘의 환율")
+                                Spacer(modifier = Modifier.height(ScanPangSpacing.xs))
+                                Column(verticalArrangement = Arrangement.spacedBy(ScanPangSpacing.xs)) {
+                                    exchangeRows.forEach { (ccy, flag, rateText) ->
+                                        DetailMenuPriceRow(name = "$flag $ccy → KRW", price = rateText)
+                                    }
+                                }
+                            }
                         }
                         "subway" -> {
                             val tags = (storeResult?.details?.get("facilities") as? List<*>)
@@ -973,5 +1133,62 @@ fun ArFloorStoreGuideOverlay(
                 onDismiss = { isFullscreen = false },
             )
         }
+    }
+}
+
+@Composable
+private fun StoreHalalCategoryChip(label: String) {
+    val (bg, fg) = when (label) {
+        "HALAL MEAT"  -> ScanPangColors.HalalMeatBadgeBackground  to ScanPangColors.HalalMeatBadgeText
+        "SEAFOOD"     -> ScanPangColors.SeafoodBadgeBackground     to ScanPangColors.Primary
+        "VEGGIE"      -> ScanPangColors.VeggieBadgeBackground      to ScanPangColors.VeggieBadgeText
+        "SALAM SEOUL" -> ScanPangColors.SalamSeoulBadgeBackground  to ScanPangColors.SalamSeoulBadgeText
+        else          -> ScanPangColors.HalalMeatBadgeBackground   to ScanPangColors.HalalMeatBadgeText
+    }
+    Surface(
+        shape = ScanPangShapes.badge6,
+        color = bg,
+        border = BorderStroke(ScanPangDimens.borderHairline, ScanPangColors.OutlineSubtle),
+    ) {
+        Text(
+            text = label,
+            modifier = Modifier.padding(
+                horizontal = ScanPangDimens.trustChipHorizontal,
+                vertical = ScanPangDimens.trustChipVertical,
+            ),
+            style = ScanPangType.badge9SemiBold,
+            color = fg,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+    }
+}
+
+@Composable
+private fun StoreHalalTrustChip(text: String, icon: ImageVector) {
+    Row(
+        modifier = Modifier
+            .clip(ScanPangShapes.badge6)
+            .background(ScanPangColors.TrustPillBackground)
+            .padding(
+                horizontal = ScanPangDimens.trustChipHorizontal,
+                vertical = ScanPangDimens.trustChipVertical,
+            ),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(ScanPangDimens.trustIconGap),
+    ) {
+        Icon(
+            imageVector = icon,
+            contentDescription = null,
+            modifier = Modifier.size(ScanPangDimens.icon10),
+            tint = ScanPangColors.TrustPillText,
+        )
+        Text(
+            text = text,
+            style = ScanPangType.badge9SemiBold,
+            color = ScanPangColors.TrustPillText,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
     }
 }

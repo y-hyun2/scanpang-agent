@@ -83,8 +83,8 @@ import com.scanpang.app.ui.theme.ScanPangType
 @Composable
 fun ArNavTopHud(
     modifier: Modifier = Modifier,
-    onCameraClick: () -> Unit,
-    isCameraFrozen: Boolean = false,
+    onVolumeClick: () -> Unit,
+    isTtsOn: Boolean = true,
     onSearchClick: () -> Unit,
     destinationPill: @Composable () -> Unit,
 ) {
@@ -116,10 +116,9 @@ fun ArNavTopHud(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             ArNavWhiteFab(
-                icon = Icons.Rounded.CameraAlt,
-                contentDescription = "화면 캡처",
-                onClick = onCameraClick,
-                isActive = isCameraFrozen,
+                icon = if (isTtsOn) Icons.Rounded.Headset else Icons.Rounded.HeadsetOff,
+                contentDescription = "음성 안내",
+                onClick = onVolumeClick,
             )
             Box(
                 modifier = Modifier
