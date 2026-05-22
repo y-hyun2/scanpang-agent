@@ -282,6 +282,7 @@ interface AppStrings {
     val navChatPlaceholder: String
     val navArrivedMessage: String
     val navMap: String
+    val navAiGuide: String
     val navStop: String
     val navStopConfirm: String
     val navSelectDestination: String
@@ -588,6 +589,7 @@ val KoStrings: AppStrings = object : AppStrings {
     override val navChatPlaceholder = "무엇이든 물어보세요"
     override val navArrivedMessage = "도착했어요!"
     override val navMap = "지도"
+    override val navAiGuide = "AI 가이드"
     override val navStop = "길안내 종료"
     override val navStopConfirm = "길안내를 종료할까요?"
     override val navSelectDestination = "이동할 위치를 선택해주세요."
@@ -893,6 +895,7 @@ val EnStrings: AppStrings = object : AppStrings {
     override val navChatPlaceholder = "Ask me anything"
     override val navArrivedMessage = "You have arrived!"
     override val navMap = "Map"
+    override val navAiGuide = "AI Guide"
     override val navStop = "Stop Navigation"
     override val navStopConfirm = "Stop navigation?"
     override val navSelectDestination = "Select a destination."

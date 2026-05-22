@@ -520,7 +520,7 @@ private fun ArNavTabTrack(
                 modifier = Modifier.weight(1f),
             )
             ArNavTabSegment(
-                label = "AI 가이드",
+                label = s.navAiGuide,
                 selected = !mapSelected,
                 onClick = onSelectAgent,
                 modifier = Modifier.weight(1f),
