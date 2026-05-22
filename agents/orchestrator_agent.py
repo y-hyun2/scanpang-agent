@@ -45,6 +45,7 @@ class OrchestratorState(TypedDict):
     session_id: str
     session_context: str          # 프롬프트에 삽입할 이전 대화 이력 텍스트
     selected_agent: Literal["place", "navigation", "halal", "convenience"]
+    sub_category: str             # halal/convenience 세부 카테고리 — sub-agent _extract 우회용
     sub_agent_response: dict
     final_speech: str
     source_agent: str
@@ -52,11 +53,14 @@ class OrchestratorState(TypedDict):
 
 # ── Intent 분류 프롬프트 ────────────────────────────────────────────────────
 
-_INTENT_SYSTEM = """당신은 AR 관광 앱의 요청 라우터입니다. 사용자 메시지를 분석해 두 가지를 동시에 출력하세요:
+_INTENT_SYSTEM = """당신은 AR 관광 앱의 요청 라우터입니다. 사용자 메시지를 분석해 세 가지를 동시에 출력하세요:
 1) 4개 에이전트 중 하나 선택 (selected_agent)
 2) 메시지 안의 지시어를 이전 대화 맥락으로 풀어쓰기 (resolved_message)
+3) halal/convenience 의 세부 카테고리 (sub_category, place/navigation 은 "")
 
-응답은 반드시 JSON 형식 `{"selected_agent": "<agent>", "resolved_message": "<텍스트>"}` 한 줄로만 출력하세요.
+응답은 반드시 JSON 형식
+`{"selected_agent": "<agent>", "resolved_message": "<텍스트>", "sub_category": "<카테고리|빈문자열>"}`
+한 줄로만 출력하세요.
 
 에이전트 설명:
 - place     : 현재 바라보는 건물/장소 정보 (건물명, 운영시간, 층별 매장, 도슨트 해설)
@@ -71,6 +75,13 @@ _INTENT_SYSTEM = """당신은 AR 관광 앱의 요청 라우터입니다. 사용
 - 건물 자체에 대한 질문(이게 뭐야, 여기 몇 층이야)은 "place"
 - 어디로 가고 싶다는 내용은 "navigation"
 
+sub_category 값 (selected_agent 별):
+- halal       : "prayer_time" | "qibla" | "restaurant" | "prayer_room"
+- convenience : "cafe" | "restaurant" | "convenience_store" | "pharmacy" | "hospital" |
+                "bank" | "atm" | "shopping" | "parking" | "subway" | "tourist" |
+                "accommodation" | "cultural" | "exchange" | "restroom" | "locker"
+- place / navigation : "" (빈 문자열)
+
 resolved_message 규칙:
 - 지시어("거기", "그곳", "저기", "여기", "방금 말한 곳", "그 건물" 등)가 있고 이전 대화에서 가리키는 장소가 명확하면 그 장소 이름으로 치환.
   예: ctx="user: 눈스퀘어 뭐야?  assistant: ..." + 현재="거기 어떻게 가?"
@@ -82,31 +93,37 @@ resolved_message 규칙:
 
 _FEW_SHOTS = [
     {"role": "user",      "content": '메시지: "이 건물 뭐야?"'},
-    {"role": "assistant", "content": '{"selected_agent": "place", "resolved_message": "이 건물 뭐야?"}'},
+    {"role": "assistant", "content": '{"selected_agent": "place", "resolved_message": "이 건물 뭐야?", "sub_category": ""}'},
     {"role": "user",      "content": '메시지: "명동성당에 대해 설명해줘"'},
-    {"role": "assistant", "content": '{"selected_agent": "place", "resolved_message": "명동성당에 대해 설명해줘"}'},
+    {"role": "assistant", "content": '{"selected_agent": "place", "resolved_message": "명동성당에 대해 설명해줘", "sub_category": ""}'},
     {"role": "user",      "content": '이전 대화:\nuser: 눈스퀘어 뭐야?\nassistant: 눈스퀘어는 명동 쇼핑몰입니다.\n\n메시지: "거기 어떻게 가?"'},
-    {"role": "assistant", "content": '{"selected_agent": "navigation", "resolved_message": "눈스퀘어 어떻게 가?"}'},
-    {"role": "user",      "content": '이전 대화:\nuser: 롯데백화점 본점 뭐야?\nassistant: ...\n\n메시지: "그곳까지 가는 길 알려줘"'},
-    {"role": "assistant", "content": '{"selected_agent": "navigation", "resolved_message": "롯데백화점 본점까지 가는 길 알려줘"}'},
+    {"role": "assistant", "content": '{"selected_agent": "navigation", "resolved_message": "눈스퀘어 어떻게 가?", "sub_category": ""}'},
     {"role": "user",      "content": '메시지: "명동역으로 길 안내해줘"'},
-    {"role": "assistant", "content": '{"selected_agent": "navigation", "resolved_message": "명동역으로 길 안내해줘"}'},
+    {"role": "assistant", "content": '{"selected_agent": "navigation", "resolved_message": "명동역으로 길 안내해줘", "sub_category": ""}'},
     {"role": "user",      "content": '메시지: "기도 시간 알려줘"'},
-    {"role": "assistant", "content": '{"selected_agent": "halal", "resolved_message": "기도 시간 알려줘"}'},
+    {"role": "assistant", "content": '{"selected_agent": "halal", "resolved_message": "기도 시간 알려줘", "sub_category": "prayer_time"}'},
+    {"role": "user",      "content": '메시지: "지금 아스르 기도 시간이야?"'},
+    {"role": "assistant", "content": '{"selected_agent": "halal", "resolved_message": "지금 아스르 기도 시간이야?", "sub_category": "prayer_time"}'},
     {"role": "user",      "content": '메시지: "키블라 방향이 어디야?"'},
-    {"role": "assistant", "content": '{"selected_agent": "halal", "resolved_message": "키블라 방향이 어디야?"}'},
+    {"role": "assistant", "content": '{"selected_agent": "halal", "resolved_message": "키블라 방향이 어디야?", "sub_category": "qibla"}'},
     {"role": "user",      "content": '메시지: "할랄 식당 어디 있어?"'},
-    {"role": "assistant", "content": '{"selected_agent": "halal", "resolved_message": "할랄 식당 어디 있어?"}'},
+    {"role": "assistant", "content": '{"selected_agent": "halal", "resolved_message": "할랄 식당 어디 있어?", "sub_category": "restaurant"}'},
+    {"role": "user",      "content": '메시지: "무슬림 음식 추천해줘"'},
+    {"role": "assistant", "content": '{"selected_agent": "halal", "resolved_message": "무슬림 음식 추천해줘", "sub_category": "restaurant"}'},
     {"role": "user",      "content": '메시지: "기도실 어디야?"'},
-    {"role": "assistant", "content": '{"selected_agent": "halal", "resolved_message": "기도실 어디야?"}'},
+    {"role": "assistant", "content": '{"selected_agent": "halal", "resolved_message": "기도실 어디야?", "sub_category": "prayer_room"}'},
     {"role": "user",      "content": '메시지: "근처 ATM 찾아줘"'},
-    {"role": "assistant", "content": '{"selected_agent": "convenience", "resolved_message": "근처 ATM 찾아줘"}'},
+    {"role": "assistant", "content": '{"selected_agent": "convenience", "resolved_message": "근처 ATM 찾아줘", "sub_category": "atm"}'},
     {"role": "user",      "content": '메시지: "카페 추천해줘"'},
-    {"role": "assistant", "content": '{"selected_agent": "convenience", "resolved_message": "카페 추천해줘"}'},
+    {"role": "assistant", "content": '{"selected_agent": "convenience", "resolved_message": "카페 추천해줘", "sub_category": "cafe"}'},
     {"role": "user",      "content": '메시지: "환전소 어디 있어?"'},
-    {"role": "assistant", "content": '{"selected_agent": "convenience", "resolved_message": "환전소 어디 있어?"}'},
+    {"role": "assistant", "content": '{"selected_agent": "convenience", "resolved_message": "환전소 어디 있어?", "sub_category": "exchange"}'},
     {"role": "user",      "content": '메시지: "약국 찾아줘"'},
-    {"role": "assistant", "content": '{"selected_agent": "convenience", "resolved_message": "약국 찾아줘"}'},
+    {"role": "assistant", "content": '{"selected_agent": "convenience", "resolved_message": "약국 찾아줘", "sub_category": "pharmacy"}'},
+    {"role": "user",      "content": '메시지: "화장실 어디야?"'},
+    {"role": "assistant", "content": '{"selected_agent": "convenience", "resolved_message": "화장실 어디야?", "sub_category": "restroom"}'},
+    {"role": "user",      "content": '메시지: "지하철역 알려줘"'},
+    {"role": "assistant", "content": '{"selected_agent": "convenience", "resolved_message": "지하철역 알려줘", "sub_category": "subway"}'},
 ]
 
 _llm = ChatOpenAI(model="gpt-4o", temperature=0, response_format={"type": "json_object"})
@@ -117,10 +134,11 @@ _llm = ChatOpenAI(model="gpt-4o", temperature=0, response_format={"type": "json_
 async def classify_intent(
     message: str,
     session_context: str = "",
-) -> tuple[Literal["place", "navigation", "halal", "convenience"], str]:
+) -> tuple[Literal["place", "navigation", "halal", "convenience"], str, str]:
     """
-    사용자 메시지 → (에이전트, 지시어 resolve 된 메시지) 튜플.
-    실패 시 (convenience, message) 반환.
+    사용자 메시지 → (에이전트, resolved_message, sub_category) 튜플.
+    sub_category 는 halal/convenience 일 때만 값 있음, place/navigation 은 빈 문자열.
+    실패 시 (convenience, message, "") 반환.
     """
     user_content = f'메시지: "{message}"'
     if session_context:
@@ -138,24 +156,28 @@ async def classify_intent(
         if agent not in ("place", "navigation", "halal", "convenience"):
             agent = "convenience"
         resolved = (data.get("resolved_message") or message).strip() or message
-        return agent, resolved
+        sub_category = (data.get("sub_category") or "").strip()
+        return agent, resolved, sub_category
     except Exception:
-        return "convenience", message
+        return "convenience", message, ""
 
 
 # ── LangGraph 노드 ────────────────────────────────────────────────────────
 
 async def _intent_classifier_node(state: OrchestratorState) -> dict:
-    selected, resolved = await classify_intent(
+    selected, resolved, sub_category = await classify_intent(
         state["user_message"],
         session_context=state.get("session_context", ""),
     )
     if resolved != state["user_message"]:
         print(f"[orchestrator] 지시어 resolve: {state['user_message']!r} → {resolved!r}")
+    if sub_category:
+        print(f"[orchestrator] {selected}.{sub_category}")
     return {
         "selected_agent":   selected,
         "source_agent":     selected,
         "resolved_message": resolved,
+        "sub_category":     sub_category,
     }
 
 
@@ -187,7 +209,10 @@ async def _call_navigation_node(state: OrchestratorState) -> dict:
 
 
 async def _call_halal_node(state: OrchestratorState) -> dict:
+    # category 가 채워져 있으면 halal_agent 의 _extract_category(LLM #2) 호출 스킵.
+    # orchestrator 의 intent_classifier 가 이미 sub_category 까지 결정했음.
     req = HalalRequest(
+        category=state.get("sub_category", ""),
         message=_sub_message(state),
         lat=state["user_lat"],
         lng=state["user_lng"],
@@ -198,7 +223,10 @@ async def _call_halal_node(state: OrchestratorState) -> dict:
 
 
 async def _call_convenience_node(state: OrchestratorState) -> dict:
+    # category 가 채워져 있으면 convenience_agent 의 _extract_category_and_language
+    # (LLM #2) 호출 스킵.
     req = ConvenienceRequest(
+        category=state.get("sub_category", ""),
         message=_sub_message(state),
         lat=state["user_lat"],
         lng=state["user_lng"],
@@ -300,6 +328,7 @@ async def run_orchestrator(
         "session_context": session_context,
         "selected_agent":  "convenience",
         "resolved_message": message,
+        "sub_category":    "",
         "sub_agent_response": {},
         "final_speech":    "",
         "source_agent":    "",
