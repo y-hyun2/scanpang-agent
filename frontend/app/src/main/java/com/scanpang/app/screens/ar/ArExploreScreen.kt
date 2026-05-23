@@ -15,6 +15,8 @@ import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.scaleIn
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.ui.window.Dialog
@@ -30,6 +32,7 @@ import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -1193,7 +1196,7 @@ fun ArExploreScreen(
                 ) {
                     AnimatedVisibility(
                         visible = true,
-                        enter = slideInVertically { it },
+                        enter = fadeIn() + scaleIn(initialScale = 0.92f),
                     ) {
                         storeListPoi?.let { poi ->
                             ArFilteredStoreListOverlay(
@@ -1255,20 +1258,22 @@ private fun ArFilteredStoreListOverlay(
         modifier = modifier
             .background(ScanPangColors.ArOverlayScrimDark)
             .clickable { onDismiss() },
-        contentAlignment = Alignment.BottomCenter,
+        contentAlignment = Alignment.Center,
     ) {
         Surface(
             modifier = Modifier
                 .fillMaxWidth()
+                .padding(horizontal = 32.dp)
+                .heightIn(max = 400.dp)
                 .clickable(enabled = false) {},
-            shape = ScanPangShapes.arFilterPanelTop,
+            shape = RoundedCornerShape(16.dp),
             color = ScanPangColors.Surface,
+            shadowElevation = 8.dp,
         ) {
             Column(
                 modifier = Modifier
                     .padding(horizontal = ScanPangDimens.arTopBarHorizontal)
                     .padding(top = ScanPangSpacing.md)
-                    .navigationBarsPadding()
                     .verticalScroll(rememberScrollState()),
             ) {
                 Text(
