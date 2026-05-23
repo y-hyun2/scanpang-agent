@@ -270,18 +270,37 @@ async def fetch_place_detail(
     result: dict = {}
     try:
         async with async_playwright() as p:
-            browser = await p.chromium.launch(headless=True)
+            browser = await p.chromium.launch(
+                headless=True,
+                args=[
+                    "--disable-blink-features=AutomationControlled",
+                    "--no-sandbox",
+                    "--disable-dev-shm-usage",
+                    "--disable-infobars",
+                    "--lang=ko-KR",
+                ],
+            )
             try:
                 context = await browser.new_context(
                     user_agent=_HEADERS["User-Agent"],
                     viewport={"width": 1280, "height": 900},
                     locale="ko-KR",
+                    extra_http_headers={"Accept-Language": "ko-KR,ko;q=0.9"},
+                )
+                # navigator.webdriver 플래그 숨김 — Naver 봇 감지 우회
+                await context.add_init_script(
+                    "Object.defineProperty(navigator, 'webdriver', {get: () => undefined})"
                 )
                 page = await context.new_page()
                 await page.goto(
                     f"https://map.naver.com/p/search/{query}",
                     timeout=30_000, wait_until="domcontentloaded",
                 )
+                # 페이지 로드 상태 진단 (봇 감지 여부 확인)
+                page_url = page.url
+                frames_info = [f.name for f in page.frames]
+                print(f"[naver_map_scraper] 페이지 로드 url={page_url!r} frames={frames_info}")
+
                 # entryIframe이 자동으로 뜨면 바로 진행, 아니면 최대 5초 대기
                 try:
                     await page.wait_for_function(

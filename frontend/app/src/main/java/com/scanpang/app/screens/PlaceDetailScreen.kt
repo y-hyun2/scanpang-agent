@@ -36,7 +36,6 @@ import androidx.compose.material.icons.rounded.Star
 import androidx.compose.material.icons.rounded.Store
 import androidx.compose.material.icons.rounded.Verified
 import androidx.compose.material.icons.rounded.Wc
-import androidx.compose.material.icons.rounded.CalendarToday
 import androidx.compose.material.icons.rounded.ConfirmationNumber
 import androidx.compose.material.icons.rounded.EventBusy
 import androidx.compose.material.icons.rounded.KeyboardArrowDown
@@ -426,8 +425,7 @@ private fun PlaceDetailContent(
             if (place.convenienceServices.isNotBlank()) DetailInfoLine(Icons.Rounded.MiscellaneousServices, "편의시설", place.convenienceServices)
             if (place.departments.isNotBlank()) DetailInfoLine(Icons.Rounded.Healing, "진료과목", place.departments)
             // 관광지/문화시설 전용
-            if (place.openDate.isNotBlank())     DetailInfoLine(Icons.Rounded.CalendarToday, "개장일", place.openDate)
-            if (place.closedDates.isNotBlank())  DetailInfoLine(Icons.Rounded.EventBusy,    "휴무일", place.closedDates)
+            if (place.closedDates.isNotBlank())  DetailInfoLine(Icons.Rounded.EventBusy, "휴무일", place.closedDates)
             if (place.admissionFee.isNotBlank()) DetailInfoLine(Icons.Rounded.ConfirmationNumber, "이용요금", place.admissionFee)
             // 숙박 전용
             if (place.checkinTime.isNotBlank())   DetailInfoLine(Icons.Rounded.Login,  "체크인", place.checkinTime)
@@ -670,7 +668,6 @@ private fun PlaceDetailResponse.mergeOnto(fallback: Place?, categoryKey: String)
     val checkinTimeValue  = (details["checkintime"]        as? String).orEmpty().trim()
     val checkoutTimeValue = (details["checkouttime"]       as? String).orEmpty().trim()
     val admissionFeeValue = (details["usefee"]             as? String).orEmpty().trim()
-    val openDateValue     = (details["opendate"]           as? String).orEmpty().trim()
     val closedDatesValue  = (details["restdate"]           as? String).orEmpty()
         .ifBlank { (details["restdateculture"] as? String).orEmpty() }.trim()
     val reservationUrlValue = (details["reservationurl"]   as? String).orEmpty().trim()
@@ -733,7 +730,6 @@ private fun PlaceDetailResponse.mergeOnto(fallback: Place?, categoryKey: String)
         checkinTime   = checkinTimeValue.ifBlank  { base.checkinTime },
         checkoutTime  = checkoutTimeValue.ifBlank { base.checkoutTime },
         admissionFee  = admissionFeeValue.ifBlank { base.admissionFee },
-        openDate      = openDateValue.ifBlank     { base.openDate },
         closedDates   = closedDatesValue.ifBlank  { base.closedDates },
         reservationUrl = reservationUrlValue.ifBlank { base.reservationUrl },
     )

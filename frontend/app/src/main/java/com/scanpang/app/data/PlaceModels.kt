@@ -32,7 +32,6 @@ data class Place(
     val checkinTime: String = "",     // accommodation: 체크인 시간
     val checkoutTime: String = "",    // accommodation: 체크아웃 시간
     val admissionFee: String = "",    // cultural: 이용요금
-    val openDate: String = "",        // tourist: 개장일
     val closedDates: String = "",     // tourist/cultural: 쉬는날
     val reservationUrl: String = "",  // accommodation: 예약 URL
 )

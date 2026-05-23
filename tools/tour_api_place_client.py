@@ -25,7 +25,7 @@ _COMMON_PARAMS: dict[str, str] = {
 
 # contentTypeId별 detailIntro2 추출 필드
 INTRO_FIELDS: dict[int, list[str]] = {
-    12: ["infocenter", "opendate", "parking", "restdate", "usetime"],
+    12: ["infocenter", "parking", "restdate", "usetime"],
     14: ["infocenterculture", "parkingculture", "parkingfee", "restdateculture", "usefee", "usetimeculture"],
     32: ["checkintime", "checkouttime", "infocenterlodging", "parkinglodging", "reservationlodging", "reservationurl"],
 }

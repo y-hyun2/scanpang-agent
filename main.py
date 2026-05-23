@@ -1031,7 +1031,7 @@ async def _tourist_detail(tourist_id: str, language: str = "ko") -> PlaceDetailR
             """
             SELECT id, content_id, content_type_id, name_ko, lat, lng, addr, phone, category,
                    overview, image_url, homepage, open_hours,
-                   infocenter, opendate, parking, restdate, usetime,
+                   infocenter, parking, restdate, usetime,
                    infocenterculture, parkingculture, parkingfee,
                    restdateculture, usefee, usetimeculture,
                    conveniences, source, last_updated,
@@ -1065,8 +1065,7 @@ async def _tourist_detail(tourist_id: str, language: str = "ko") -> PlaceDetailR
     else:
         type_details = {
             "infocenter": _strip_html(row["infocenter"] or ""),
-            "opendate":   _strip_html(row["opendate"] or ""),
-            "parking":    _strip_html(row["parking"] or ""),
+                        "parking":    _strip_html(row["parking"] or ""),
             "restdate":   _strip_html(row["restdate"] or ""),
             "usetime":    _strip_html(row["usetime"] or ""),
         }

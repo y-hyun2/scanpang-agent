@@ -64,7 +64,6 @@ CREATE TABLE IF NOT EXISTS tourist_places (
     open_hours      TEXT,
     -- 관광지(12)
     infocenter      TEXT,
-    opendate        TEXT,
     parking         TEXT,
     restdate        TEXT,
     usetime         TEXT,
@@ -86,15 +85,15 @@ UPSERT_SQL = """
 INSERT INTO tourist_places (
     id, content_id, content_type_id, name_ko, lat, lng, addr, phone, category,
     overview, image_url, homepage, open_hours,
-    infocenter, opendate, parking, restdate, usetime,
+    infocenter, parking, restdate, usetime,
     infocenterculture, parkingculture, parkingfee, restdateculture, usefee, usetimeculture,
     conveniences, source, last_updated
 ) VALUES (
     $1,$2,$3,$4,$5,$6,$7,$8,$9,
     $10,$11,$12,$13,
-    $14,$15,$16,$17,$18,
-    $19,$20,$21,$22,$23,$24,
-    $25,$26,NOW()
+    $14,$15,$16,$17,
+    $18,$19,$20,$21,$22,$23,
+    $24,$25,NOW()
 )
 ON CONFLICT (id) DO UPDATE SET
     name_ko            = EXCLUDED.name_ko,
@@ -106,7 +105,6 @@ ON CONFLICT (id) DO UPDATE SET
     homepage           = EXCLUDED.homepage,
     open_hours         = EXCLUDED.open_hours,
     infocenter         = EXCLUDED.infocenter,
-    opendate           = EXCLUDED.opendate,
     parking            = EXCLUDED.parking,
     restdate           = EXCLUDED.restdate,
     usetime            = EXCLUDED.usetime,
@@ -277,7 +275,6 @@ async def run(
                         open_hours or "",
                         # 관광지(12)
                         intro.get("infocenter") or "",
-                        intro.get("opendate") or "",
                         intro.get("parking") or "",
                         intro.get("restdate") or "",
                         intro.get("usetime") or "",
