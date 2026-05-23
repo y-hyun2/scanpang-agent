@@ -270,23 +270,54 @@ async def fetch_place_detail(
     result: dict = {}
     try:
         async with async_playwright() as p:
-            browser = await p.chromium.launch(headless=True)
+            browser = await p.chromium.launch(
+                headless=True,
+                args=[
+                    "--disable-blink-features=AutomationControlled",
+                    "--no-sandbox",
+                    "--disable-dev-shm-usage",
+                    "--disable-infobars",
+                    "--lang=ko-KR",
+                ],
+            )
             try:
                 context = await browser.new_context(
                     user_agent=_HEADERS["User-Agent"],
                     viewport={"width": 1280, "height": 900},
                     locale="ko-KR",
+                    extra_http_headers={"Accept-Language": "ko-KR,ko;q=0.9"},
+                )
+                # navigator.webdriver 플래그 숨김 — Naver 봇 감지 우회
+                await context.add_init_script(
+                    "Object.defineProperty(navigator, 'webdriver', {get: () => undefined})"
                 )
                 page = await context.new_page()
                 await page.goto(
                     f"https://map.naver.com/p/search/{query}",
                     timeout=30_000, wait_until="domcontentloaded",
                 )
-                await page.wait_for_timeout(4_000)
+                # 페이지 로드 상태 진단 (봇 감지 여부 확인)
+                page_url = page.url
+                frames_info = [f.name for f in page.frames]
+                print(f"[naver_map_scraper] 페이지 로드 url={page_url!r} frames={frames_info}")
+
+                # entryIframe이 자동으로 뜨면 바로 진행, 아니면 최대 5초 대기
+                try:
+                    await page.wait_for_function(
+                        "Array.from(document.querySelectorAll('iframe'))"
+                        ".some(f => f.name === 'entryIframe'"
+                        "     || (f.src || '').includes('pcmap.place.naver.com'))",
+                        timeout=5_000,
+                    )
+                except Exception:
+                    pass  # 없으면 searchIframe에서 클릭 시도
 
                 # entryIframe 자동 진입이 안 됐으면 첫 검색결과 클릭
                 entry_frame = next(
-                    (f for f in page.frames if f.name == "entryIframe"), None,
+                    (f for f in page.frames
+                     if f.name == "entryIframe"
+                     or "pcmap.place.naver.com" in (f.url or "")),
+                    None,
                 )
                 if not entry_frame:
                     search_handle = await page.query_selector("iframe#searchIframe")
@@ -295,15 +326,52 @@ async def fetch_place_detail(
                         if search_frame:
                             # li 자체엔 클릭 핸들러가 없는 카테고리(편의점 /cvs/list 등)가
                             # 있어, li 안 첫 anchor를 클릭해야 entryIframe이 뜬다.
-                            first_anchor = search_frame.locator("li a").first
-                            if await first_anchor.count() > 0:
+                            # expected_name과 가장 유사한 결과를 우선 클릭한다.
+                            clicked_name = await search_frame.evaluate("""
+                                (expectedName) => {
+                                    const liElems = Array.from(document.querySelectorAll('li'));
+                                    const expClean = expectedName.replace(/\\s/g, '').toLowerCase();
+                                    for (const li of liElems) {
+                                        const nameEl = li.querySelector(
+                                            '.place_bluelink, .YwYLL, [class*="title"], [class*="name"], strong'
+                                        );
+                                        const text = (nameEl ? nameEl.innerText : (li.innerText || ''))
+                                            .split('\\n')[0].trim();
+                                        if (!text) continue;
+                                        const txtClean = text.replace(/\\s/g, '').toLowerCase();
+                                        if (expClean.length >= 2 &&
+                                                (txtClean.includes(expClean) || expClean.includes(txtClean))) {
+                                            const a = li.querySelector('a');
+                                            if (a) { a.click(); return text; }
+                                        }
+                                    }
+                                    // fallback: 첫 번째 anchor 클릭
+                                    const first = document.querySelector('li a');
+                                    if (first) { first.click(); return '_first_'; }
+                                    return null;
+                                }
+                            """, expected_name or query)
+                            if clicked_name:
+                                print(f"[naver_map_scraper] 검색결과 클릭: {clicked_name!r} ({query!r})")
+                                # entryIframe이 실제로 뜰 때까지 명시적으로 대기 (최대 10초)
                                 try:
-                                    await first_anchor.click(timeout=8_000)
-                                    await page.wait_for_timeout(4_000)
-                                except Exception as click_e:
-                                    print(f"[naver_map_scraper] 검색결과 클릭 실패 ({query!r}): {click_e}")
+                                    await page.wait_for_function(
+                                        "Array.from(document.querySelectorAll('iframe'))"
+                                        ".some(f => f.name === 'entryIframe'"
+                                        "     || (f.src || '').includes('pcmap.place.naver.com'))",
+                                        timeout=10_000,
+                                    )
+                                except Exception:
+                                    await page.wait_for_timeout(3_000)
+                            else:
+                                print(f"[naver_map_scraper] 검색결과 클릭 실패 — 앵커 없음 ({query!r})")
+
+                    # name 속성 외 URL 패턴으로도 확인 (동적 로드 대응)
                     entry_frame = next(
-                        (f for f in page.frames if f.name == "entryIframe"), None,
+                        (f for f in page.frames
+                         if f.name == "entryIframe"
+                         or "pcmap.place.naver.com" in (f.url or "")),
+                        None,
                     )
 
                 if not entry_frame:
@@ -591,8 +659,45 @@ async def fetch_place_detail(
                     )
                     if "/photo" not in photo_url:
                         photo_url = entry_frame.url.split("?")[0].rstrip("/") + "/photo"
-                    await page.goto(photo_url, timeout=15_000, wait_until="domcontentloaded")
-                    await page.wait_for_timeout(2_500)
+                    print(f"[naver_map_scraper] photo_url={photo_url!r}")
+                    await page.goto(photo_url, timeout=15_000, wait_until="networkidle")
+                    await page.wait_for_timeout(2_000)
+
+                    # 관광지·문화시설·숙박은 /photo 기본 뷰가 방문자 사진(pup-review-phinf)이라
+                    # '업체' 서브탭을 클릭해야 ldb-phinf 사진이 노출된다.
+                    tab_clicked = await page.evaluate(r"""
+                        () => {
+                            const tabs = document.querySelectorAll('a, button, li, span');
+                            for (const t of tabs) {
+                                if ((t.innerText || '').trim() === '업체') {
+                                    t.click();
+                                    return true;
+                                }
+                            }
+                            return false;
+                        }
+                    """)
+                    print(f"[naver_map_scraper] 업체 탭 클릭={'성공' if tab_clicked else '탭 없음'}")
+                    if tab_clicked:
+                        await page.wait_for_timeout(2_000)
+
+                    # 전체 img 태그 도메인 진단
+                    all_img_domains = await page.evaluate(r"""
+                        () => {
+                            const domains = {};
+                            document.querySelectorAll('img').forEach(img => {
+                                const src = img.src || img.dataset?.src || '';
+                                if (!src) return;
+                                try {
+                                    const h = new URL(src).hostname;
+                                    domains[h] = (domains[h] || 0) + 1;
+                                } catch {}
+                            });
+                            return domains;
+                        }
+                    """)
+                    print(f"[naver_map_scraper] photo 페이지 img 도메인: {all_img_domains}")
+
                     extra_imgs = await page.evaluate(r"""
                         () => {
                             const isBiz = (src) => {

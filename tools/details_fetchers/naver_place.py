@@ -13,13 +13,14 @@ async def fetch(
     lng: float,
     building_ufid: str = "",
     category_name: str = "",
+    addr_hint: str = "",
 ) -> dict:
     """
     Naver Place에서 매장 상세를 가져와 store_details fetcher 포맷으로 변환.
 
-    Naver Place는 매장 단위로 페이지가 있어(`/place/{id}`) 영업시간·휴무·전화·
-    홈페이지·편의시설(주차/와이파이 등)을 한 번에 잡을 수 있다. 카페·음식점은
-    이 데이터만으로도 사용자에게 보여줄 정보 대부분이 채워진다.
+    addr_hint가 있으면 주소로 검색한다 (Tour API add1 등).
+    이름 검색보다 정확도가 높아 관광지·문화시설·숙박처럼 이름으로 안 잡히는
+    장소에 유용하다.
 
     Returns:
         {phone, addr, homepage, open_hours, closed_days, image_urls,
@@ -29,9 +30,11 @@ async def fetch(
     if not store_name:
         return {}
 
-    # 좌표 근처 매장이 잡히도록 fuzzy 매칭. expected_name만 줘서 같은 이름
-    # (스타벅스 다른 지점 등)의 매장이 잡혀도 거절되지 않게 함.
-    detail = await fetch_place_detail(query=store_name, expected_name=store_name)
+    query = addr_hint if addr_hint else store_name
+    detail = await fetch_place_detail(query=query, expected_name=store_name)
+    # addr_hint 검색 실패 시 장소명으로 재시도
+    if not detail and addr_hint:
+        detail = await fetch_place_detail(query=store_name, expected_name=store_name)
     if not detail:
         return {}
 

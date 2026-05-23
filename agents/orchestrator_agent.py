@@ -221,8 +221,8 @@ async def _intent_classifier_node(state: OrchestratorState) -> dict:
     )
     if resolved != state["user_message"]:
         print(f"[orchestrator] 지시어 resolve: {state['user_message']!r} → {resolved!r}")
-    if sub_category:
-        print(f"[orchestrator] {selected}.{sub_category}")
+    has_nav_ctx = bool(state.get("nav_context"))
+    print(f"[orchestrator] route: agent={selected}, sub={sub_category or '-'}, nav_context={has_nav_ctx}")
     return {
         "selected_agent":   selected,
         "source_agent":     selected,
@@ -261,9 +261,11 @@ async def _call_navigation_node(state: OrchestratorState) -> dict:
 async def _call_nav_guide_node(state: OrchestratorState) -> dict:
     # AR 길안내 중 어시스턴트 — frontend 가 보낸 nav_context (현재 turn/거리/목적지)
     # 를 그대로 LLM 프롬프트에 주입해서 응답 생성.
+    nav_ctx = state.get("nav_context", {}) or {}
+    print(f"[nav_guide] msg={_sub_message(state)!r}, nav_context.keys={list(nav_ctx.keys())}, is_routing={nav_ctx.get('is_routing')}")
     result = await run_nav_guide_agent(
         message=_sub_message(state),
-        nav_context=state.get("nav_context", {}) or {},
+        nav_context=nav_ctx,
         language=state.get("language", "ko"),
     )
     return {"sub_agent_response": result if isinstance(result, dict) else result.model_dump()}

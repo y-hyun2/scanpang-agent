@@ -14,6 +14,7 @@ class PlaceDetailRequest(BaseModel):
     # 사용자 좌표 — 매장까지 거리 표시용. None 이면 distance_m 응답도 None.
     user_lat: Optional[float] = None
     user_lng: Optional[float] = None
+    language: str = "ko"         # 응답 언어 — "ko"(기본) / "en"
 
 
 class PlaceDetailResponse(BaseModel):

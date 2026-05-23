@@ -291,11 +291,9 @@ private object AuthProviderArg {
 fun NavController.navigateToSearchWithQuery(prefillQuery: String) {
     navigate(AppRoutes.Search) {
         popUpTo(AppRoutes.Home) {
-            saveState = true
             inclusive = false
         }
         launchSingleTop = true
-        restoreState = true
     }
     runCatching {
         getBackStackEntry(AppRoutes.Search).savedStateHandle[AppRoutes.SearchSavedStatePendingQueryKey] =

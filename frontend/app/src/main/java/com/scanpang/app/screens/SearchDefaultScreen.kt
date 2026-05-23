@@ -152,6 +152,7 @@ fun SearchDefaultScreen(
     val onboardingPrefs = remember { OnboardingPreferences(context) }
     val s = LocalStrings.current
     val valueAdded = remember { onboardingPrefs.getValueAdded() }
+    val language = remember { onboardingPrefs.getLanguageCode() ?: "ko" }
 
     // 화면을 떠났다 돌아와도(상세 화면 등) 입력값을 유지.
     var query by rememberSaveable { mutableStateOf("") }
@@ -219,7 +220,7 @@ fun SearchDefaultScreen(
                     context, android.Manifest.permission.ACCESS_COARSE_LOCATION
                 )
         if (!hasPermission) {
-            viewModel.searchPlaces(q, lat = userLat, lng = userLng)
+            viewModel.searchPlaces(q, lat = userLat, lng = userLng, language = language)
             return
         }
         com.google.android.gms.location.LocationServices
@@ -234,10 +235,10 @@ fun SearchDefaultScreen(
                     viewModel.setUserLocation(loc.latitude, loc.longitude)
                 }
                 android.util.Log.d("SearchScreen", "search q=$q lat=$finalLat lng=$finalLng (loc=$loc)")
-                viewModel.searchPlaces(q, lat = finalLat, lng = finalLng)
+                viewModel.searchPlaces(q, lat = finalLat, lng = finalLng, language = language)
             }
             .addOnFailureListener {
-                viewModel.searchPlaces(q, lat = userLat, lng = userLng)
+                viewModel.searchPlaces(q, lat = userLat, lng = userLng, language = language)
             }
     }
 

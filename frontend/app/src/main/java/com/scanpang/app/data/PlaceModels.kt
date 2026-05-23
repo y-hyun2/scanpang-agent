@@ -28,6 +28,12 @@ data class Place(
     val toiletFemale: String = "",    // "11"
     val facilityTags: String = "",    // "장애인 화장실, 유아 화장실, 기저귀 교환대"
     val safetyTags: String = "",      // "CCTV, 비상벨"
+    // ── 관광지/문화시설/숙박 — Tour API 필드 평탄화 ──
+    val checkinTime: String = "",     // accommodation: 체크인 시간
+    val checkoutTime: String = "",    // accommodation: 체크아웃 시간
+    val admissionFee: String = "",    // cultural: 이용요금
+    val closedDates: String = "",     // tourist/cultural: 쉬는날
+    val reservationUrl: String = "",  // accommodation: 예약 URL
 )
 
 data class MenuItem(
