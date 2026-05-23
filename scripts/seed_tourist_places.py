@@ -4,8 +4,8 @@ Tour API locationBasedList2 기반으로 관광지(12)·문화시설(14)을 수�
 tourist_places 테이블에 적재한다.
 
 데이터 출처:
-    Tour API — 장소 발견, 주소/좌표/전화/제목, homepage/overview, 카테고리별 상세
-    Naver    — image_url(업체 사진), conveniences
+    Naver    — name, phone, addr, image_urls, conveniences, open_hours, homepage (우선)
+    Tour API — 장소 발견(좌표 검색), overview, 카테고리 상세, Naver 폴백
 
 사용:
     python scripts/seed_tourist_places.py
@@ -152,9 +152,9 @@ def sort_clusters(clusters, prefer_lat, prefer_lng):
     return sorted(clusters, key=lambda x: -x[3])
 
 
-# ── Naver 이미지 + 편의시설 ──────────────────────────────────────────────────
-async def _fetch_naver(name: str, lat: float, lng: float, addr: str) -> tuple[list, list, str, str, str, str, str]:
-    """Naver에서 image_urls + conveniences + open_hours + phone + intro + homepage + matched_name 조회."""
+# ── Naver 조회 ───────────────────────────────────────────────────────────────
+async def _fetch_naver(name: str, lat: float, lng: float, addr: str):
+    """Naver에서 image_urls·conveniences·open_hours·phone·addr·intro·homepage·matched_name 조회."""
     try:
         result = await naver_place.fetch(
             store_name=name, lat=lat, lng=lng,
@@ -174,10 +174,11 @@ async def _fetch_naver(name: str, lat: float, lng: float, addr: str) -> tuple[li
             intro,
             result.get("homepage") or "",
             matched,
+            result.get("addr") or "",
         )
     except Exception as e:
         print(f"    [naver] 실패: {e}")
-        return [], [], "", "", "", "", ""
+        return [], [], "", "", "", "", "", ""
 
 
 # ── 메인 시드 ────────────────────────────────────────────────────────────────
@@ -244,20 +245,24 @@ async def run(
                 common = await fetch_detail_common(content_id)
                 intro  = await fetch_detail_intro(content_id, ctype)
 
-                # Naver: 주소→실패시 이름으로 재시도 (naver_place.fetch 내부에서 처리)
-                naver_urls, conveniences, open_hours, naver_phone, naver_intro, naver_homepage, naver_name = \
+                # Naver 우선 조회
+                naver_urls, conveniences, naver_open_hours, naver_phone, \
+                naver_intro, naver_homepage, naver_name, naver_addr = \
                     await _fetch_naver(name, s_lat, s_lng, addr)
-                # Tour API firstimage + Naver 업체 사진 합산 (dedup, Tour API 먼저)
-                image_urls_combined: list[str] = []
-                if firstimage:
+
+                # 이미지: Naver 우선, Tour API firstimage 보충
+                image_urls_combined: list[str] = list(dict.fromkeys(u for u in naver_urls if u))
+                if firstimage and firstimage not in image_urls_combined:
                     image_urls_combined.append(firstimage)
-                for u in naver_urls:
-                    if u and u not in image_urls_combined:
-                        image_urls_combined.append(u)
-                # 이름: Naver 우선, 없으면 Tour API
-                name     = naver_name or name
-                phone    = phone or naver_phone
-                homepage = common.get("homepage") or naver_homepage
+
+                # 각 필드: Naver 우선 → Tour API 폴백
+                name      = naver_name or name
+                addr      = naver_addr or addr
+                phone     = (naver_phone or phone
+                             or intro.get("infocenter") or intro.get("infocenterculture") or "")
+                homepage  = naver_homepage or common.get("homepage") or ""
+                open_hours = (naver_open_hours
+                              or intro.get("usetime") or intro.get("usetimeculture") or "")
 
                 overview_raw = common.get("overview") or ""
                 overview = re.sub(r"<[^>]+>", "", overview_raw).strip() or naver_intro
@@ -277,7 +282,7 @@ async def run(
                         overview,
                         json.dumps(image_urls_combined, ensure_ascii=False) if image_urls_combined else None,
                         homepage,
-                        open_hours or "",
+                        open_hours,
                         # 관광지(12)
                         intro.get("infocenter") or "",
                         intro.get("parking") or "",
@@ -291,7 +296,7 @@ async def run(
                         intro.get("usefee") or "",
                         intro.get("usetimeculture") or "",
                         json.dumps(conveniences, ensure_ascii=False) if conveniences else None,
-                        "tour_api+naver" if naver_urls else "tour_api",
+                        "naver+tour_api" if naver_urls else "tour_api",
                     )
 
                 existing.add(place_id)

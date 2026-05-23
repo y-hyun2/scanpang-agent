@@ -12,7 +12,9 @@ Naver Map의 '이 주소의 장소' 패널을 채우는 내부 API를 직접 호
 """
 
 import asyncio
+import json
 import re
+import urllib.parse as _urlparse
 
 import httpx
 
@@ -36,14 +38,24 @@ def _clean_address(addr: str) -> str:
     m = _ADDRESS_CORE_RE.match(addr.strip())
     return m.group(1) if m else addr
 
+_UA = (
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+    "AppleWebKit/537.36 (KHTML, like Gecko) "
+    "Chrome/124.0.0.0 Safari/537.36"
+)
+
+# fetch_address_places / reverse_geocode — JSON API 호출용
 _HEADERS = {
-    "User-Agent": (
-        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
-        "AppleWebKit/537.36 (KHTML, like Gecko) "
-        "Chrome/124.0.0.0 Safari/537.36"
-    ),
+    "User-Agent": _UA,
     "Referer": "https://map.naver.com/",
     "Accept":  "application/json, text/plain, */*",
+}
+
+# fetch_place_detail — HTML 페이지 요청용 (Accept: application/json 제외)
+_HTML_HEADERS = {
+    "User-Agent": _UA,
+    "Referer": "https://map.naver.com/",
+    "Accept-Language": "ko-KR,ko;q=0.9",
 }
 
 # 매장이 아닌 편의시설(에스컬레이터·화장실·공중전화 등) — kind='facility'로 분류.
@@ -95,6 +107,102 @@ def _normalize_item(item: dict) -> dict | None:
         "floor":    _parse_floor(road_addr, name),
         "kind":     _classify_kind(category),
     }
+
+
+def _parse_apollo_state(html: str) -> dict:
+    """HTML에서 window.__APOLLO_STATE__ JSON을 추출한다."""
+    idx = html.find("__APOLLO_STATE__ =")
+    if idx < 0:
+        return {}
+    raw = html[idx + len("__APOLLO_STATE__ = "):]
+    brace_count = 0
+    for i, c in enumerate(raw):
+        if c == "{":
+            brace_count += 1
+        elif c == "}":
+            brace_count -= 1
+            if brace_count == 0:
+                try:
+                    return json.loads(raw[: i + 1])
+                except Exception:
+                    return {}
+    return {}
+
+
+def _resolve_apollo(apollo: dict, node) -> dict:
+    """Apollo __ref 참조를 실제 객체로 치환한다."""
+    if isinstance(node, dict) and "__ref" in node:
+        return apollo.get(node["__ref"]) or {}
+    return node or {}
+
+
+def _filter_ldb_images(urls) -> list:
+    """ldb-phinf.pstatic.net 도메인 이미지만 반환 (업체 등록 사진)."""
+    seen: set = set()
+    result = []
+    for u in (urls or []):
+        if not u or u in seen:
+            continue
+        if "ldb-phinf.pstatic.net" in u:
+            seen.add(u)
+            result.append(u)
+    return result
+
+
+def _match_list_item(
+    items: list,
+    expected_name: str,
+    expected_addr: str,
+) -> dict | None:
+    """
+    PlaceListBusinessesItem 목록에서 expected_name / expected_addr 기준 최적 매칭.
+    둘 다 비어있으면 첫 번째 아이템 반환.
+    """
+    if not items:
+        return None
+    if not expected_name and not expected_addr:
+        return items[0]
+
+    try:
+        from rapidfuzz import fuzz as _fuzz
+        use_fuzz = True
+    except ImportError:
+        use_fuzz = False
+
+    best: dict | None = None
+    best_score = -1
+
+    for item in items:
+        name = item.get("name", "") or ""
+        addr = item.get("roadAddress", "") or item.get("address", "") or ""
+
+        name_score = 0
+        addr_score = 0
+
+        if expected_name:
+            if use_fuzz:
+                name_score = _fuzz.partial_ratio(
+                    expected_name.lower().replace(" ", ""),
+                    name.lower().replace(" ", ""),
+                )
+            else:
+                en = expected_name.lower()
+                nl = name.lower()
+                name_score = 100 if en in nl or nl in en else 0
+
+        if expected_addr:
+            norm_exp = _clean_address(expected_addr).replace("특별시", "").replace("광역시", "").strip()
+            norm_got = _clean_address(addr).replace("특별시", "").replace("광역시", "").strip()
+            addr_score = 100 if norm_exp and norm_exp in norm_got else 0
+
+        total = max(name_score, addr_score)
+        if total > best_score:
+            best_score = total
+            best = item
+
+    if best_score < 60:
+        return None
+    return best
 
 
 async def fetch_address_places(
@@ -242,527 +350,124 @@ async def fetch_place_detail(
     expected_addr: str = "",
 ) -> dict:
     """
-    Naver Map에서 장소 상세(영업시간·휴무·전화·편의시설·홈페이지)를 가져온다.
-    Playwright로 map.naver.com에 검색 → entryIframe의 Apollo state + 렌더된 DOM 파싱.
+    Naver Place 상세를 httpx + Apollo state 파싱으로 가져온다.
+    (Playwright 기반 접근은 2025-05 Naver 클라이언트 구조 변경으로 폐기)
+
+    pcmap.place.naver.com SSR HTML에 window.__APOLLO_STATE__ 가 포함되어 있어
+    브라우저 없이 name·phone·address·conveniences·imageUrls를 추출할 수 있다.
+    영업시간 주간 스케줄과 homepage는 GraphQL lazy-load 항목이라 SSR에 없음.
 
     Args:
-        query: 검색어 (보통 "{addr} {bld_nm}" 형태)
-        expected_name: 빌딩 이름 매칭용. fuzz partial_ratio >= 60이면 OK.
-        expected_addr: 도로명주소 매칭용. 정규화된 "{도로명} {번호}" 일치하면 OK.
-
-        name 또는 addr 중 하나라도 매칭되면 신뢰 — 둘 다 어긋날 때만 거절
-        (테넌트 매장이 잘못 잡힌 경우 방어).
+        query: 검색어 (장소명 또는 주소)
+        expected_name: 이름 매칭 필터 (rapidfuzz partial_ratio >= 60)
+        expected_addr: 주소 매칭 필터 (도로명+번호 포함 여부)
 
     Returns:
         {place_id, name, phone, roadAddress, address, category, conveniences,
-         open_hours, closed_days, homepage}
-        실패 / 매칭 실패 시 빈 dict.
+         open_hours, closed_days, homepage, image_urls}
+        실패·매칭 실패 시 빈 dict.
     """
     if not query:
         return {}
 
     try:
-        from playwright.async_api import async_playwright  # type: ignore
-    except ImportError:
-        print("[naver_map_scraper] playwright 미설치 — place_detail 건너뜀")
-        return {}
-
-    result: dict = {}
-    try:
-        async with async_playwright() as p:
-            browser = await p.chromium.launch(
-                headless=True,
-                args=[
-                    "--disable-blink-features=AutomationControlled",
-                    "--no-sandbox",
-                    "--disable-dev-shm-usage",
-                    "--disable-infobars",
-                    "--lang=ko-KR",
-                ],
+        async with httpx.AsyncClient(timeout=15, headers=_HTML_HEADERS, follow_redirects=True) as client:
+            # 1. 검색 페이지 Apollo state → place ID 탐색
+            search_url = (
+                "https://pcmap.place.naver.com/place/list"
+                f"?query={_urlparse.quote(query)}&lang=ko"
             )
-            try:
-                context = await browser.new_context(
-                    user_agent=_HEADERS["User-Agent"],
-                    viewport={"width": 1280, "height": 900},
-                    locale="ko-KR",
-                    extra_http_headers={"Accept-Language": "ko-KR,ko;q=0.9"},
+            resp = await client.get(search_url)
+            apollo_list = _parse_apollo_state(resp.text)
+
+            list_items = [
+                v for k, v in apollo_list.items()
+                if k.startswith("PlaceListBusinessesItem:")
+            ]
+            if not list_items:
+                print(f"[naver_map_scraper] 검색결과 없음 ({query!r})")
+                return {}
+
+            matched = _match_list_item(list_items, expected_name, expected_addr)
+            if not matched:
+                print(f"[naver_map_scraper] 매칭 실패 ({query!r}, expected={expected_name!r})")
+                return {}
+
+            place_id = matched["id"]
+            print(f"[naver_map_scraper] place 발견: id={place_id} ({query!r})")
+
+            # 목록 아이템에서 이미지·영업시간 현황 추출
+            image_urls = _filter_ldb_images(matched.get("imageUrls") or [])
+            nbh_raw = matched.get("newBusinessHours")
+            nbh = _resolve_apollo(apollo_list, nbh_raw) if nbh_raw else {}
+            open_hours = nbh.get("description", "") if isinstance(nbh, dict) else ""
+
+            # 2. 상세 페이지 Apollo state → conveniences·추가 이미지
+            detail_url = f"https://pcmap.place.naver.com/place/{place_id}/home"
+            resp2 = await client.get(detail_url)
+            apollo_detail = _parse_apollo_state(resp2.text)
+
+            base = {}
+            for prefix in ("PlaceDetailBase", "AccommodationDetailBase",
+                           "AttractionDetailBase", "RestaurantDetailBase",
+                           "CafeDetailBase"):
+                candidate = apollo_detail.get(f"{prefix}:{place_id}")
+                if candidate:
+                    base = candidate
+                    break
+
+            # 상세 페이지 전체 JSON에서 ldb-phinf 이미지 추가 수집
+            extra = _filter_ldb_images(
+                re.findall(
+                    r"https://ldb-phinf\.pstatic\.net/[^\"\s]+",
+                    json.dumps(apollo_detail, ensure_ascii=False),
                 )
-                # navigator.webdriver 플래그 숨김 — Naver 봇 감지 우회
-                await context.add_init_script(
-                    "Object.defineProperty(navigator, 'webdriver', {get: () => undefined})"
-                )
-                page = await context.new_page()
-                await page.goto(
-                    f"https://map.naver.com/p/search/{query}",
-                    timeout=30_000, wait_until="domcontentloaded",
-                )
-                # domcontentloaded 이후 Naver Maps JS가 iframe을 생성할 때까지 대기.
-                # searchIframe(검색결과 목록) 또는 entryIframe(단일 장소) 중 하나가 뜰 때까지.
-                # Naver가 name 속성 대신 id 속성을 사용하도록 변경했으므로 id로도 확인.
-                try:
-                    await page.wait_for_function(
-                        "Array.from(document.querySelectorAll('iframe'))"
-                        ".some(f => ['searchIframe','entryIframe'].includes(f.id)"
-                        "     || ['searchIframe','entryIframe'].includes(f.name)"
-                        "     || (f.src || '').includes('pcmap.place.naver.com'))",
-                        timeout=12_000,
-                    )
-                except Exception:
-                    pass  # 12초 내 미발생 시 현재 상태로 진행
+            )
+            seen_imgs: set = set(image_urls)
+            for u in extra:
+                if u not in seen_imgs:
+                    seen_imgs.add(u)
+                    image_urls.append(u)
+                if len(image_urls) >= 6:
+                    break
 
-                # 페이지 로드 상태 진단
-                page_url = page.url
-                frames_info = [f.name for f in page.frames]
-                print(f"[naver_map_scraper] 페이지 로드 url={page_url!r} frames={frames_info}")
+            road_detail = base.get("road", "") or ""
+            result: dict = {
+                "place_id":     place_id,
+                "name":         base.get("name") or matched.get("name", ""),
+                "phone":        base.get("phone") or matched.get("phone", ""),
+                "roadAddress":  base.get("roadAddress") or matched.get("roadAddress", ""),
+                "address":      base.get("address") or matched.get("address", ""),
+                "category":     base.get("category") or matched.get("category", ""),
+                "conveniences": base.get("conveniences") or [],
+                "open_hours":   open_hours,
+                "closed_days":  "",
+                "homepage":     "",
+                "road_detail":  road_detail,
+                "image_urls":   image_urls,
+            }
 
-                # entryIframe 자동 진입이 안 됐으면 첫 검색결과 클릭
-                # Naver가 name 속성을 비워두고 id="entryIframe"만 설정하도록 변경함.
-                # CSS ID 선택자로 handle을 찾고 content_frame()으로 Frame 객체를 얻는다.
-                _entry_handle = await page.query_selector("iframe#entryIframe")
-                entry_frame = await _entry_handle.content_frame() if _entry_handle else None
-                if not entry_frame:
-                    entry_frame = next(
-                        (f for f in page.frames
-                         if "pcmap.place.naver.com" in (f.url or "")),
-                        None,
-                    )
-                if not entry_frame:
-                    search_handle = await page.query_selector("iframe#searchIframe")
-                    if search_handle:
-                        search_frame = await search_handle.content_frame()
-                        if search_frame:
-                            # li 자체엔 클릭 핸들러가 없는 카테고리(편의점 /cvs/list 등)가
-                            # 있어, li 안 첫 anchor를 클릭해야 entryIframe이 뜬다.
-                            # expected_name과 가장 유사한 결과를 우선 클릭한다.
-                            clicked_name = await search_frame.evaluate("""
-                                (expectedName) => {
-                                    const liElems = Array.from(document.querySelectorAll('li'));
-                                    const expClean = expectedName.replace(/\\s/g, '').toLowerCase();
-                                    for (const li of liElems) {
-                                        const nameEl = li.querySelector(
-                                            '.place_bluelink, .YwYLL, [class*="title"], [class*="name"], strong'
-                                        );
-                                        const text = (nameEl ? nameEl.innerText : (li.innerText || ''))
-                                            .split('\\n')[0].trim();
-                                        if (!text) continue;
-                                        const txtClean = text.replace(/\\s/g, '').toLowerCase();
-                                        if (expClean.length >= 2 &&
-                                                (txtClean.includes(expClean) || expClean.includes(txtClean))) {
-                                            const a = li.querySelector('a');
-                                            if (a) { a.click(); return text; }
-                                        }
-                                    }
-                                    // fallback: 첫 번째 anchor 클릭
-                                    const first = document.querySelector('li a');
-                                    if (first) { first.click(); return '_first_'; }
-                                    return null;
-                                }
-                            """, expected_name or query)
-                            if clicked_name:
-                                print(f"[naver_map_scraper] 검색결과 클릭: {clicked_name!r} ({query!r})")
-                                # entryIframe이 실제로 뜰 때까지 명시적으로 대기 (최대 10초)
-                                try:
-                                    await page.wait_for_function(
-                                        "Array.from(document.querySelectorAll('iframe'))"
-                                        ".some(f => f.id === 'entryIframe' || f.name === 'entryIframe'"
-                                        "     || (f.src || '').includes('pcmap.place.naver.com'))",
-                                        timeout=10_000,
-                                    )
-                                except Exception:
-                                    await page.wait_for_timeout(3_000)
-                            else:
-                                print(f"[naver_map_scraper] 검색결과 클릭 실패 — 앵커 없음 ({query!r})")
+            # 층 정보 추출 — base.road에서 "X층" 패턴
+            m_floor = re.search(
+                r"지하\s*(\d+)\s*층|B\s*(\d+)\s*층?|(\d+)\s*F|(\d+)\s*층",
+                road_detail,
+            )
+            if m_floor:
+                g = m_floor.groups()
+                basement = g[0] or g[1]
+                above    = g[2] or g[3]
+                if basement:
+                    result["floor"] = f"B{int(basement)}"
+                elif above:
+                    result["floor"] = f"{int(above)}F"
 
-                    # CSS ID 선택자로 재확인 (name 속성이 비어있어도 id로 접근 가능)
-                    _entry_handle2 = await page.query_selector("iframe#entryIframe")
-                    entry_frame = await _entry_handle2.content_frame() if _entry_handle2 else None
-                    if not entry_frame:
-                        entry_frame = next(
-                            (f for f in page.frames
-                             if "pcmap.place.naver.com" in (f.url or "")),
-                            None,
-                        )
+        print(f"[naver_map_scraper] place_detail 성공: place_id={place_id!r} "
+              f"name={result['name']!r}")
+        return result
 
-                if not entry_frame:
-                    print(f"[naver_map_scraper] entryIframe 미발견 ({query!r})")
-                    return {}
-
-                await asyncio.sleep(1.5)
-                # Naver Place URL은 카테고리별로 path가 다름:
-                #   일반 매장:    pcmap.place.naver.com/place/{id}/home
-                #   음식점/카페:  pcmap.place.naver.com/restaurant/{id}/home
-                #   카페 변형:     pcmap.place.naver.com/cafe/{id}/home
-                #   숙박:         pcmap.place.naver.com/accommodation/{id}/home
-                #   편의점:        pcmap.place.naver.com/cvs/{id}/home
-                #   병원:          pcmap.place.naver.com/hospital/{id}/home
-                #   약국:          pcmap.place.naver.com/pharmacy/{id}/home
-                m = re.search(r"/(?:place|restaurant|cafe|accommodation|attraction|cvs|hospital|pharmacy)/(\d+)", entry_frame.url)
-                place_id = m.group(1) if m else None
-                if not place_id:
-                    print(f"[naver_map_scraper] place_id 추출 실패 ({query!r}, url={entry_frame.url!r})")
-                    return {}
-
-                apollo_json = await entry_frame.evaluate(
-                    "JSON.stringify(window.__APOLLO_STATE__ || {})"
-                )
-                import json as _json
-                apollo = _json.loads(apollo_json or "{}")
-                # Apollo state 키도 카테고리별로 prefix 다름. PlaceDetailBase,
-                # RestaurantDetailBase, AccommodationDetailBase 등 순회.
-                base = {}
-                for prefix in ("PlaceDetailBase", "RestaurantDetailBase",
-                               "CafeDetailBase", "AccommodationDetailBase",
-                               "AttractionDetailBase"):
-                    candidate = apollo.get(f"{prefix}:{place_id}")
-                    if candidate:
-                        base = candidate
-                        break
-                if not base:
-                    print(f"[naver_map_scraper] DetailBase:{place_id} 비어있음 (Apollo 키 {len(apollo)}개)")
-                    return {}
-
-                name = base.get("name", "") or ""
-                got_road = base.get("roadAddress", "") or ""
-
-                # 이름 매칭 OR 주소 매칭 — 둘 다 어긋나면 거절 (테넌트 매장 방어).
-                if expected_name or expected_addr:
-                    name_ok = False
-                    addr_ok = False
-                    try:
-                        from rapidfuzz import fuzz as _fuzz
-                        if expected_name:
-                            score = _fuzz.partial_ratio(
-                                expected_name.lower().replace(" ", ""),
-                                name.lower().replace(" ", ""),
-                            )
-                            name_ok = score >= 60
-                    except ImportError:
-                        # rapidfuzz 없으면 이름 검증 통과로 간주
-                        name_ok = True
-
-                    if expected_addr:
-                        # 도로명+번호 정규화 후 비교 (앞 글자 시/특별시 차이 무시)
-                        norm_exp = _clean_address(expected_addr).replace("특별시", "").replace("광역시", "").strip()
-                        norm_got = _clean_address(got_road).replace("특별시", "").replace("광역시", "").strip()
-                        addr_ok = bool(norm_exp) and norm_exp in norm_got
-
-                    if not (name_ok or addr_ok):
-                        print(f"[naver_map_scraper] place_detail 매칭 실패 "
-                              f"(expected_name={expected_name!r}, got_name={name!r}, "
-                              f"expected_addr={expected_addr!r}, got_road={got_road!r})")
-                        return {}
-
-                # 공식 홈페이지 — base.shopWindow.homepages.repr.url 에 nested.
-                # base 안에 인라인으로 들어있는 경우와 __ref 참조인 경우 둘 다 처리.
-                def _resolve(node):
-                    if isinstance(node, dict) and "__ref" in node:
-                        return apollo.get(node["__ref"]) or {}
-                    return node or {}
-                shop_window  = _resolve(base.get("shopWindow"))
-                homepages    = _resolve(shop_window.get("homepages")) if shop_window else {}
-                home_repr    = _resolve(homepages.get("repr")) if homepages else {}
-                naver_home   = (home_repr.get("url") or home_repr.get("landingUrl") or "")
-
-                result = {
-                    "place_id":     place_id,
-                    "name":         name,
-                    "phone":        base.get("phone", "") or "",
-                    "roadAddress":  base.get("roadAddress", "") or "",
-                    "address":      base.get("address", "") or "",
-                    "category":     base.get("category", "") or "",
-                    "conveniences": base.get("conveniences", []) or [],
-                    "homepage":     naver_home,
-                    # base.road = "을지로3가역 12번출구 앞, 포포인츠 호텔 명동점 1층"
-                    # 매장이 속한 건물명·층 정보. floor 정규화 추출용.
-                    "road_detail":  base.get("road", "") or "",
-                }
-                # 층 정보 추출 — base.road에서 "X층" 패턴
-                m_floor = re.search(r"지하\s*(\d+)\s*층|B\s*(\d+)\s*층?|(\d+)\s*F|(\d+)\s*층",
-                                    result["road_detail"])
-                if m_floor:
-                    g = m_floor.groups()
-                    basement = g[0] or g[1]
-                    above    = g[2] or g[3]
-                    if basement:
-                        result["floor"] = f"B{int(basement)}"
-                    elif above:
-                        result["floor"] = f"{int(above)}F"
-
-                # 영업시간 펼침 토글 클릭 — 페이지에 여러 aria-expanded=false 토글이 있으므로
-                # "영업시간"이라는 텍스트가 ancestor에 있는 토글만 골라서 클릭한다.
-                # 1순위: 클래스명 a.gKP9i (현재 Naver Place의 영업시간 토글 클래스).
-                # 2순위: 모든 a/button[aria-expanded=false] 중 ancestor에 '영업' 텍스트 있는 것.
-                try:
-                    clicked = await entry_frame.evaluate(r"""
-                        () => {
-                            // 1순위: 정확한 클래스
-                            let toggle = document.querySelector('a.gKP9i');
-                            if (!toggle) {
-                                // 2순위: aria-expanded=false 후보 중 '영업' 텍스트 가진 ancestor 찾기
-                                const cands = document.querySelectorAll(
-                                    "a[role='button'][aria-expanded='false'], button[aria-expanded='false']"
-                                );
-                                for (const c of cands) {
-                                    const txt = c.innerText || '';
-                                    if (/영업|펼쳐보기/.test(txt) && c.closest('div.O8qbU')) {
-                                        toggle = c;
-                                        break;
-                                    }
-                                }
-                            }
-                            if (!toggle) return false;
-                            toggle.click();
-                            return true;
-                        }
-                    """)
-                    if clicked:
-                        await entry_frame.wait_for_timeout(1_500)
-                except Exception:
-                    pass
-
-                dom = await entry_frame.evaluate(r"""
-                    () => {
-                        const r = {};
-                        // 스크린리더용 텍스트(place_blind) 제거 후 가시 텍스트만 추출.
-                        const visText = (el) => {
-                            if (!el) return '';
-                            const clone = el.cloneNode(true);
-                            clone.querySelectorAll('.place_blind').forEach(b => b.remove());
-                            return (clone.innerText || '').trim().replace(/\s+/g, ' ');
-                        };
-
-                        // ── 영업시간 영역 식별 ──
-                        // div.O8qbU는 페이지에 여러 개 (주소/영업시간/편의시설 등 섹션마다).
-                        // '영업'/'영업시간' em이 포함된 O8qbU만 정확히 골라야 함.
-                        const ems = Array.from(document.querySelectorAll('em'));
-                        const bizEm = ems.find(e => /영업/.test(e.textContent || ''));
-                        let bizBlock = bizEm ? bizEm.closest('div.O8qbU') : null;
-                        // closest('div.O8qbU') 실패 fallback: O8qbU 후보들 중 '영업' 텍스트 가진 것
-                        if (!bizBlock) {
-                            const o8s = Array.from(document.querySelectorAll('div.O8qbU'));
-                            bizBlock = o8s.find(d => /영업시간|영업\s*중|영업\s*종료/.test(d.innerText || ''));
-                        }
-
-                        if (bizBlock) {
-                            // 펼쳐진 후 요일별 영업시간을 깔끔히 추출.
-                            // 패턴: "수(5/13)매장07:00 - 17:00드라이브스루..." 같이 노이즈 섞임.
-                            // → 정규식으로 "{요일} HH:MM-HH:MM"만 뽑아내고 요일별 중복 제거.
-                            const dayHourRe = /^(월|화|수|목|금|토|일)(?:\([\d/]+\))?\s*(?:매장|영업|평일|주말|24시간|연중무휴)?\s*(\d{1,2}:\d{2})\s*[-~]\s*(\d{1,2}:\d{2})/;
-                            const all = Array.from(bizBlock.querySelectorAll('li, div, span'));
-                            const byDay = new Map();  // 요일별 1개만 보존
-                            for (const el of all) {
-                                const t = visText(el);
-                                if (t.length > 200) continue;
-                                const m = t.match(dayHourRe);
-                                if (m && !byDay.has(m[1])) {
-                                    byDay.set(m[1], `${m[1]} ${m[2]}-${m[3]}`);
-                                }
-                            }
-                            const order = ['월','화','수','목','금','토','일'];
-                            const lines = order.filter(d => byDay.has(d)).map(d => byDay.get(d));
-                            if (lines.length >= 3) {
-                                r.open_hours = lines.join(' / ');
-                            } else {
-                                // 펼침 실패 — 요약 텍스트 fallback
-                                const blockText = visText(bizBlock);
-                                r.open_hours = /영업/.test(blockText) ? blockText : '';
-                            }
-                        }
-
-                        // ── 휴무일 (오늘 기준 30일 이내만 노출) ──
-                        const closedEms = Array.from(document.querySelectorAll('em'))
-                            .filter(e => /휴무/.test(e.textContent || ''));
-                        if (closedEms.length > 0) {
-                            const closedEm = closedEms[0];
-                            const sib = closedEm.parentElement?.querySelector('.pwY9x')
-                                     || closedEm.nextElementSibling
-                                     || closedEm.parentElement;
-                            if (sib) r.closed_days = visText(sib);
-                        }
-
-                        // ── 외부 홈페이지 URL ──
-                        const all = Array.from(document.querySelectorAll('a[href^="http"]'));
-                        const ext = all.find(a => !/(naver|nver|map\.|m\.naver|pcmap)/.test(a.href));
-                        if (ext) r.homepage = ext.href;
-
-                        // ── 메뉴 추출 (카페/식당 핵심) ──
-                        // 가격 패턴(N,NNN원 또는 NNNN원)을 가진 짧은 텍스트를
-                        // 메뉴 후보로 본다. 가격 앞 텍스트를 이름으로 추출.
-                        const priceRe = /(\d{1,3}(,\d{3})+|\d{3,6})\s*원/;
-                        const menuCandidates = Array.from(
-                            document.querySelectorAll('li, .place_section_content > div > div, .order_list li')
-                        );
-                        const menuItems = [];
-                        const seenMenu = new Set();
-                        for (const el of menuCandidates) {
-                            const t = visText(el);
-                            if (!t || t.length > 80) continue;
-                            const m = t.match(priceRe);
-                            if (!m) continue;
-                            const price = m[0];
-                            const name = t.substring(0, t.indexOf(price)).trim();
-                            // 이름이 너무 짧거나 가격 포함이면 노이즈
-                            if (!name || name.length > 40 || /\d원/.test(name)) continue;
-                            const key = name + '|' + price;
-                            if (seenMenu.has(key)) continue;
-                            seenMenu.add(key);
-                            menuItems.push({name, price});
-                            if (menuItems.length >= 20) break;
-                        }
-                        if (menuItems.length > 0) r.menu = menuItems;
-
-                        // ── 이미지 URL — '업체' 등록 사진만 ──
-                        // Naver 사진 탭 카테고리별 CDN 도메인이 다름:
-                        //   업체 사진 : ldb-phinf.pstatic.net
-                        //   클립     : clip-service-phinf.pstatic.net
-                        //   방문자/리뷰: pup-review-phinf.pstatic.net
-                        // search.pstatic.net/common/?src=... 로 wrap 된 경우도 원본 도메인을
-                        // src 쿼리 파라미터에서 추출해 검사.
-                        const isBizPhoto = (src) => {
-                            if (!src) return false;
-                            try {
-                                const u = new URL(src, location.origin);
-                                const wrapped = u.searchParams.get('src') || '';
-                                if (wrapped.includes('ldb-phinf')) return true;
-                            } catch (e) {}
-                            return src.includes('ldb-phinf');
-                        };
-                        const imgs = Array.from(document.querySelectorAll('img'));
-                        const imgUrls = [];
-                        const seenImg = new Set();
-                        for (const img of imgs) {
-                            const src = img.src || img.dataset?.src || '';
-                            if (!src || seenImg.has(src)) continue;
-                            if (!isBizPhoto(src)) continue;
-                            seenImg.add(src);
-                            imgUrls.push(src);
-                            if (imgUrls.length >= 6) break;
-                        }
-                        if (imgUrls.length > 0) r.image_urls = imgUrls;
-
-                        // ── 소개·설명 (관광지/문화시설용) ──
-                        // class O8qbU에 '소개' em이 있는 블록 — '영업'과 다른 별도 블록일 수 있음.
-                        const introEm = ems.find(e => /소개|설명/.test(e.textContent || ''));
-                        if (introEm) {
-                            const block = introEm.closest('div.O8qbU, li, div');
-                            if (block) {
-                                const intro = visText(block);
-                                // em 텍스트 자체(=label)는 빼고 본문만
-                                const labelText = visText(introEm);
-                                r.intro = intro.startsWith(labelText) ? intro.slice(labelText.length).trim() : intro;
-                            }
-                        }
-                        return r;
-                    }
-                """)
-                result.update({k: v for k, v in (dom or {}).items() if v})
-
-                # ── 업체 사진 보강 — photo 탭 navigate ──
-                # 메인 home 페이지엔 carousel 미리보기(1-2장)만 노출되므로
-                # /photo 경로로 navigate 해 ldb-phinf 도메인 사진을 더 모은다.
-                try:
-                    photo_url = re.sub(
-                        r"/(home|info|location|menu|review)(\?|$)",
-                        "/photo\\2",
-                        entry_frame.url,
-                    )
-                    if "/photo" not in photo_url:
-                        photo_url = entry_frame.url.split("?")[0].rstrip("/") + "/photo"
-                    print(f"[naver_map_scraper] photo_url={photo_url!r}")
-                    await page.goto(photo_url, timeout=15_000, wait_until="networkidle")
-                    await page.wait_for_timeout(2_000)
-
-                    # 관광지·문화시설·숙박은 /photo 기본 뷰가 방문자 사진(pup-review-phinf)이라
-                    # '업체' 서브탭을 클릭해야 ldb-phinf 사진이 노출된다.
-                    tab_clicked = await page.evaluate(r"""
-                        () => {
-                            const tabs = document.querySelectorAll('a, button, li, span');
-                            for (const t of tabs) {
-                                if ((t.innerText || '').trim() === '업체') {
-                                    t.click();
-                                    return true;
-                                }
-                            }
-                            return false;
-                        }
-                    """)
-                    print(f"[naver_map_scraper] 업체 탭 클릭={'성공' if tab_clicked else '탭 없음'}")
-                    if tab_clicked:
-                        await page.wait_for_timeout(2_000)
-
-                    # 전체 img 태그 도메인 진단
-                    all_img_domains = await page.evaluate(r"""
-                        () => {
-                            const domains = {};
-                            document.querySelectorAll('img').forEach(img => {
-                                const src = img.src || img.dataset?.src || '';
-                                if (!src) return;
-                                try {
-                                    const h = new URL(src).hostname;
-                                    domains[h] = (domains[h] || 0) + 1;
-                                } catch {}
-                            });
-                            return domains;
-                        }
-                    """)
-                    print(f"[naver_map_scraper] photo 페이지 img 도메인: {all_img_domains}")
-
-                    extra_imgs = await page.evaluate(r"""
-                        () => {
-                            const isBiz = (src) => {
-                                if (!src) return false;
-                                try {
-                                    const u = new URL(src, location.origin);
-                                    if ((u.searchParams.get('src')||'').includes('ldb-phinf')) return true;
-                                } catch (e) {}
-                                return src.includes('ldb-phinf');
-                            };
-                            const out = [];
-                            const seen = new Set();
-                            for (const img of document.querySelectorAll('img')) {
-                                const src = img.src || img.dataset?.src;
-                                if (!src || seen.has(src)) continue;
-                                if (!isBiz(src)) continue;
-                                seen.add(src);
-                                out.push(src);
-                                if (out.length >= 12) break;
-                            }
-                            return out;
-                        }
-                    """)
-                    if extra_imgs:
-                        existing = list(result.get("image_urls", []) or [])
-                        seen = set(existing)
-                        for u in extra_imgs:
-                            if u in seen:
-                                continue
-                            seen.add(u)
-                            existing.append(u)
-                            if len(existing) >= 6:
-                                break
-                        result["image_urls"] = existing
-                except Exception as e:
-                    print(f"[naver_map_scraper] photo 탭 추가 진입 실패: {e}")
-            finally:
-                await browser.close()
     except Exception as e:
         print(f"[naver_map_scraper] fetch_place_detail 실패 ({query!r}): {e}")
         return {}
-
-    # Naver Place의 placeholder 텍스트("영업시간 수정 제안하기")는 점주가 영업시간을
-    # 등록 안 한 매장에 항상 보이는 CTA. 정보가 없는 거지 영업시간이 아니라서 제거.
-    # 일부 매장은 "24시간 영업...영업시간 수정 제안하기"처럼 suffix로 붙기도 한다.
-    _PLACEHOLDER = "영업시간 수정 제안하기"
-    if "open_hours" in result:
-        oh = (result["open_hours"] or "").strip()
-        if oh == _PLACEHOLDER:
-            result["open_hours"] = ""
-        elif oh.endswith(_PLACEHOLDER):
-            result["open_hours"] = oh[: -len(_PLACEHOLDER)].strip()
-
-    print(f"[naver_map_scraper] place_detail 성공: place_id={result.get('place_id')!r} "
-          f"name={result.get('name')!r}")
-    return result
 
 
 if __name__ == "__main__":
