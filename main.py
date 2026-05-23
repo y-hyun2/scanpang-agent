@@ -962,7 +962,8 @@ async def _accommodation_search(req: SearchRequest, lat: float, lng: float, lang
     async with pool.acquire() as conn:
         rows = await conn.fetch(
             """
-            SELECT id, name_ko, category, addr, phone, lat, lng, image_url,
+            SELECT id, name_ko, category, addr, phone, lat, lng,
+                   (image_urls->>0) AS image_url,
                    CASE
                      WHEN lat IS NOT NULL AND lng IS NOT NULL THEN
                        ST_Distance(
@@ -1003,7 +1004,8 @@ async def _tourist_search(req: SearchRequest, lat: float, lng: float, language: 
     async with pool.acquire() as conn:
         rows = await conn.fetch(
             """
-            SELECT id, name_ko, category, addr, phone, lat, lng, image_url,
+            SELECT id, name_ko, category, addr, phone, lat, lng,
+                   (image_urls->>0) AS image_url,
                    CASE
                      WHEN lat IS NOT NULL AND lng IS NOT NULL THEN
                        ST_Distance(
@@ -1048,7 +1050,7 @@ async def _accommodation_detail(acc_id: str, language: str = "ko") -> PlaceDetai
         row = await conn.fetchrow(
             """
             SELECT id, content_id, name_ko, lat, lng, addr, phone, category,
-                   image_url, homepage, open_hours,
+                   image_urls::text AS image_urls, homepage, open_hours,
                    checkintime, checkouttime, infocenterlodging, parkinglodging,
                    reservationlodging, reservationurl,
                    conveniences, source, last_updated,
@@ -1100,7 +1102,7 @@ async def _accommodation_detail(acc_id: str, language: str = "ko") -> PlaceDetai
         open_hours=_t.get("open_hours") or open_hours_str or None,
         closed_days=None,
         is_open_now=is_open,
-        image_urls=[row["image_url"]] if row["image_url"] else [],
+        image_urls=_parse_jsonb_list(row["image_urls"]),
         details={
             "checkintime":        _strip_html(row["checkintime"] or ""),
             "checkouttime":       _strip_html(row["checkouttime"] or ""),
@@ -1123,7 +1125,7 @@ async def _tourist_detail(tourist_id: str, language: str = "ko") -> PlaceDetailR
         row = await conn.fetchrow(
             """
             SELECT id, content_id, content_type_id, name_ko, lat, lng, addr, phone, category,
-                   overview, image_url, homepage, open_hours,
+                   overview, image_urls::text AS image_urls, homepage, open_hours,
                    infocenter, parking, restdate, usetime,
                    infocenterculture, parkingculture, parkingfee,
                    restdateculture, usefee, usetimeculture,
@@ -1198,7 +1200,7 @@ async def _tourist_detail(tourist_id: str, language: str = "ko") -> PlaceDetailR
         open_hours=_t.get("open_hours") or open_hours_str or None,
         closed_days=None,
         is_open_now=is_open,
-        image_urls=[row["image_url"]] if row["image_url"] else [],
+        image_urls=_parse_jsonb_list(row["image_urls"]),
         details={
             "overview":     _t.get("description") or overview,
             "conveniences": convs or [],

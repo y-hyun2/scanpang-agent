@@ -4,8 +4,8 @@ Tour API locationBasedList2 기반으로 관광지(12)·문화시설(14)을 수�
 tourist_places 테이블에 적재한다.
 
 데이터 출처:
-    Tour API — 장소 발견, 주소/좌표/전화/제목, homepage/overview, 카테고리별 상세
-    Naver    — image_url(업체 사진), conveniences
+    Naver    — name, phone, addr, image_urls, conveniences, open_hours, homepage (우선)
+    Tour API — 장소 발견(좌표 검색), overview, 카테고리 상세, Naver 폴백
 
 사용:
     python scripts/seed_tourist_places.py
@@ -59,7 +59,7 @@ CREATE TABLE IF NOT EXISTS tourist_places (
     phone           TEXT,
     category        TEXT,
     overview        TEXT,
-    image_url       TEXT,
+    image_urls      JSONB,
     homepage        TEXT,
     open_hours      TEXT,
     -- 관광지(12)
@@ -84,7 +84,7 @@ CREATE TABLE IF NOT EXISTS tourist_places (
 UPSERT_SQL = """
 INSERT INTO tourist_places (
     id, content_id, content_type_id, name_ko, lat, lng, addr, phone, category,
-    overview, image_url, homepage, open_hours,
+    overview, image_urls, homepage, open_hours,
     infocenter, parking, restdate, usetime,
     infocenterculture, parkingculture, parkingfee, restdateculture, usefee, usetimeculture,
     conveniences, source, last_updated
@@ -101,7 +101,7 @@ ON CONFLICT (id) DO UPDATE SET
     phone              = EXCLUDED.phone,
     category           = EXCLUDED.category,
     overview           = EXCLUDED.overview,
-    image_url          = EXCLUDED.image_url,
+    image_urls         = EXCLUDED.image_urls,
     homepage           = EXCLUDED.homepage,
     open_hours         = EXCLUDED.open_hours,
     infocenter         = EXCLUDED.infocenter,
@@ -119,7 +119,7 @@ ON CONFLICT (id) DO UPDATE SET
     last_updated       = NOW()
 """
 
-UPDATE_IMAGE_SQL = "UPDATE tourist_places SET image_url = $1, last_updated = NOW() WHERE id = $2"
+UPDATE_IMAGE_SQL = "UPDATE tourist_places SET image_urls = $1::jsonb, last_updated = NOW() WHERE id = $2"
 
 
 # ── 건물 클러스터 ─────────────────────────────────────────────────────────────
@@ -152,9 +152,9 @@ def sort_clusters(clusters, prefer_lat, prefer_lng):
     return sorted(clusters, key=lambda x: -x[3])
 
 
-# ── Naver 이미지 + 편의시설 ──────────────────────────────────────────────────
-async def _fetch_naver(name: str, lat: float, lng: float, addr: str) -> tuple[str, list, str, str, str, str, str]:
-    """Naver에서 image_url + conveniences + open_hours + phone + intro + homepage + matched_name 조회."""
+# ── Naver 조회 ───────────────────────────────────────────────────────────────
+async def _fetch_naver(name: str, lat: float, lng: float, addr: str):
+    """Naver에서 image_urls·conveniences·open_hours·phone·addr·intro·homepage·matched_name 조회."""
     try:
         result = await naver_place.fetch(
             store_name=name, lat=lat, lng=lng,
@@ -167,17 +167,18 @@ async def _fetch_naver(name: str, lat: float, lng: float, addr: str) -> tuple[st
         intro   = details.get("intro") or ""
         matched = details.get("matched_name") or ""
         return (
-            urls[0] if urls else "",
+            urls,
             convs,
             result.get("open_hours") or "",
             result.get("phone") or "",
             intro,
             result.get("homepage") or "",
             matched,
+            result.get("addr") or "",
         )
     except Exception as e:
         print(f"    [naver] 실패: {e}")
-        return "", [], "", "", "", "", ""
+        return [], [], "", "", "", "", "", ""
 
 
 # ── 메인 시드 ────────────────────────────────────────────────────────────────
@@ -244,15 +245,24 @@ async def run(
                 common = await fetch_detail_common(content_id)
                 intro  = await fetch_detail_intro(content_id, ctype)
 
-                # Naver: 주소→실패시 이름으로 재시도 (naver_place.fetch 내부에서 처리)
-                image_url, conveniences, open_hours, naver_phone, naver_intro, naver_homepage, naver_name = \
+                # Naver 우선 조회
+                naver_urls, conveniences, naver_open_hours, naver_phone, \
+                naver_intro, naver_homepage, naver_name, naver_addr = \
                     await _fetch_naver(name, s_lat, s_lng, addr)
-                if not image_url:
-                    image_url = firstimage  # Tour API firstimage fallback
-                # 이름: Naver 우선, 없으면 Tour API
-                name     = naver_name or name
-                phone    = phone or naver_phone
-                homepage = common.get("homepage") or naver_homepage
+
+                # 이미지: Naver 우선, Tour API firstimage 보충
+                image_urls_combined: list[str] = list(dict.fromkeys(u for u in naver_urls if u))
+                if firstimage and firstimage not in image_urls_combined:
+                    image_urls_combined.append(firstimage)
+
+                # 각 필드: Naver 우선 → Tour API 폴백
+                name      = naver_name or name
+                addr      = naver_addr or addr
+                phone     = (naver_phone or phone
+                             or intro.get("infocenter") or intro.get("infocenterculture") or "")
+                homepage  = naver_homepage or common.get("homepage") or ""
+                open_hours = (naver_open_hours
+                              or intro.get("usetime") or intro.get("usetimeculture") or "")
 
                 overview_raw = common.get("overview") or ""
                 overview = re.sub(r"<[^>]+>", "", overview_raw).strip() or naver_intro
@@ -270,9 +280,9 @@ async def run(
                         phone,
                         label,
                         overview,
-                        image_url,
+                        json.dumps(image_urls_combined, ensure_ascii=False) if image_urls_combined else None,
                         homepage,
-                        open_hours or "",
+                        open_hours,
                         # 관광지(12)
                         intro.get("infocenter") or "",
                         intro.get("parking") or "",
@@ -286,12 +296,12 @@ async def run(
                         intro.get("usefee") or "",
                         intro.get("usetimeculture") or "",
                         json.dumps(conveniences, ensure_ascii=False) if conveniences else None,
-                        "tour_api+naver" if image_url and image_url != firstimage else "tour_api",
+                        "naver+tour_api" if naver_urls else "tour_api",
                     )
 
                 existing.add(place_id)
                 total.append({"name": name, "ctype": ctype})
-                print(f"    [{i:2d}] {name}  img={'✓' if image_url else '✗'}")
+                print(f"    [{i:2d}] {name}  imgs={len(image_urls_combined)}")
 
     elapsed = time.time() - t_start
     print(f"\n{'='*60}")
@@ -305,9 +315,9 @@ async def run(
 
 
 # ── image_url 단독 업데이트 ───────────────────────────────────────────────────
-async def _get_image_url(name: str, lat: float, lng: float, addr: str) -> tuple[str, str]:
-    image_url, *_ = await _fetch_naver(name, lat, lng, addr)
-    return image_url, "naver_place"
+async def _get_image_url(name: str, lat: float, lng: float, addr: str) -> tuple[list, str]:
+    naver_urls, *_ = await _fetch_naver(name, lat, lng, addr)
+    return naver_urls, "naver_place"
 
 
 async def run_update_images(limit: int, sleep_sec: float, name_filter: str = "") -> None:
@@ -322,13 +332,13 @@ async def run_update_images(limit: int, sleep_sec: float, name_filter: str = "")
             rows = await conn.fetch(
                 """
                 SELECT id, name_ko, lat, lng, addr FROM tourist_places
-                WHERE (image_url IS NULL OR image_url = '')
+                WHERE (image_urls IS NULL OR image_urls = '[]'::jsonb)
                 ORDER BY last_updated ASC NULLS FIRST LIMIT $1
                 """,
                 limit,
             )
     if not rows:
-        print("image_url 빈 레코드 없음")
+        print("image_urls 빈 레코드 없음")
         return
     print(f"대상 {len(rows)}개")
     updated = 0
@@ -340,14 +350,14 @@ async def run_update_images(limit: int, sleep_sec: float, name_filter: str = "")
         lng  = float(row["lng"]) if row["lng"] else 0.0
         addr = row["addr"] or ""
         print(f"[{i}/{len(rows)}] {name}")
-        image_url, source = await _get_image_url(name, lat, lng, addr)
-        if not image_url:
+        naver_urls, source = await _get_image_url(name, lat, lng, addr)
+        if not naver_urls:
             print("  → 이미지 없음")
             continue
         async with pool.acquire() as conn:
-            await conn.execute(UPDATE_IMAGE_SQL, image_url, row["id"])
+            await conn.execute(UPDATE_IMAGE_SQL, json.dumps(naver_urls, ensure_ascii=False), row["id"])
         updated += 1
-        print(f"  → ✓ [{source}] {image_url[:80]}")
+        print(f"  → ✓ [{source}] {naver_urls[0][:80]} 외 {len(naver_urls)-1}장")
     print(f"\n완료: {updated}/{len(rows)}개 업데이트")
 
 
