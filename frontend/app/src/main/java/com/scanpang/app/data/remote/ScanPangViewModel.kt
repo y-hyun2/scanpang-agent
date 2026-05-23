@@ -77,6 +77,10 @@ class ScanPangViewModel : ViewModel() {
     private val _searchResults = MutableStateFlow<List<SearchResultItem>>(emptyList())
     val searchResults: StateFlow<List<SearchResultItem>> = _searchResults
 
+    // ── Autocomplete ──
+    private val _autocompleteSuggestions = MutableStateFlow<List<String>>(emptyList())
+    val autocompleteSuggestions: StateFlow<List<String>> = _autocompleteSuggestions.asStateFlow()
+
     private val _searchQuery = MutableStateFlow("")
     val searchQuery: StateFlow<String> = _searchQuery
 
@@ -295,6 +299,28 @@ class ScanPangViewModel : ViewModel() {
     fun clearSearch() {
         _searchQuery.value = ""
         _searchResults.value = emptyList()
+    }
+
+    fun fetchAutocomplete(q: String, lat: Double? = null, lng: Double? = null) {
+        val trimmed = q.trim()
+        if (trimmed.isEmpty()) {
+            _autocompleteSuggestions.value = emptyList()
+            return
+        }
+        viewModelScope.launch {
+            runCatching {
+                api.autocomplete(AutocompleteRequest(q = trimmed, lat = lat, lng = lng))
+            }.onSuccess { res ->
+                _autocompleteSuggestions.value = res.suggestions
+            }.onFailure {
+                Log.e("ScanPangVM", "fetchAutocomplete FAILED", it)
+                _autocompleteSuggestions.value = emptyList()
+            }
+        }
+    }
+
+    fun clearAutocomplete() {
+        _autocompleteSuggestions.value = emptyList()
     }
 
     /**
