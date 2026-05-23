@@ -41,6 +41,10 @@ interface ScanPangApi {
     @POST("place/search")
     suspend fun searchPlaces(@Body request: SearchRequest): SearchResponse
 
+    // ── Autocomplete ──
+    @POST("place/autocomplete")
+    suspend fun autocomplete(@Body request: AutocompleteRequest): AutocompleteResponse
+
     // ── Place Detail ──
     @POST("place/detail")
     suspend fun getPlaceDetail(@Body request: PlaceDetailRequest): PlaceDetailResponse
@@ -494,6 +498,17 @@ data class SearchResponse(
     val query: String = "",
     val count: Int = 0,
     val results: List<SearchResultItem> = emptyList(),
+)
+
+data class AutocompleteRequest(
+    val q: String,
+    val lat: Double? = null,
+    val lng: Double? = null,
+    val limit: Int = 8,
+)
+
+data class AutocompleteResponse(
+    val suggestions: List<String> = emptyList(),
 )
 
 // ── Place Detail DTOs ──

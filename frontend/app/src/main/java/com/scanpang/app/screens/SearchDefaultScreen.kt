@@ -34,8 +34,10 @@ import androidx.compose.material.icons.rounded.Medication
 import androidx.compose.material.icons.rounded.Mosque
 import androidx.compose.material.icons.rounded.Place
 import androidx.compose.material.icons.rounded.Restaurant
+import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material.icons.rounded.Train
 import androidx.compose.material.icons.rounded.Wc
+import kotlinx.coroutines.delay
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
@@ -154,12 +156,16 @@ fun SearchDefaultScreen(
     // 화면을 떠났다 돌아와도(상세 화면 등) 입력값을 유지.
     var query by rememberSaveable { mutableStateOf("") }
     var recent by remember { mutableStateOf(historyPrefs.getRecent()) }
+    // 제출(엔터/제안탭/카테고리탭) 여부 — false면 자동완성 모드, true면 결과 모드.
+    var isSubmitted by rememberSaveable { mutableStateOf(false) }
 
     BackHandler(enabled = query.isNotEmpty()) {
         query = ""
+        isSubmitted = false
     }
     val backendResults by viewModel.searchResults.collectAsState()
     val isLoading by viewModel.loading.collectAsState()
+    val suggestions by viewModel.autocompleteSuggestions.collectAsState()
     // NavHost destination 마다 viewModel() 이 다른 인스턴스를 주므로 HomeScreen 의
     // setUserLocation 이 SearchDefaultScreen 에 안 닿음. SearchDefaultScreen 도 자체적으로
     // GPS 받아서 outdoor 카테고리 검색 시 거리 정렬용으로 사용.
@@ -187,6 +193,16 @@ fun SearchDefaultScreen(
                     viewModel.setUserLocation(loc.latitude, loc.longitude)
                 }
             }
+    }
+
+    // 타이핑 중 300ms 디바운스 후 자동완성 API 호출. 제출됐거나 쿼리 비면 클리어.
+    LaunchedEffect(query, isSubmitted) {
+        if (isSubmitted || query.trim().isEmpty()) {
+            viewModel.clearAutocomplete()
+            return@LaunchedEffect
+        }
+        delay(300)
+        viewModel.fetchAutocomplete(query.trim(), userLat, userLng)
     }
 
     // 검색 트리거 시점에 매번 lastLocation 받아서 콜백 안에서 검색 호출.
@@ -255,6 +271,7 @@ fun SearchDefaultScreen(
     fun submitSearch(raw: String) {
         val q = raw.trim()
         if (q.isEmpty()) return
+        isSubmitted = true
         keyboard?.hide()
         historyPrefs.add(q)
         recent = historyPrefs.getRecent()
@@ -264,7 +281,8 @@ fun SearchDefaultScreen(
     }
 
     val trimmedQuery = query.trim()
-    val isResultsMode = trimmedQuery.isNotEmpty()
+    val isAutocompleteMode = trimmedQuery.isNotEmpty() && !isSubmitted
+    val isResultsMode = trimmedQuery.isNotEmpty() && isSubmitted
     // 백엔드 검색 결과(SearchResultItem) → 화면용 ResultRow.
     // 검색어가 비면 backend 호출도 하지 않으므로 emptyList.
     val resultRows = remember(trimmedQuery, backendResults) {
@@ -288,11 +306,15 @@ fun SearchDefaultScreen(
             // 검색바는 두 모드에서 동일 컴포지션을 유지(키보드/포커스가 모드 전환 시 끊기지 않음).
             ScanPangInlineSearchField(
                 value = query,
-                onValueChange = { query = it },
+                onValueChange = {
+                    if (isSubmitted) isSubmitted = false
+                    query = it
+                },
                 onSubmit = { submitSearch(query) },
                 onTrailingClick = {
-                    // X 는 결과 모드 → 기본 모드로 돌아가는 유일한 트리거. 단순히 query 만 비운다.
+                    // X 는 결과/자동완성 모드 → 기본 모드로 돌아가는 유일한 트리거.
                     query = ""
+                    isSubmitted = false
                 },
                 placeholder = s.searchPlaceholder,
             )
@@ -321,6 +343,17 @@ fun SearchDefaultScreen(
                     },
                 )
                 }
+            } else if (isAutocompleteMode) {
+                AutocompleteBody(
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxWidth()
+                        .padding(bottom = ScanPangDimens.mainTabContentBottomInset + ScanPangSpacing.lg),
+                    query = trimmedQuery,
+                    localHistory = recent,
+                    suggestions = suggestions,
+                    onSuggestionClick = { submitSearch(it) },
+                )
             } else {
                 SearchDefaultBody(
                     modifier = Modifier
@@ -344,6 +377,57 @@ fun SearchDefaultScreen(
                             category.searchQuery != null -> submitSearch(category.searchQuery)
                         }
                     },
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun AutocompleteBody(
+    modifier: Modifier,
+    query: String,
+    localHistory: List<String>,
+    suggestions: List<String>,
+    onSuggestionClick: (String) -> Unit,
+) {
+    val historyMatches = localHistory
+        .filter { it.startsWith(query, ignoreCase = true) }
+        .take(3)
+    val backendItems = suggestions
+        .filter { s -> historyMatches.none { it.equals(s, ignoreCase = true) } }
+        .take(5)
+    val all = historyMatches + backendItems
+
+    Column(modifier = modifier) {
+        all.forEach { suggestion ->
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { onSuggestionClick(suggestion) }
+                    .padding(vertical = ScanPangSpacing.md),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(ScanPangSpacing.md),
+            ) {
+                Icon(
+                    imageVector = Icons.Rounded.Search,
+                    contentDescription = null,
+                    modifier = Modifier.size(ScanPangDimens.icon18),
+                    tint = ScanPangColors.OnSurfacePlaceholder,
+                )
+                Text(
+                    text = suggestion,
+                    style = ScanPangType.body15Medium,
+                    color = ScanPangColors.OnSurfaceStrong,
+                    modifier = Modifier.weight(1f),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                Icon(
+                    imageVector = Icons.AutoMirrored.Rounded.KeyboardArrowRight,
+                    contentDescription = null,
+                    modifier = Modifier.size(ScanPangDimens.icon18),
+                    tint = ScanPangColors.OnSurfacePlaceholder,
                 )
             }
         }
