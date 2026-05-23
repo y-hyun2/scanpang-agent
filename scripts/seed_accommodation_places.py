@@ -57,7 +57,7 @@ CREATE TABLE IF NOT EXISTS accommodation_places (
     addr                TEXT,
     phone               TEXT,
     category            TEXT,
-    image_url           TEXT,
+    image_urls          JSONB,
     homepage            TEXT,
     open_hours          TEXT,
     checkintime         TEXT,
@@ -75,7 +75,7 @@ CREATE TABLE IF NOT EXISTS accommodation_places (
 UPSERT_SQL = """
 INSERT INTO accommodation_places (
     id, content_id, content_type_id, name_ko, lat, lng, addr, phone, category,
-    image_url, homepage, open_hours,
+    image_urls, homepage, open_hours,
     checkintime, checkouttime, infocenterlodging, parkinglodging,
     reservationlodging, reservationurl,
     conveniences, source, last_updated
@@ -91,7 +91,7 @@ ON CONFLICT (id) DO UPDATE SET
     addr               = EXCLUDED.addr,
     phone              = EXCLUDED.phone,
     category           = EXCLUDED.category,
-    image_url          = EXCLUDED.image_url,
+    image_urls         = EXCLUDED.image_urls,
     homepage           = EXCLUDED.homepage,
     open_hours         = EXCLUDED.open_hours,
     checkintime        = EXCLUDED.checkintime,
@@ -105,7 +105,7 @@ ON CONFLICT (id) DO UPDATE SET
     last_updated       = NOW()
 """
 
-UPDATE_IMAGE_SQL = "UPDATE accommodation_places SET image_url = $1, last_updated = NOW() WHERE id = $2"
+UPDATE_IMAGE_SQL = "UPDATE accommodation_places SET image_urls = $1::jsonb, last_updated = NOW() WHERE id = $2"
 
 
 # ── 건물 클러스터 ─────────────────────────────────────────────────────────────
@@ -139,7 +139,7 @@ def sort_clusters(clusters, prefer_lat, prefer_lng):
 
 
 # ── Naver 이미지 + 편의시설 ──────────────────────────────────────────────────
-async def _fetch_naver(name: str, lat: float, lng: float, addr: str) -> tuple[str, list, str, str, str, str]:
+async def _fetch_naver(name: str, lat: float, lng: float, addr: str) -> tuple[list, list, str, str, str, str]:
     try:
         result = await naver_place.fetch(
             store_name=name, lat=lat, lng=lng,
@@ -151,7 +151,7 @@ async def _fetch_naver(name: str, lat: float, lng: float, addr: str) -> tuple[st
         convs   = details.get("conveniences") or []
         matched = details.get("matched_name") or ""
         return (
-            urls[0] if urls else "",
+            urls,
             convs,
             result.get("open_hours") or "",
             result.get("phone") or "",
@@ -160,7 +160,7 @@ async def _fetch_naver(name: str, lat: float, lng: float, addr: str) -> tuple[st
         )
     except Exception as e:
         print(f"    [naver] 실패: {e}")
-        return "", [], "", "", "", ""
+        return [], [], "", "", "", ""
 
 
 # ── 메인 시드 ────────────────────────────────────────────────────────────────
@@ -224,10 +224,15 @@ async def run(
             intro  = await fetch_detail_intro(content_id, CONTENT_TYPE)
 
             # Naver: 주소→실패시 이름으로 재시도 (naver_place.fetch 내부에서 처리)
-            image_url, conveniences, open_hours, naver_phone, naver_homepage, naver_name = \
+            naver_urls, conveniences, open_hours, naver_phone, naver_homepage, naver_name = \
                 await _fetch_naver(name, s_lat, s_lng, addr)
-            if not image_url:
-                image_url = firstimage
+            # Tour API firstimage + Naver 업체 사진 합산 (dedup, Tour API 먼저)
+            image_urls_combined: list[str] = []
+            if firstimage:
+                image_urls_combined.append(firstimage)
+            for u in naver_urls:
+                if u and u not in image_urls_combined:
+                    image_urls_combined.append(u)
             name     = naver_name or name
             phone    = phone or naver_phone
             homepage = common.get("homepage") or naver_homepage
@@ -244,7 +249,7 @@ async def run(
                     addr,
                     phone,
                     "숙박",
-                    image_url,
+                    json.dumps(image_urls_combined, ensure_ascii=False) if image_urls_combined else None,
                     homepage,
                     open_hours or "",
                     intro.get("checkintime") or "",
@@ -254,12 +259,12 @@ async def run(
                     intro.get("reservationlodging") or "",
                     intro.get("reservationurl") or "",
                     json.dumps(conveniences, ensure_ascii=False) if conveniences else None,
-                    "tour_api+naver" if image_url and image_url != firstimage else "tour_api",
+                    "tour_api+naver" if naver_urls else "tour_api",
                 )
 
             existing.add(place_id)
             total.append({"name": name})
-            print(f"  [{i:2d}] {name}  img={'✓' if image_url else '✗'}")
+            print(f"  [{i:2d}] {name}  imgs={len(image_urls_combined)}")
 
     elapsed = time.time() - t_start
     print(f"\n{'='*60}")
@@ -285,13 +290,13 @@ async def run_update_images(limit: int, sleep_sec: float, name_filter: str = "")
             rows = await conn.fetch(
                 """
                 SELECT id, name_ko, lat, lng, addr FROM accommodation_places
-                WHERE (image_url IS NULL OR image_url = '')
+                WHERE (image_urls IS NULL OR image_urls = '[]'::jsonb)
                 ORDER BY last_updated ASC NULLS FIRST LIMIT $1
                 """,
                 limit,
             )
     if not rows:
-        print("image_url 빈 레코드 없음")
+        print("image_urls 빈 레코드 없음")
         return
     print(f"대상 {len(rows)}개")
     updated = 0
@@ -303,14 +308,14 @@ async def run_update_images(limit: int, sleep_sec: float, name_filter: str = "")
         lng  = float(row["lng"]) if row["lng"] else 0.0
         addr = row["addr"] or ""
         print(f"[{i}/{len(rows)}] {name}")
-        image_url, _ = await _fetch_naver(name, lat, lng, addr)
-        if not image_url:
+        naver_urls, *_ = await _fetch_naver(name, lat, lng, addr)
+        if not naver_urls:
             print("  → 이미지 없음")
             continue
         async with pool.acquire() as conn:
-            await conn.execute(UPDATE_IMAGE_SQL, image_url, row["id"])
+            await conn.execute(UPDATE_IMAGE_SQL, json.dumps(naver_urls, ensure_ascii=False), row["id"])
         updated += 1
-        print(f"  → ✓ {image_url[:80]}")
+        print(f"  → ✓ {naver_urls[0][:80]} 외 {len(naver_urls)-1}장")
     print(f"\n완료: {updated}/{len(rows)}개 업데이트")
 
 

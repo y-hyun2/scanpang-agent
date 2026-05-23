@@ -296,29 +296,36 @@ async def fetch_place_detail(
                     f"https://map.naver.com/p/search/{query}",
                     timeout=30_000, wait_until="domcontentloaded",
                 )
-                # 페이지 로드 상태 진단 (봇 감지 여부 확인)
+                # domcontentloaded 이후 Naver Maps JS가 iframe을 생성할 때까지 대기.
+                # searchIframe(검색결과 목록) 또는 entryIframe(단일 장소) 중 하나가 뜰 때까지.
+                # Naver가 name 속성 대신 id 속성을 사용하도록 변경했으므로 id로도 확인.
+                try:
+                    await page.wait_for_function(
+                        "Array.from(document.querySelectorAll('iframe'))"
+                        ".some(f => ['searchIframe','entryIframe'].includes(f.id)"
+                        "     || ['searchIframe','entryIframe'].includes(f.name)"
+                        "     || (f.src || '').includes('pcmap.place.naver.com'))",
+                        timeout=12_000,
+                    )
+                except Exception:
+                    pass  # 12초 내 미발생 시 현재 상태로 진행
+
+                # 페이지 로드 상태 진단
                 page_url = page.url
                 frames_info = [f.name for f in page.frames]
                 print(f"[naver_map_scraper] 페이지 로드 url={page_url!r} frames={frames_info}")
 
-                # entryIframe이 자동으로 뜨면 바로 진행, 아니면 최대 5초 대기
-                try:
-                    await page.wait_for_function(
-                        "Array.from(document.querySelectorAll('iframe'))"
-                        ".some(f => f.name === 'entryIframe'"
-                        "     || (f.src || '').includes('pcmap.place.naver.com'))",
-                        timeout=5_000,
-                    )
-                except Exception:
-                    pass  # 없으면 searchIframe에서 클릭 시도
-
                 # entryIframe 자동 진입이 안 됐으면 첫 검색결과 클릭
-                entry_frame = next(
-                    (f for f in page.frames
-                     if f.name == "entryIframe"
-                     or "pcmap.place.naver.com" in (f.url or "")),
-                    None,
-                )
+                # Naver가 name 속성을 비워두고 id="entryIframe"만 설정하도록 변경함.
+                # CSS ID 선택자로 handle을 찾고 content_frame()으로 Frame 객체를 얻는다.
+                _entry_handle = await page.query_selector("iframe#entryIframe")
+                entry_frame = await _entry_handle.content_frame() if _entry_handle else None
+                if not entry_frame:
+                    entry_frame = next(
+                        (f for f in page.frames
+                         if "pcmap.place.naver.com" in (f.url or "")),
+                        None,
+                    )
                 if not entry_frame:
                     search_handle = await page.query_selector("iframe#searchIframe")
                     if search_handle:
@@ -357,7 +364,7 @@ async def fetch_place_detail(
                                 try:
                                     await page.wait_for_function(
                                         "Array.from(document.querySelectorAll('iframe'))"
-                                        ".some(f => f.name === 'entryIframe'"
+                                        ".some(f => f.id === 'entryIframe' || f.name === 'entryIframe'"
                                         "     || (f.src || '').includes('pcmap.place.naver.com'))",
                                         timeout=10_000,
                                     )
@@ -366,13 +373,15 @@ async def fetch_place_detail(
                             else:
                                 print(f"[naver_map_scraper] 검색결과 클릭 실패 — 앵커 없음 ({query!r})")
 
-                    # name 속성 외 URL 패턴으로도 확인 (동적 로드 대응)
-                    entry_frame = next(
-                        (f for f in page.frames
-                         if f.name == "entryIframe"
-                         or "pcmap.place.naver.com" in (f.url or "")),
-                        None,
-                    )
+                    # CSS ID 선택자로 재확인 (name 속성이 비어있어도 id로 접근 가능)
+                    _entry_handle2 = await page.query_selector("iframe#entryIframe")
+                    entry_frame = await _entry_handle2.content_frame() if _entry_handle2 else None
+                    if not entry_frame:
+                        entry_frame = next(
+                            (f for f in page.frames
+                             if "pcmap.place.naver.com" in (f.url or "")),
+                            None,
+                        )
 
                 if not entry_frame:
                     print(f"[naver_map_scraper] entryIframe 미발견 ({query!r})")
