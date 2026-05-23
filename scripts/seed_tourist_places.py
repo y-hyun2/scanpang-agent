@@ -155,17 +155,19 @@ def sort_clusters(clusters, prefer_lat, prefer_lng):
 
 
 # ── Naver 이미지 + 편의시설 ──────────────────────────────────────────────────
-async def _fetch_naver(name: str, lat: float, lng: float, addr: str) -> tuple[str, list, str, str, str, str]:
-    """Naver에서 image_url + conveniences + open_hours + phone + intro + homepage 조회."""
+async def _fetch_naver(name: str, lat: float, lng: float, addr: str) -> tuple[str, list, str, str, str, str, str]:
+    """Naver에서 image_url + conveniences + open_hours + phone + intro + homepage + matched_name 조회."""
     try:
         result = await naver_place.fetch(
             store_name=name, lat=lat, lng=lng,
             building_ufid="", category_name="",
             addr_hint=addr,
         )
-        urls  = result.get("image_urls") or []
-        convs = (result.get("details") or {}).get("conveniences") or []
-        intro = (result.get("details") or {}).get("intro") or ""
+        details = result.get("details") or {}
+        urls    = result.get("image_urls") or []
+        convs   = details.get("conveniences") or []
+        intro   = details.get("intro") or ""
+        matched = details.get("matched_name") or ""
         return (
             urls[0] if urls else "",
             convs,
@@ -173,10 +175,11 @@ async def _fetch_naver(name: str, lat: float, lng: float, addr: str) -> tuple[st
             result.get("phone") or "",
             intro,
             result.get("homepage") or "",
+            matched,
         )
     except Exception as e:
         print(f"    [naver] 실패: {e}")
-        return "", [], "", "", "", ""
+        return "", [], "", "", "", "", ""
 
 
 # ── 메인 시드 ────────────────────────────────────────────────────────────────
@@ -244,10 +247,12 @@ async def run(
                 intro  = await fetch_detail_intro(content_id, ctype)
 
                 # Naver: 주소→실패시 이름으로 재시도 (naver_place.fetch 내부에서 처리)
-                image_url, conveniences, open_hours, naver_phone, naver_intro, naver_homepage = \
+                image_url, conveniences, open_hours, naver_phone, naver_intro, naver_homepage, naver_name = \
                     await _fetch_naver(name, s_lat, s_lng, addr)
                 if not image_url:
                     image_url = firstimage  # Tour API firstimage fallback
+                # 이름: Naver 우선, 없으면 Tour API
+                name     = naver_name or name
                 phone    = phone or naver_phone
                 homepage = common.get("homepage") or naver_homepage
 

@@ -19,6 +19,7 @@ from tools.place_tools import check_kakao_open_status
 from tools.category_classifier import classify_category
 from tools.details_fetchers import fetch_by_category
 from tools.open_hours_normalizer import normalize_open_hours
+from tools.translation import translate_fields, apply_lang
 
 
 # 명동 기본 좌표 fallback
@@ -92,6 +93,7 @@ async def get_store_detail(
     store_name: str,
     lat: float | None = None,
     lng: float | None = None,
+    language: str = "ko",
 ) -> dict:
     """
     Args:
@@ -132,7 +134,33 @@ async def get_store_detail(
         # image_urls 비어있음. 사용자가 카드 탭한 지금이 풀필드 fetch 타이밍이라
         # cache miss 로 취급해 아래 fetcher 디스패치 단계로 흘려보낸다.
         if row and row["source"] != "floor_info_seed":
-            return _row_to_dict(row)
+            result = _row_to_dict(row)
+            # 캐시 히트 + 영어 요청: translations["en"] 없으면 번역 후 DB 업데이트
+            if language != "ko":
+                trans = result.get("translations") or {}
+                if not trans.get(language):
+                    _lat = float(result["lat"]) if result.get("lat") else _DEFAULT_LAT
+                    _lng = float(result["lng"]) if result.get("lng") else _DEFAULT_LNG
+                    en_fields = await translate_fields(
+                        {
+                            "name":        result.get("store_name", ""),
+                            "addr":        result.get("addr", ""),
+                            "open_hours":  result.get("open_hours", ""),
+                            "closed_days": result.get("closed_days", ""),
+                        },
+                        lat=_lat, lng=_lng, lang=language,
+                    )
+                    if en_fields:
+                        trans[language] = en_fields
+                        async with pool.acquire() as conn:
+                            await conn.execute(
+                                "UPDATE store_details SET translations=$1::jsonb WHERE id=$2",
+                                json.dumps(trans), cache_id,
+                            )
+                        result["translations"] = trans
+            # 번역값을 응답 필드에 오버레이
+            _apply_translations_to_result(result, language)
+            return result
         if row and row["source"] == "floor_info_seed":
             expected_addr_seed = row["addr"] or ""
 
@@ -248,29 +276,50 @@ async def get_store_detail(
             pass
     display_name = _enrich_store_name(base_name, addr)
 
-    # outdoor: store_details INSERT 우회. raw 테이블에서 가져온 풀필드 그대로 응답.
+    # outdoor: store_details INSERT 우회.
     if is_outdoor:
-        return {
-            "id":            cache_id,
-            "place_id":      place_id,
-            "store_name":    display_name,
-            "category":      category_name,
-            "category_key":  category_key,
-            "addr":          addr,
-            "phone":         phone,
-            "lat":           lat,
-            "lng":           lng,
-            "place_url":     kakao.get("place_url", ""),
-            "details":       details,
-            "open_hours":    open_hours,
-            "closed_days":   closed_days,
-            "homepage":      homepage,
-            "image_urls":    image_urls,
-            "floor":         floor,
-            "source":        source,
+        result = {
+            "id":           cache_id,
+            "place_id":     place_id,
+            "store_name":   display_name,
+            "category":     category_name,
+            "category_key": category_key,
+            "addr":         addr,
+            "phone":        phone,
+            "lat":          lat,
+            "lng":          lng,
+            "place_url":    kakao.get("place_url", ""),
+            "details":      details,
+            "open_hours":   open_hours,
+            "closed_days":  closed_days,
+            "homepage":     homepage,
+            "image_urls":   image_urls,
+            "floor":        floor,
+            "source":       source,
+            "translations": {},
         }
+        if language != "ko":
+            en_fields = await translate_fields(
+                {"name": display_name, "addr": addr,
+                 "open_hours": open_hours, "closed_days": closed_days},
+                lat=lat, lng=lng, lang=language,
+            )
+            result["translations"] = {language: en_fields} if en_fields else {}
+            _apply_translations_to_result(result, language)
+        return result
 
-    # ── ⑤ store_details UPSERT — 건물 내 매장만 ─────────────────────────────
+    # ── ⑤ 영문 번역 (UPSERT 전 획득해 함께 저장) ────────────────────────────
+    translations: dict = {}
+    if language != "ko":
+        en_fields = await translate_fields(
+            {"name": display_name, "addr": addr,
+             "open_hours": open_hours, "closed_days": closed_days},
+            lat=lat, lng=lng, lang=language,
+        )
+        if en_fields:
+            translations[language] = en_fields
+
+    # ── ⑥ store_details UPSERT — 건물 내 매장만 ─────────────────────────────
     async with pool.acquire() as conn:
         await conn.execute(
             """
@@ -278,9 +327,9 @@ async def get_store_detail(
                 (id, place_id, store_name, category, category_key,
                  addr, phone, lat, lng, place_url,
                  details, open_hours, closed_days, homepage, image_urls,
-                 floor, source, last_updated)
+                 floor, source, last_updated, translations)
             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,
-                    $11::jsonb,$12,$13,$14,$15::jsonb,$16,$17,$18)
+                    $11::jsonb,$12,$13,$14,$15::jsonb,$16,$17,$18,$19::jsonb)
             ON CONFLICT (id) DO UPDATE SET
                 category      = EXCLUDED.category,
                 category_key  = EXCLUDED.category_key,
@@ -294,50 +343,68 @@ async def get_store_detail(
                 image_urls    = EXCLUDED.image_urls,
                 floor         = EXCLUDED.floor,
                 source        = EXCLUDED.source,
-                last_updated  = EXCLUDED.last_updated
+                last_updated  = EXCLUDED.last_updated,
+                translations  = store_details.translations || EXCLUDED.translations
             """,
             cache_id, place_id, display_name,
             category_name, category_key,
             addr, phone, lat, lng, kakao.get("place_url", ""),
-            # core/db.py 의 jsonb codec 이 dict/list 를 자동 json.dumps 해줌.
-            # 여기서 또 dumps 하면 더블 인코딩(top_type=string)돼서 jsonb 연산자
-            # (예: details ? 'rates_today') 가 작동 안 함.
             details,
             open_hours, closed_days, homepage,
             image_urls,
             floor, source, datetime.now(timezone.utc),
+            translations,
         )
 
-    return {
-        "id":            cache_id,
-        "place_id":      place_id,
-        "store_name":    display_name,
-        "category":      category_name,
-        "category_key":  category_key,
-        "addr":          addr,
-        "phone":         phone,
-        "lat":           lat,
-        "lng":           lng,
-        "place_url":     kakao.get("place_url", ""),
-        "details":       details,
-        "open_hours":    open_hours,
-        "closed_days":   closed_days,
-        "homepage":      homepage,
-        "image_urls":    image_urls,
-        "floor":         floor,
-        "source":        source,
+    result = {
+        "id":           cache_id,
+        "place_id":     place_id,
+        "store_name":   display_name,
+        "category":     category_name,
+        "category_key": category_key,
+        "addr":         addr,
+        "phone":        phone,
+        "lat":          lat,
+        "lng":          lng,
+        "place_url":    kakao.get("place_url", ""),
+        "details":      details,
+        "open_hours":   open_hours,
+        "closed_days":  closed_days,
+        "homepage":     homepage,
+        "image_urls":   image_urls,
+        "floor":        floor,
+        "source":       source,
+        "translations": translations,
     }
+    _apply_translations_to_result(result, language)
+    return result
 
 
 def _row_to_dict(row) -> dict:
     """asyncpg Record → 일반 dict. JSONB 필드는 이미 파싱돼서 옴."""
     d = dict(row)
-    # asyncpg가 JSONB를 string으로 반환할 수도 있어 방어적으로 파싱
-    for k in ("details", "image_urls"):
+    for k in ("details", "image_urls", "translations"):
         v = d.get(k)
         if isinstance(v, str):
             try:
                 d[k] = json.loads(v)
             except Exception:
                 pass
+    if d.get("translations") is None:
+        d["translations"] = {}
     return d
+
+
+def _apply_translations_to_result(result: dict, language: str) -> None:
+    """translations[language] 값을 result의 최상위 필드에 오버레이 (in-place)."""
+    if language == "ko":
+        return
+    t = (result.get("translations") or {}).get(language, {})
+    if t.get("name"):
+        result["store_name"] = t["name"]
+    if t.get("addr"):
+        result["addr"] = t["addr"]
+    if t.get("open_hours"):
+        result["open_hours"] = t["open_hours"]
+    if t.get("closed_days"):
+        result["closed_days"] = t["closed_days"]

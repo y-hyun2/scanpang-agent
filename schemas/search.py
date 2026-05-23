@@ -13,6 +13,7 @@ class SearchRequest(BaseModel):
     # 사용자 위치 — outdoor 카테고리(화장실/지하철역/물품보관함/기도실) 검색 시 거리 정렬용
     lat: Optional[float] = None
     lng: Optional[float] = None
+    language: str = "ko"         # 응답 언어 — "ko"(기본) / "en"
 
 
 class SearchResultItem(BaseModel):
@@ -32,6 +33,7 @@ class SearchResultItem(BaseModel):
     is_open_now: Optional[bool] = None
     # outdoor 카테고리(화장실 등) 검색 시 사용자 위치 기준 거리(m). 그 외엔 None.
     distance_m: Optional[float] = None
+    halal_type: Optional[str] = None
 
 
 class SearchResponse(BaseModel):

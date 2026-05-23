@@ -443,6 +443,7 @@ data class SearchRequest(
     // 빈 값이면 백엔드가 명동 기본 좌표로 fallback.
     val lat: Double? = null,
     val lng: Double? = null,
+    val language: String = "ko",
 )
 
 data class SearchResultItem(
@@ -460,6 +461,8 @@ data class SearchResultItem(
     val is_open_now: Boolean? = null,
     val distance_m: Double? = null,  // outdoor 카테고리 검색 시 거리(m). 그 외 null
     val halal_type: String? = null,  // 할랄 식당 전용 (HALAL MEAT / SEAFOOD / VEGGIE / SALAM SEOUL)
+    val name_en: String? = null,
+    val addr_en: String? = null,
 )
 
 data class SearchResponse(
@@ -475,6 +478,7 @@ data class PlaceDetailRequest(
     // 사용자 좌표 — 백엔드가 매장까지 거리 계산해 distance_m 으로 응답.
     val user_lat: Double? = null,
     val user_lng: Double? = null,
+    val language: String = "ko",
 )
 
 data class PlaceDetailResponse(
@@ -500,6 +504,8 @@ data class PlaceDetailResponse(
     val details: Map<String, Any> = emptyMap(),
     val source: String? = null,
     val last_updated: String? = null,
+    val name_en: String? = null,
+    val addr_en: String? = null,
 )
 
 // ── Spatial DTOs ──

@@ -282,11 +282,23 @@ async def fetch_place_detail(
                     f"https://map.naver.com/p/search/{query}",
                     timeout=30_000, wait_until="domcontentloaded",
                 )
-                await page.wait_for_timeout(4_000)
+                # entryIframe이 자동으로 뜨면 바로 진행, 아니면 최대 5초 대기
+                try:
+                    await page.wait_for_function(
+                        "Array.from(document.querySelectorAll('iframe'))"
+                        ".some(f => f.name === 'entryIframe'"
+                        "     || (f.src || '').includes('pcmap.place.naver.com'))",
+                        timeout=5_000,
+                    )
+                except Exception:
+                    pass  # 없으면 searchIframe에서 클릭 시도
 
                 # entryIframe 자동 진입이 안 됐으면 첫 검색결과 클릭
                 entry_frame = next(
-                    (f for f in page.frames if f.name == "entryIframe"), None,
+                    (f for f in page.frames
+                     if f.name == "entryIframe"
+                     or "pcmap.place.naver.com" in (f.url or "")),
+                    None,
                 )
                 if not entry_frame:
                     search_handle = await page.query_selector("iframe#searchIframe")
@@ -295,15 +307,52 @@ async def fetch_place_detail(
                         if search_frame:
                             # li 자체엔 클릭 핸들러가 없는 카테고리(편의점 /cvs/list 등)가
                             # 있어, li 안 첫 anchor를 클릭해야 entryIframe이 뜬다.
-                            first_anchor = search_frame.locator("li a").first
-                            if await first_anchor.count() > 0:
+                            # expected_name과 가장 유사한 결과를 우선 클릭한다.
+                            clicked_name = await search_frame.evaluate("""
+                                (expectedName) => {
+                                    const liElems = Array.from(document.querySelectorAll('li'));
+                                    const expClean = expectedName.replace(/\\s/g, '').toLowerCase();
+                                    for (const li of liElems) {
+                                        const nameEl = li.querySelector(
+                                            '.place_bluelink, .YwYLL, [class*="title"], [class*="name"], strong'
+                                        );
+                                        const text = (nameEl ? nameEl.innerText : (li.innerText || ''))
+                                            .split('\\n')[0].trim();
+                                        if (!text) continue;
+                                        const txtClean = text.replace(/\\s/g, '').toLowerCase();
+                                        if (expClean.length >= 2 &&
+                                                (txtClean.includes(expClean) || expClean.includes(txtClean))) {
+                                            const a = li.querySelector('a');
+                                            if (a) { a.click(); return text; }
+                                        }
+                                    }
+                                    // fallback: 첫 번째 anchor 클릭
+                                    const first = document.querySelector('li a');
+                                    if (first) { first.click(); return '_first_'; }
+                                    return null;
+                                }
+                            """, expected_name or query)
+                            if clicked_name:
+                                print(f"[naver_map_scraper] 검색결과 클릭: {clicked_name!r} ({query!r})")
+                                # entryIframe이 실제로 뜰 때까지 명시적으로 대기 (최대 10초)
                                 try:
-                                    await first_anchor.click(timeout=8_000)
-                                    await page.wait_for_timeout(4_000)
-                                except Exception as click_e:
-                                    print(f"[naver_map_scraper] 검색결과 클릭 실패 ({query!r}): {click_e}")
+                                    await page.wait_for_function(
+                                        "Array.from(document.querySelectorAll('iframe'))"
+                                        ".some(f => f.name === 'entryIframe'"
+                                        "     || (f.src || '').includes('pcmap.place.naver.com'))",
+                                        timeout=10_000,
+                                    )
+                                except Exception:
+                                    await page.wait_for_timeout(3_000)
+                            else:
+                                print(f"[naver_map_scraper] 검색결과 클릭 실패 — 앵커 없음 ({query!r})")
+
+                    # name 속성 외 URL 패턴으로도 확인 (동적 로드 대응)
                     entry_frame = next(
-                        (f for f in page.frames if f.name == "entryIframe"), None,
+                        (f for f in page.frames
+                         if f.name == "entryIframe"
+                         or "pcmap.place.naver.com" in (f.url or "")),
+                        None,
                     )
 
                 if not entry_frame:

@@ -67,6 +67,7 @@ import androidx.compose.ui.unit.dp
 import androidx.navigation.NavController
 import com.scanpang.app.data.ExchangeRate
 import com.scanpang.app.data.MenuItem
+import com.scanpang.app.data.OnboardingPreferences
 import com.scanpang.app.data.Place
 import com.scanpang.app.data.RestaurantPlace
 import com.scanpang.app.data.ScheduleDay
@@ -109,6 +110,7 @@ fun PlaceDetailScreen(
     viewModel: ScanPangViewModel = viewModel(),
 ) {
     val context = LocalContext.current
+    val language = remember { OnboardingPreferences(context).getLanguageCode() ?: "ko" }
     // GPS — NavHost destination 마다 viewModel() 인스턴스가 달라 다른 화면의
     // setUserLocation 이 이 화면 인스턴스에 안 닿음. SearchDefaultScreen 처럼
     // 자체적으로 lastLocation 받아 백엔드 거리 계산에 사용.
@@ -151,7 +153,7 @@ fun PlaceDetailScreen(
     // 1) 백엔드 store_details 조회 — placeId/userLat/userLng 변경 시 재호출
     //    (캐시 키에 lat/lng 포함). 화면 떠날 때 placeDetail 초기화로 stale 방지.
     LaunchedEffect(placeId, userLat, userLng) {
-        viewModel.loadPlaceDetail(placeId, userLat = userLat, userLng = userLng)
+        viewModel.loadPlaceDetail(placeId, userLat = userLat, userLng = userLng, language = language)
     }
     DisposableEffect(Unit) {
         onDispose { viewModel.clearPlaceDetail() }
