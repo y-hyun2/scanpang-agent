@@ -1343,12 +1343,6 @@ async def place_detail(req: PlaceDetailRequest):
         return await _subway_detail(req.id[len("subway__"):], language=req.language)
     if req.id.startswith("locker__"):
         return await _locker_detail(req.id[len("locker__"):], language=req.language)
-    # 구버전 호환 — search API 가 폴백 prefix '__outdoor__{cat}__{name}' 로 만든 id.
-    # subway/locker 명시 prefix 적용되기 전 캐시/북마크 데이터 대응용.
-    if req.id.startswith("__outdoor__subway__"):
-        return await _subway_detail(req.id[len("__outdoor__subway__"):], language=req.language)
-    if req.id.startswith("__outdoor__locker__"):
-        return await _locker_detail(req.id[len("__outdoor__locker__"):], language=req.language)
 
     pool = await get_pool()
     async with pool.acquire() as conn:
