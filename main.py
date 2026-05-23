@@ -16,7 +16,7 @@ from agents.orchestrator_agent import run_orchestrator
 from core.session_store import get_session_store
 from schemas.restaurant import RestaurantDetailRequest
 from tools.restaurant_tools import get_restaurant_detail
-from schemas.search import SearchRequest, SearchResponse, SearchResultItem
+from schemas.search import SearchRequest, SearchResponse, SearchResultItem, AutocompleteRequest, AutocompleteResponse
 from schemas.place_detail import PlaceDetailRequest, PlaceDetailResponse
 from schemas.user import (
     UserPreferencesUpsertRequest, UserPreferencesResponse,
@@ -27,6 +27,24 @@ from schemas.user import (
 from tools.open_hours_parser import is_open_now_combined as _is_open_now_combined
 import json as _json
 from datetime import datetime, timedelta, timezone
+
+
+def _parse_jsonb_list(val) -> list:
+    """JSONB 컬럼 → Python list 변환. single/double encoded 및 asyncpg 반환 타입 모두 처리."""
+    if val is None:
+        return []
+    if isinstance(val, list):
+        return val
+    try:
+        result = _json.loads(val)
+        if isinstance(result, list):
+            return result
+        if isinstance(result, str):
+            inner = _json.loads(result)
+            return inner if isinstance(inner, list) else []
+        return []
+    except (ValueError, TypeError):
+        return []
 from rag.automation.worker import start_worker, stop_worker
 from core.db import get_pool, close_pool
 from api.h3_buildings import router as h3_buildings_router
@@ -156,9 +174,9 @@ async def user_preferences_upsert(req: UserPreferencesUpsertRequest):
         display_name=row["display_name"],
         language=row["language"],
         value_added=row["value_added"],
-        saved_places=_json.loads(row["saved_places"] or "[]"),
-        search_history=_json.loads(row["search_history"] or "[]"),
-        recently_viewed_places=_json.loads(row["recently_viewed_places"] or "[]"),
+        saved_places=_parse_jsonb_list(row["saved_places"]),
+        search_history=_parse_jsonb_list(row["search_history"]),
+        recently_viewed_places=_parse_jsonb_list(row["recently_viewed_places"]),
     )
 
 
@@ -184,9 +202,9 @@ async def user_preferences_get(user_id: str):
         display_name=row["display_name"],
         language=row["language"],
         value_added=row["value_added"],
-        saved_places=_json.loads(row["saved_places"] or "[]"),
-        search_history=_json.loads(row["search_history"] or "[]"),
-        recently_viewed_places=_json.loads(row["recently_viewed_places"] or "[]"),
+        saved_places=_parse_jsonb_list(row["saved_places"]),
+        search_history=_parse_jsonb_list(row["search_history"]),
+        recently_viewed_places=_parse_jsonb_list(row["recently_viewed_places"]),
     )
 
 
@@ -429,6 +447,45 @@ async def _outdoor_search(category_key: str, req: SearchRequest) -> SearchRespon
     return SearchResponse(query=req.query, count=len(results), results=results)
 
 
+@app.post("/place/autocomplete", response_model=AutocompleteResponse)
+async def place_autocomplete(req: AutocompleteRequest):
+    """
+    타이핑 중 debounce 후 호출. store_name prefix match + pg_trgm similarity 로 제안 반환.
+    """
+    q = (req.q or "").strip()
+    if not q:
+        return AutocompleteResponse(suggestions=[])
+
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        rows = await conn.fetch(
+            """
+            WITH matches AS (
+                SELECT DISTINCT store_name
+                FROM store_details
+                WHERE store_name ILIKE $1
+                   OR similarity(
+                        regexp_replace(store_name, '\\s+', '', 'g'),
+                        regexp_replace($2, '\\s+', '', 'g')
+                      ) >= 0.25
+            )
+            SELECT store_name
+            FROM matches
+            ORDER BY
+              CASE WHEN store_name ILIKE $1 THEN 0 ELSE 1 END,
+              similarity(
+                regexp_replace(store_name, '\\s+', '', 'g'),
+                regexp_replace($2, '\\s+', '', 'g')
+              ) DESC
+            LIMIT $3
+            """,
+            f"%{q}%",
+            q,
+            req.limit,
+        )
+    return AutocompleteResponse(suggestions=[r["store_name"] for r in rows])
+
+
 @app.post("/place/search", response_model=SearchResponse)
 async def place_search(req: SearchRequest):
     """
@@ -474,15 +531,15 @@ async def place_search(req: SearchRequest):
             FROM store_details
             WHERE store_name ILIKE $1
                OR similarity(
-                    regexp_replace(store_name, '\s+', '', 'g'),
-                    regexp_replace($6, '\s+', '', 'g')
+                    regexp_replace(store_name, '\\s+', '', 'g'),
+                    regexp_replace($6, '\\s+', '', 'g')
                   ) >= 0.3
                OR ($3 != 'other' AND category_key = $3)
             ORDER BY
               CASE WHEN store_name ILIKE $1 THEN 0 ELSE 1 END,
               similarity(
-                regexp_replace(store_name, '\s+', '', 'g'),
-                regexp_replace($6, '\s+', '', 'g')
+                regexp_replace(store_name, '\\s+', '', 'g'),
+                regexp_replace($6, '\\s+', '', 'g')
               ) DESC,
               dist_m NULLS LAST,
               last_updated DESC NULLS LAST
