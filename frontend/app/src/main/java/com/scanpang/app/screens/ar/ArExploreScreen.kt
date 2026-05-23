@@ -554,7 +554,7 @@ fun ArExploreScreen(
                     agentService.updatePosition(currentLat, currentLng, currentHeading)
 
                     if (hasAchievedHighAccuracy) {
-                        trackingMessage = "위치 파악 완료 (오차: ${"%.1f".format(pose.horizontalAccuracy)}m)"
+                        trackingMessage = s.arTrackingReady("%.1f".format(pose.horizontalAccuracy))
 
                         // 거리 업데이트
                         val results = FloatArray(1)

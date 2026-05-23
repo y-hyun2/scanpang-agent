@@ -133,7 +133,7 @@ fun HomeScreen(
         ?: s.homeNoRecentlyViewed
 
     // 현재 위치 — GPS + 역지오코딩 (권한 없거나 실패 시 fallback 문구).
-    var locationText by remember { mutableStateOf("현재 위치를 가져오는 중...") }
+    var locationText by remember { mutableStateOf(s.homeLocationFetching) }
     // 최근 본 장소 거리 계산용 raw 좌표. 위 viewModel.setUserLocation 과 별개로
     // 이 화면 인스턴스 안에서 직접 보유 (NavHost destination 마다 viewModel 다름).
     var userLat by remember { mutableStateOf<Double?>(null) }
@@ -143,7 +143,7 @@ fun HomeScreen(
             ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED ||
             ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED
         if (!hasPermission) {
-            locationText = "위치 권한이 필요합니다"
+            locationText = s.homeLocationPermission
             return@LaunchedEffect
         }
         val fusedClient = LocationServices.getFusedLocationProviderClient(context)
@@ -161,18 +161,18 @@ fun HomeScreen(
                         val addr = addresses[0]
                         val dong = addr.subLocality ?: addr.thoroughfare ?: ""
                         val detail = addr.featureName ?: ""
-                        locationText = "현재 위치: ${dong} ${detail} 근처".trim()
+                        locationText = s.homeLocationNear(dong, detail)
                     } else {
-                        locationText = "현재 위치: %.4f, %.4f".format(loc.latitude, loc.longitude)
+                        locationText = s.homeLocationCoord(loc.latitude, loc.longitude)
                     }
                 } catch (_: Exception) {
-                    locationText = "현재 위치: %.4f, %.4f".format(loc.latitude, loc.longitude)
+                    locationText = s.homeLocationCoord(loc.latitude, loc.longitude)
                 }
             } else {
-                locationText = "현재 위치를 확인할 수 없습니다"
+                locationText = s.homeLocationUnknown
             }
         }.addOnFailureListener {
-            locationText = "위치 가져오기 실패"
+            locationText = s.homeLocationFail
         }
     }
 

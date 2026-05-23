@@ -27,6 +27,7 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import com.scanpang.app.ui.theme.ScanPangColors
+import com.scanpang.app.i18n.LocalStrings
 import com.scanpang.app.ui.theme.ScanPangTheme
 import com.scanpang.app.ui.theme.ScanPangType
 
@@ -41,6 +42,7 @@ fun LogoutConfirmDialog(
     onConfirm: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val s = LocalStrings.current
     Dialog(onDismissRequest = onDismiss) {
         Column(
             modifier = modifier
@@ -71,13 +73,13 @@ fun LogoutConfirmDialog(
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 Text(
-                    text = "로그아웃",
+                    text = s.logout,
                     style = ScanPangType.profileName18,
                     color = ScanPangColors.OnSurfaceStrong,
                     textAlign = TextAlign.Center,
                 )
                 Text(
-                    text = "로그아웃하시겠어요?",
+                    text = s.logoutConfirm,
                     style = ScanPangType.body14Regular,
                     color = ScanPangColors.OnSurfaceMuted,
                     textAlign = TextAlign.Center,
@@ -88,12 +90,12 @@ fun LogoutConfirmDialog(
                 horizontalArrangement = Arrangement.spacedBy(12.dp),
             ) {
                 DialogSecondaryButton(
-                    text = "취소",
+                    text = s.cancel,
                     onClick = onDismiss,
                     modifier = Modifier.weight(1f),
                 )
                 DialogPrimaryButton(
-                    text = "로그아웃",
+                    text = s.logout,
                     onClick = onConfirm,
                     modifier = Modifier.weight(1f),
                 )

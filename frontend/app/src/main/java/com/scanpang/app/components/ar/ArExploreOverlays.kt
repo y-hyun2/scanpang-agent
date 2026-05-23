@@ -280,7 +280,7 @@ fun ArSideActionColumn(
         )
         ArSideFab(
             icon = Icons.Rounded.CameraAlt,
-            contentDescription = "촬영",
+            contentDescription = s.capture,
             onClick = onCameraClick,
             surfaceColor = cameraSurfaceColor,
             iconTint = cameraIconTint,

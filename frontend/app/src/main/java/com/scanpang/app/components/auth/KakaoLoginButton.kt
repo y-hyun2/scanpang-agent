@@ -24,6 +24,7 @@ import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import com.scanpang.app.i18n.LocalStrings
 import com.scanpang.app.ui.theme.ScanPangColors
 import com.scanpang.app.ui.theme.ScanPangTheme
 import com.scanpang.app.ui.theme.ScanPangType
@@ -44,6 +45,7 @@ fun KakaoLoginButton(
     enabled: Boolean = true,
     isLoading: Boolean = false,
 ) {
+    val s = LocalStrings.current
     val interactionSource = remember { MutableInteractionSource() }
     val isPressed by interactionSource.collectIsPressedAsState()
     val bg = if (isPressed && enabled && !isLoading) {
@@ -85,7 +87,7 @@ fun KakaoLoginButton(
                     .size(20.dp),
             )
             Text(
-                text = "카카오로 시작하기",
+                text = s.kakaoStart,
                 style = ScanPangType.title16SemiBold,
                 color = ScanPangColors.KakaoLabel,
                 modifier = Modifier.align(Alignment.Center),

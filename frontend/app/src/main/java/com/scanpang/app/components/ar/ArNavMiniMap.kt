@@ -30,6 +30,7 @@ import com.google.maps.android.compose.Marker
 import com.google.maps.android.compose.MarkerState
 import com.google.maps.android.compose.Polyline
 import com.google.maps.android.compose.rememberCameraPositionState
+import com.scanpang.app.i18n.LocalStrings
 import kotlin.coroutines.resume
 import kotlinx.coroutines.suspendCancellableCoroutine
 
@@ -49,6 +50,7 @@ fun ArNavMiniMap(
     destinationLng: Double?,
     modifier: Modifier = Modifier,
 ) {
+    val s = LocalStrings.current
     val context = LocalContext.current
     val cameraPositionState = rememberCameraPositionState()
 
@@ -101,7 +103,7 @@ fun ArNavMiniMap(
         if (destinationLat != null && destinationLng != null) {
             Marker(
                 state = MarkerState(position = LatLng(destinationLat, destinationLng)),
-                title = "목적지",
+                title = s.navDestination,
             )
         }
 
@@ -114,7 +116,7 @@ fun ArNavMiniMap(
                 anchor = Offset(0.5f, 0.5f),
                 rotation = userHeading.toFloat(),
                 flat = true,
-                title = "내 위치",
+                title = s.navMyLocation,
             )
         }
     }

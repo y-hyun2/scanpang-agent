@@ -22,6 +22,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.style.TextOverflow
+import com.scanpang.app.i18n.LocalStrings
 import com.scanpang.app.ui.theme.ScanPangColors
 import com.scanpang.app.ui.theme.ScanPangDimens
 import com.scanpang.app.ui.theme.ScanPangShapes
@@ -54,6 +55,7 @@ fun SearchResultPlaceCard(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val s = LocalStrings.current
     Row(
         modifier = modifier
             .fillMaxWidth()
@@ -109,7 +111,7 @@ fun SearchResultPlaceCard(
                             .background(ScanPangColors.OnSurfaceMuted),
                     )
                     Text(
-                        text = "영업 중",
+                        text = s.placeOpen,
                         style = ScanPangType.meta11SemiBold,
                         color = ScanPangColors.StatusOpen,
                     )

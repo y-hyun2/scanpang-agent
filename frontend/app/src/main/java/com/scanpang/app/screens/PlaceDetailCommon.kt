@@ -76,6 +76,9 @@ import com.scanpang.app.data.RecentlyViewedStore
 import com.scanpang.app.data.SavedPlaceEntry
 import com.scanpang.app.data.SavedPlaceNavTarget
 import com.scanpang.app.data.SavedPlacesStore
+import com.scanpang.app.i18n.AppStrings
+import com.scanpang.app.i18n.LocalStrings
+import com.scanpang.app.i18n.categoryLabel
 import com.scanpang.app.ui.ScanPangFigmaAssets
 import com.scanpang.app.ui.theme.ScanPangColors
 import com.scanpang.app.ui.theme.ScanPangDimens
@@ -87,13 +90,13 @@ import com.scanpang.app.util.OpenHoursUtils
 /** Coil용 더미 갤러리 — API 연동 시 동일 시그니처로 교체 */
 fun defaultPlaceDetailGallery(): List<String> = ScanPangFigmaAssets.RestaurantDetailGallery
 
-fun Place.detailVisitCardsFromPlace(): List<DetailVisitCardUi> {
-    val statusTitle = if (isOpen) "지금 방문 가능" else "운영 종료"
+fun Place.detailVisitCardsFromPlace(strings: AppStrings): List<DetailVisitCardUi> {
+    val statusTitle = if (isOpen) strings.detailVisitAvailable else strings.detailOperationEnded
     val statusTone = if (isOpen) DetailVisitCardTone.Open else DetailVisitCardTone.Closed
     val hint = if (description.length > 56) description.take(56) + "…" else description
     return listOf(
         DetailVisitCardUi(statusTitle, openHours, statusTone),
-        DetailVisitCardUi("안내", hint.ifBlank { "상세 정보는 매장에 문의해 주세요." }, DetailVisitCardTone.Neutral),
+        DetailVisitCardUi(strings.detailGuide, hint.ifBlank { strings.detailContactStore }, DetailVisitCardTone.Neutral),
     )
 }
 
@@ -132,6 +135,7 @@ fun rememberDetailBookmark(
     lat: Double = 0.0,
     lng: Double = 0.0,
 ): DetailBookmarkController {
+    val s = LocalStrings.current
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
     val store = remember { SavedPlacesStore(context) }
@@ -170,13 +174,13 @@ fun rememberDetailBookmark(
 
     val onToggle: () -> Unit = onToggle@{
         if (!isValidId) {
-            Toast.makeText(context, "매장 정보를 불러오는 중입니다", Toast.LENGTH_SHORT).show()
+            Toast.makeText(context, s.detailLoadingInfo, Toast.LENGTH_SHORT).show()
             return@onToggle
         }
         if (bookmarked) {
             store.remove(placeId)
             bookmarked = false
-            Toast.makeText(context, "저장이 해제되었습니다", Toast.LENGTH_SHORT).show()
+            Toast.makeText(context, s.detailUnsaved, Toast.LENGTH_SHORT).show()
         } else {
             store.save(
                 SavedPlaceEntry(
@@ -190,7 +194,7 @@ fun rememberDetailBookmark(
                 ),
             )
             bookmarked = true
-            Toast.makeText(context, "저장되었습니다", Toast.LENGTH_SHORT).show()
+            Toast.makeText(context, s.detailSavedToast, Toast.LENGTH_SHORT).show()
         }
     }
 
@@ -203,6 +207,7 @@ fun DetailImageFullscreenDialog(
     pagerState: PagerState,
     onDismiss: () -> Unit,
 ) {
+    val s = LocalStrings.current
     val context = LocalContext.current
     Dialog(
         onDismissRequest = onDismiss,
@@ -240,7 +245,7 @@ fun DetailImageFullscreenDialog(
             ) {
                 Icon(
                     imageVector = Icons.Rounded.Close,
-                    contentDescription = "닫기",
+                    contentDescription = s.close,
                     modifier = Modifier.size(24.dp),
                     tint = Color.White,
                 )
@@ -257,6 +262,7 @@ fun DetailHeroPhotoPager(
     onFullscreenClick: (() -> Unit)?,
     modifier: Modifier = Modifier,
 ) {
+    val s = LocalStrings.current
     val context = LocalContext.current
     Box(
         modifier = modifier
@@ -290,7 +296,7 @@ fun DetailHeroPhotoPager(
         ) {
             Icon(
                 imageVector = Icons.AutoMirrored.Rounded.ArrowBack,
-                contentDescription = "뒤로",
+                contentDescription = s.back,
                 modifier = Modifier.size(24.dp),
                 tint = Color.White,
             )
@@ -333,6 +339,7 @@ fun DetailScrollTopBackRow(
     onBack: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val s = LocalStrings.current
     Row(
         modifier = modifier
             .fillMaxWidth()
@@ -348,7 +355,7 @@ fun DetailScrollTopBackRow(
             ) {
                 Icon(
                     imageVector = Icons.AutoMirrored.Rounded.ArrowBack,
-                    contentDescription = "뒤로",
+                    contentDescription = s.back,
                     modifier = Modifier.padding(ScanPangSpacing.sm),
                     tint = ScanPangColors.OnSurfaceStrong,
                 )
@@ -365,6 +372,7 @@ fun DetailTitleBookmarkRow(
     trailingContent: (@Composable () -> Unit)? = null,
     modifier: Modifier = Modifier,
 ) {
+    val s = LocalStrings.current
     Row(
         modifier = modifier.fillMaxWidth(),
         verticalAlignment = Alignment.Top,
@@ -391,7 +399,7 @@ fun DetailTitleBookmarkRow(
             ) {
                 Icon(
                     imageVector = if (bookmarked) Icons.Rounded.Bookmark else Icons.Rounded.BookmarkBorder,
-                    contentDescription = if (bookmarked) "저장됨" else "저장",
+                    contentDescription = if (bookmarked) s.placeBookmarked else s.save,
                     modifier = Modifier.size(20.dp),
                     tint = if (bookmarked) ScanPangColors.Primary else ScanPangColors.OnSurfaceMuted,
                 )
@@ -440,13 +448,18 @@ fun resolveCategoryLabel(
     categoryKey: String,
     rawCategory: String,
     veganLevel: String = "",
+    strings: AppStrings? = null,
 ): String = when {
     categoryKey == "vegan_restaurant" ->
-        if (veganLevel == "채식가능") "채식가능" else "비건 식당"
+        if (veganLevel == "채식가능") strings?.catVeganFriendly ?: PLACE_CATEGORY_KO["vegan_friendly"] ?: "채식가능"
+        else strings?.catVeganRestaurant ?: PLACE_CATEGORY_KO["vegan_restaurant"] ?: "비건 식당"
     categoryKey in PLACE_USE_RAW_CATEGORY ->
-        rawCategory.substringAfterLast(">").trim().ifBlank { PLACE_CATEGORY_KO[categoryKey] ?: categoryKey }
+        rawCategory.substringAfterLast(">").trim()
+            .ifBlank { strings?.categoryLabel(categoryKey) ?: PLACE_CATEGORY_KO[categoryKey] ?: categoryKey }
     else ->
-        PLACE_CATEGORY_KO[categoryKey] ?: rawCategory.substringAfterLast(">").trim().ifBlank { "—" }
+        strings?.categoryLabel(categoryKey)
+            ?: PLACE_CATEGORY_KO[categoryKey]
+            ?: rawCategory.substringAfterLast(">").trim().ifBlank { "—" }
 }
 
 @Composable
@@ -470,6 +483,7 @@ fun DetailCategoryTagDistanceRow(
     isOpen: Boolean? = null,
     trailing: (@Composable () -> Unit)? = null,
 ) {
+    val s = LocalStrings.current
     Row(
         modifier = modifier.fillMaxWidth(),
         verticalAlignment = Alignment.CenterVertically,
@@ -502,7 +516,7 @@ fun DetailCategoryTagDistanceRow(
                     .background(if (isOpen) ScanPangColors.StatusOpen else ScanPangColors.Error),
             )
             Text(
-                text = if (isOpen) "영업 중" else "영업 종료",
+                text = if (isOpen) s.placeOpen else s.placeClosed,
                 style = ScanPangType.meta11SemiBold,
                 color = if (isOpen) ScanPangColors.StatusOpen else ScanPangColors.Error,
                 maxLines = 1,
@@ -517,8 +531,9 @@ fun DetailCategoryTagDistanceRow(
 fun DetailNavigateWideButton(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
-    label: String = "길안내 시작",
+    label: String? = null,
 ) {
+    val s = LocalStrings.current
     Button(
         onClick = onClick,
         modifier = modifier
@@ -530,7 +545,7 @@ fun DetailNavigateWideButton(
             contentColor = Color.White,
         ),
     ) {
-        Text(text = label, style = ScanPangType.body15Medium)
+        Text(text = label ?: s.detailNavigate, style = ScanPangType.body15Medium)
     }
 }
 
@@ -542,6 +557,7 @@ fun DetailNavigateAndSideIconRow(
     onSideClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val s = LocalStrings.current
     Row(
         modifier = modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.spacedBy(ScanPangSpacing.md),
@@ -558,7 +574,7 @@ fun DetailNavigateAndSideIconRow(
                 contentColor = Color.White,
             ),
         ) {
-            Text(text = "길안내 시작", style = ScanPangType.body15Medium)
+            Text(text = s.detailNavigate, style = ScanPangType.body15Medium)
         }
         OutlinedButton(
             onClick = onSideClick,
@@ -812,6 +828,7 @@ fun DetailBackOnlyArea(
     onBack: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val s = LocalStrings.current
     Box(
         modifier = modifier
             .fillMaxWidth()
@@ -831,7 +848,7 @@ fun DetailBackOnlyArea(
         ) {
             Icon(
                 imageVector = Icons.AutoMirrored.Rounded.ArrowBack,
-                contentDescription = "뒤로",
+                contentDescription = s.back,
                 modifier = Modifier.size(20.dp),
                 tint = ScanPangColors.OnSurfaceStrong,
             )
@@ -847,6 +864,7 @@ fun DetailCtaRow(
     modifier: Modifier = Modifier,
     hasPhone: Boolean = true,
 ) {
+    val s = LocalStrings.current
     Row(
         modifier = modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.spacedBy(10.dp),
@@ -872,7 +890,7 @@ fun DetailCtaRow(
                     tint = Color.White,
                 )
                 Text(
-                    text = "길안내 시작",
+                    text = s.detailNavigate,
                     style = ScanPangType.detailSectionTitle15,
                     color = Color.White,
                 )
@@ -889,7 +907,7 @@ fun DetailCtaRow(
             ) {
                 Icon(
                     imageVector = Icons.Rounded.Phone,
-                    contentDescription = "전화",
+                    contentDescription = s.detailPhone,
                     modifier = Modifier.size(22.dp),
                     tint = ScanPangColors.OnSurfaceMuted,
                 )
@@ -906,6 +924,7 @@ fun DetailTodayVisitStatus(
     lastOrder: String = "",
     modifier: Modifier = Modifier,
 ) {
+    val s = LocalStrings.current
     // 로컬에서 현재 시각과 open_hours 를 직접 비교해 영업 상태를 판정.
     // 파싱 불가(null)이면 서버에서 받은 isOpen 값을 fallback 으로 사용.
     val localIsOpen = remember(openHours) { OpenHoursUtils.isOpenNow(openHours) }
@@ -917,7 +936,7 @@ fun DetailTodayVisitStatus(
         modifier = modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(ScanPangSpacing.md),
     ) {
-        DetailSectionHeader(title = "오늘 방문 가능 여부")
+        DetailSectionHeader(title = s.detailTodayVisit)
         Surface(
             modifier = Modifier.fillMaxWidth(),
             shape = ScanPangShapes.radius12,
@@ -938,7 +957,7 @@ fun DetailTodayVisitStatus(
                             .background(statusColor),
                     )
                     Text(
-                        text = if (effectiveIsOpen) "지금 영업 중" else "지금 영업 종료",
+                        text = if (effectiveIsOpen) s.detailOpenNow else s.detailClosedNow,
                         style = ScanPangType.caption12Medium,
                         color = statusColor,
                     )
@@ -967,7 +986,7 @@ fun DetailTodayVisitStatus(
                             tint = ScanPangColors.OnSurfaceMuted,
                         )
                         Text(
-                            text = "라스트오더 $lastOrder",
+                            text = s.placeLastOrder(lastOrder),
                             style = ScanPangType.caption12Medium,
                             color = ScanPangColors.OnSurfaceMuted,
                         )

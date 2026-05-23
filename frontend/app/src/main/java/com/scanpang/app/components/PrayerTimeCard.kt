@@ -13,6 +13,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import com.scanpang.app.i18n.LocalStrings
 import com.scanpang.app.ui.theme.ScanPangColors
 import com.scanpang.app.ui.theme.ScanPangShapes
 import com.scanpang.app.ui.theme.ScanPangSpacing
@@ -60,6 +61,7 @@ fun PrayerTimeListCard(
     nextPrayer: String,
     modifier: Modifier = Modifier,
 ) {
+    val s = LocalStrings.current
     Column(
         modifier = modifier
             .fillMaxWidth()
@@ -67,7 +69,7 @@ fun PrayerTimeListCard(
             .background(ScanPangColors.Background),
     ) {
         Text(
-            text = "오늘의 기도 시간",
+            text = s.prayerTimeTitle,
             style = ScanPangType.caption12Medium,
             color = ScanPangColors.OnSurfaceMuted,
             modifier = Modifier.padding(
@@ -102,7 +104,7 @@ fun PrayerTimeListCard(
                     )
                     if (isNext) {
                         Text(
-                            text = "다음",
+                            text = s.prayerTimeNext,
                             style = ScanPangType.caption12Medium,
                             color = ScanPangColors.Primary,
                         )

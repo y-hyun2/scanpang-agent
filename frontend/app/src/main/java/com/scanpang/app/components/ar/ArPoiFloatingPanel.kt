@@ -772,6 +772,7 @@ fun ArFloorStoreGuideOverlay(
         categoryKey = categoryKey,
         rawCategory = storeResult?.category ?: category,
         veganLevel = (storeResult?.details?.get("vegan_level") as? String).orEmpty(),
+        strings = s,
     )
     val displayOpenNow = storeResult?.is_open_now ?: isOpenNow
     val intro = (storeResult?.details?.get("intro") as? String)?.trim().orEmpty()

@@ -145,7 +145,7 @@ fun ScanPangTabBar(
                 Box(contentAlignment = Alignment.Center) {
                     Icon(
                         imageVector = Icons.Rounded.CropFree,
-                        contentDescription = "AR 탐색",
+                        contentDescription = s.tabExplore,
                         modifier = Modifier.size(ScanPangDimens.fabIcon),
                         tint = Color.White,
                     )

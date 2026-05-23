@@ -28,6 +28,7 @@ import androidx.compose.ui.text.PlatformTextStyle
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.scanpang.app.i18n.LocalStrings
 import com.scanpang.app.ui.theme.ScanPangColors
 import com.scanpang.app.ui.theme.ScanPangDimens
 import com.scanpang.app.ui.theme.ScanPangShapes
@@ -75,6 +76,7 @@ fun ScanPangSearchFieldFilled(
     modifier: Modifier = Modifier,
     hintWhenBlank: String? = null,
 ) {
+    val s = LocalStrings.current
     val showHint = query.isBlank() && !hintWhenBlank.isNullOrBlank()
     val labelText = if (showHint) hintWhenBlank else query
     Row(
@@ -111,7 +113,7 @@ fun ScanPangSearchFieldFilled(
         if (!showHint && query.isNotEmpty()) {
             Icon(
                 imageVector = Icons.Rounded.Close,
-                contentDescription = "지우기",
+                contentDescription = s.clearSearch,
                 modifier = Modifier
                     .size(ScanPangDimens.icon18)
                     .clickable(onClick = onClearClick),
@@ -143,6 +145,7 @@ fun ScanPangInlineSearchField(
     placeholder: String,
     modifier: Modifier = Modifier,
 ) {
+    val s = LocalStrings.current
     TextField(
         value = value,
         onValueChange = onValueChange,
@@ -174,7 +177,7 @@ fun ScanPangInlineSearchField(
                 IconButton(onClick = onTrailingClick) {
                     Icon(
                         imageVector = Icons.Rounded.Close,
-                        contentDescription = "지우기",
+                        contentDescription = s.clearSearch,
                         modifier = Modifier.size(ScanPangDimens.icon18),
                         tint = ScanPangColors.OnSurfacePlaceholder,
                     )

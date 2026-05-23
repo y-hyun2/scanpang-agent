@@ -39,6 +39,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import com.scanpang.app.data.RecentlyViewedEntry
 import com.scanpang.app.data.SavedPlaceNavTarget
 import com.scanpang.app.navigation.AppRoutes
+import com.scanpang.app.i18n.LocalStrings
 import com.scanpang.app.ui.theme.ScanPangColors
 import com.scanpang.app.ui.theme.ScanPangDimens
 import com.scanpang.app.ui.theme.ScanPangShapes
@@ -86,6 +87,7 @@ fun RecentlyViewedRow(
     // GPS 미수신이면 빈 string → subtitle 은 category 만 보임.
     distanceLabel: String = "",
 ) {
+    val s = LocalStrings.current
     Row(
         modifier = modifier
             .fillMaxWidth()
@@ -142,7 +144,7 @@ fun RecentlyViewedRow(
         if (isDeleteMode) {
             Icon(
                 imageVector = if (isSelected) Icons.Rounded.CheckCircle else Icons.Rounded.RadioButtonUnchecked,
-                contentDescription = if (isSelected) "선택됨" else "선택",
+                contentDescription = if (isSelected) s.selectedDesc else s.selectDesc,
                 modifier = Modifier.size(ScanPangDimens.icon20),
                 tint = if (isSelected) ScanPangColors.Primary else ScanPangColors.OnSurfacePlaceholder,
             )
