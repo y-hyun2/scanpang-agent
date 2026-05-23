@@ -1,6 +1,0 @@
-# 프로젝트 루트에 .claudeignore 생성
-.idea/
-build/
-.gradle/
-*.apk
-*.aar
