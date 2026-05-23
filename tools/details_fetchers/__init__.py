@@ -105,6 +105,15 @@ async def fetch_by_category(
             for k, v in result.items():
                 if k == "source":
                     continue
+                # addr 예외: naver_place 가 부가 정보 포함한 풀 주소
+                # ("서울 중구 을지로 30 을지로입구역7,8번출구방면(롯데백화점 들어가서 우측)")
+                # 를 주면 kakao 의 짧은 도로명("서울 중구 을지로 30") 위로 덮어쓰기.
+                # 풀 주소가 짧은 주소를 prefix 로 포함하므로 길이 비교로 충분.
+                if k == "addr" and v and isinstance(v, str):
+                    base_addr = merged.get("addr") or ""
+                    if len(v) > len(base_addr):
+                        merged["addr"] = v
+                    continue
                 if not merged.get(k) and v:
                     merged[k] = v
             # details 는 dict 단위 머지 (base 우선)

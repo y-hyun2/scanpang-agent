@@ -461,8 +461,31 @@ async def fetch_place_detail(
                 elif above:
                     result["floor"] = f"{int(above)}F"
 
+            # 3. 풀 주소(부가 위치 정보) 캡처 — m.place.naver.com SEO 메타.
+            #    pcmap.place 의 Apollo state 는 깔끔한 도로명만 (예: "서울 중구 을지로 30"),
+            #    m.place 페이지의 data-line-description 속성에 풀 주소 (예:
+            #    "서울 중구 을지로 30 을지로입구역7,8번출구방면(롯데백화점 들어가서 우측)")
+            #    가 들어있음. 사용자 화면(Naver 검색 결과) 표시와 1:1 일치.
+            for mobile_path in (
+                f"https://m.place.naver.com/restaurant/{place_id}/home",
+                f"https://m.place.naver.com/place/{place_id}/home",
+            ):
+                try:
+                    resp_m = await client.get(mobile_path)
+                    if resp_m.status_code != 200:
+                        continue
+                    m_addr = re.search(
+                        r'data-line-description="([^"]+)"',
+                        resp_m.text,
+                    )
+                    if m_addr:
+                        result["address_detail"] = m_addr.group(1).strip()
+                        break
+                except Exception as e:
+                    print(f"[naver_map_scraper] address_detail fetch 실패 ({mobile_path[-40:]}): {e}")
+
         print(f"[naver_map_scraper] place_detail 성공: place_id={place_id!r} "
-              f"name={result['name']!r}")
+              f"name={result['name']!r} address_detail={result.get('address_detail', '')!r}")
         return result
 
     except Exception as e:

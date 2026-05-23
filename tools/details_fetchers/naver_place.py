@@ -46,9 +46,20 @@ async def fetch(
     # 매칭 검증은 fetch_place_detail에서 이미 통과한 것이라 신뢰 가능.
     matched_name = detail.get("name", "")
 
+    # addr 우선순위:
+    # 1. address_detail (m.place.naver.com 의 풀 주소 — Naver 검색결과 표시와 1:1)
+    #    예: "서울 중구 을지로 30 을지로입구역7,8번출구방면(롯데백화점 들어가서 우측)"
+    # 2. roadAddress (Apollo state — 깔끔한 도로명만)
+    # 3. address (지번)
+    full_addr = (
+        detail.get("address_detail")
+        or detail.get("roadAddress", "")
+        or detail.get("address", "")
+    )
+
     return {
         "phone":       detail.get("phone", ""),
-        "addr":        detail.get("roadAddress", "") or detail.get("address", ""),
+        "addr":        full_addr,
         "homepage":    detail.get("homepage", ""),
         "category":    raw_category,
         "open_hours":  detail.get("open_hours", ""),
