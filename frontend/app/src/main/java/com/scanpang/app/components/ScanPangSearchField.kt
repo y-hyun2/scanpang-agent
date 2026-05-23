@@ -157,6 +157,8 @@ fun ScanPangInlineSearchField(
                     color = ScanPangColors.OnSurfacePlaceholder,
                     platformStyle = PlatformTextStyle(includeFontPadding = false),
                 ),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
             )
         },
         leadingIcon = {

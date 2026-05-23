@@ -37,17 +37,11 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import com.scanpang.app.i18n.LocalStrings
 import com.scanpang.app.ui.theme.ScanPangColors
 import com.scanpang.app.ui.theme.ScanPangSpacing
 import com.scanpang.app.ui.theme.ScanPangTheme
 import com.scanpang.app.ui.theme.ScanPangType
-
-private val DeleteItems = listOf(
-    "프로필 및 계정 정보 (이름, 프로필 사진)",
-    "저장한 장소 목록",
-    "최근 검색어 및 방문 기록",
-    "여행 선호 설정 (할랄 · 비건 · 언어)",
-)
 
 @Composable
 fun WithdrawalScreen(
@@ -55,6 +49,7 @@ fun WithdrawalScreen(
     onWithdraw: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val s = LocalStrings.current
     var confirmed by remember { mutableStateOf(false) }
 
     Scaffold(
@@ -85,25 +80,26 @@ fun WithdrawalScreen(
                     verticalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
                     Text(
-                        text = "정말 탈퇴하시겠어요?",
+                        text = s.withdrawalTitle,
                         style = ScanPangType.detailScreenTitle22,
                         color = ScanPangColors.OnSurfaceStrong,
                         textAlign = TextAlign.Center,
                     )
                     Text(
-                        text = "탈퇴 시 모든 데이터가 삭제되며\n복구할 수 없습니다.",
+                        text = s.withdrawalDesc,
                         style = ScanPangType.body14Regular,
                         color = ScanPangColors.OnSurfaceMuted,
                         textAlign = TextAlign.Center,
                     )
                 }
-                InfoCard()
+                InfoCard(s)
                 ConfirmRow(
+                    label = s.withdrawalConfirmCheck,
                     checked = confirmed,
                     onToggle = { confirmed = !confirmed },
                 )
                 Spacer(modifier = Modifier.weight(1f))
-                WithdrawCta(enabled = confirmed, onClick = onWithdraw)
+                WithdrawCta(label = s.withdrawalButton, enabled = confirmed, onClick = onWithdraw)
             }
         }
     }
@@ -111,6 +107,7 @@ fun WithdrawalScreen(
 
 @Composable
 private fun WithdrawalHeader(onBack: () -> Unit) {
+    val s = LocalStrings.current
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -121,14 +118,14 @@ private fun WithdrawalHeader(onBack: () -> Unit) {
     ) {
         Icon(
             imageVector = Icons.AutoMirrored.Rounded.ArrowBackIos,
-            contentDescription = "뒤로",
+            contentDescription = s.back,
             modifier = Modifier
                 .size(24.dp)
                 .clickable(onClick = onBack),
             tint = ScanPangColors.OnSurfaceStrong,
         )
         Text(
-            text = "회원탈퇴",
+            text = s.profileWithdrawal,
             style = ScanPangType.profileName18,
             color = ScanPangColors.OnSurfaceStrong,
         )
@@ -154,7 +151,10 @@ private fun WarnIcon() {
 }
 
 @Composable
-private fun InfoCard() {
+private fun InfoCard(s: com.scanpang.app.i18n.AppStrings) {
+    val items = remember(s) {
+        listOf(s.withdrawalData1, s.withdrawalData2, s.withdrawalData3, s.withdrawalData4)
+    }
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -164,11 +164,11 @@ private fun InfoCard() {
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         Text(
-            text = "삭제되는 정보",
+            text = s.withdrawalDataTitle,
             style = ScanPangType.title14,
             color = ScanPangColors.OnSurfaceStrong,
         )
-        DeleteItems.forEach { item ->
+        items.forEach { item ->
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -191,6 +191,7 @@ private fun InfoCard() {
 
 @Composable
 private fun ConfirmRow(
+    label: String,
     checked: Boolean,
     onToggle: () -> Unit,
 ) {
@@ -221,7 +222,7 @@ private fun ConfirmRow(
             }
         }
         Text(
-            text = "위 내용을 모두 확인했습니다",
+            text = label,
             style = ScanPangType.meta13,
             color = ScanPangColors.OnSurfaceMuted,
         )
@@ -229,7 +230,7 @@ private fun ConfirmRow(
 }
 
 @Composable
-private fun WithdrawCta(enabled: Boolean, onClick: () -> Unit) {
+private fun WithdrawCta(label: String, enabled: Boolean, onClick: () -> Unit) {
     Box(
         modifier = Modifier
             .fillMaxWidth()
@@ -241,7 +242,7 @@ private fun WithdrawCta(enabled: Boolean, onClick: () -> Unit) {
         contentAlignment = Alignment.Center,
     ) {
         Text(
-            text = "탈퇴하기",
+            text = label,
             style = ScanPangType.title16SemiBold,
             color = Color.White,
         )

@@ -73,6 +73,7 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.TextButton
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
+import com.scanpang.app.i18n.LocalStrings
 import com.scanpang.app.ui.ScanPangFigmaAssets
 import com.scanpang.app.ui.theme.ScanPangColors
 import com.scanpang.app.ui.theme.ScanPangDimens
@@ -88,6 +89,7 @@ fun ArNavTopHud(
     onSearchClick: () -> Unit,
     destinationPill: @Composable () -> Unit,
 ) {
+    val s = LocalStrings.current
     Column(
         modifier = modifier
             .fillMaxWidth()
@@ -117,7 +119,7 @@ fun ArNavTopHud(
         ) {
             ArNavWhiteFab(
                 icon = if (isTtsOn) Icons.Rounded.Headset else Icons.Rounded.HeadsetOff,
-                contentDescription = "음성 안내",
+                contentDescription = s.navVoiceGuide,
                 onClick = onVolumeClick,
             )
             Box(
@@ -130,7 +132,7 @@ fun ArNavTopHud(
             }
             ArNavWhiteFab(
                 icon = Icons.Rounded.Search,
-                contentDescription = "검색",
+                contentDescription = s.tabSearch,
                 onClick = onSearchClick,
             )
         }
@@ -229,6 +231,7 @@ fun BoxScope.ArNavSideVolumeCamera(
     onVolumeClick: () -> Unit,
     isTtsOn: Boolean = true,
 ) {
+    val s = LocalStrings.current
     Column(
         modifier = Modifier
             .align(Alignment.TopEnd)
@@ -241,7 +244,7 @@ fun BoxScope.ArNavSideVolumeCamera(
     ) {
         ArNavWhiteFab(
             icon = if (isTtsOn) Icons.Rounded.Headset else Icons.Rounded.HeadsetOff,
-            contentDescription = if (isTtsOn) "음성 안내 켜짐" else "음성 안내 꺼짐",
+            contentDescription = if (isTtsOn) s.arTtsOn else s.arTtsOff,
             onClick = onVolumeClick,
         )
     }
@@ -284,6 +287,7 @@ fun BoxScope.ArNavActionCardCluster(
     currentInstruction: String,
     isArrived: Boolean = false,
 ) {
+    val s = LocalStrings.current
     // 메인 카드는 본문 줄 수에 따라 자유 높이를 갖고, 서브 카드는 그 바로 밑에 살짝 겹쳐서 붙음.
     // (zIndex로 메인 카드를 위로 올려, 겹치는 부분은 메인 카드가 가림)
     Column(
@@ -329,7 +333,7 @@ fun BoxScope.ArNavActionCardCluster(
                     verticalArrangement = Arrangement.spacedBy(ScanPangDimens.icon5),
                 ) {
                     Text(
-                        text = if (isArrived) "도착했어요!" else currentDistance,
+                        text = if (isArrived) s.navArrivedMessage else currentDistance,
                         style = ScanPangType.arNavDistance26,
                         color = if (isArrived) ScanPangColors.Success else ScanPangColors.OnSurfaceStrong,
                     )
@@ -413,6 +417,7 @@ fun ArNavBottomSheet(
     mapContent: @Composable () -> Unit,
     agentContent: @Composable () -> Unit,
 ) {
+    val s = LocalStrings.current
     val density = LocalDensity.current
     val minH = ScanPangDimens.arNavBottomSheetDragH + ScanPangDimens.arNavTabRowHeight
     val maxH = ScanPangDimens.arChatAreaMaxHeight
@@ -496,6 +501,7 @@ private fun ArNavTabTrack(
     onSelectAgent: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val s = LocalStrings.current
     Surface(
         modifier = modifier.height(ScanPangDimens.arNavTabTrackHeight),
         shape = ScanPangShapes.filterChip,
@@ -508,13 +514,13 @@ private fun ArNavTabTrack(
             horizontalArrangement = Arrangement.spacedBy(ScanPangDimens.arNavTabSegmentGap),
         ) {
             ArNavTabSegment(
-                label = "지도",
+                label = s.navMap,
                 selected = mapSelected,
                 onClick = onSelectMap,
                 modifier = Modifier.weight(1f),
             )
             ArNavTabSegment(
-                label = "AI 가이드",
+                label = s.navAiGuide,
                 selected = !mapSelected,
                 onClick = onSelectAgent,
                 modifier = Modifier.weight(1f),
@@ -645,7 +651,10 @@ fun ArNavAiGuideTabWithTextField(
     messages: List<ArAgentChatMessage>,
     placeholder: String,
     modifier: Modifier = Modifier,
+    // 응답 대기 중엔 send 버튼 → spinner + 클릭 차단. ArExploreScreen 의 채팅과 동일.
+    isSending: Boolean = false,
 ) {
+    val s = LocalStrings.current
     val listState = rememberLazyListState()
     LaunchedEffect(messages.size) {
         if (messages.isNotEmpty()) listState.animateScrollToItem(messages.size - 1)
@@ -711,7 +720,7 @@ fun ArNavAiGuideTabWithTextField(
                 singleLine = true,
                 keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(imeAction = ImeAction.Send),
                 keyboardActions = androidx.compose.foundation.text.KeyboardActions(
-                    onSend = { if (query.isNotBlank()) onSend(query) }
+                    onSend = { if (query.isNotBlank() && !isSending) onSend(query) }
                 ),
                 colors = TextFieldDefaults.colors(
                     focusedContainerColor = Color.Transparent,
@@ -723,16 +732,25 @@ fun ArNavAiGuideTabWithTextField(
                     cursorColor = ScanPangColors.Primary,
                 ),
             )
+            val canSend = query.isNotBlank() && !isSending
             IconButton(
-                onClick = { if (query.isNotBlank()) onSend(query) },
-                enabled = query.isNotBlank(),
+                onClick = { if (canSend) onSend(query) },
+                enabled = canSend,
             ) {
-                Icon(
-                    imageVector = Icons.AutoMirrored.Rounded.Send,
-                    contentDescription = "전송",
-                    modifier = Modifier.size(ScanPangDimens.icon16),
-                    tint = if (query.isNotBlank()) ScanPangColors.Primary else ScanPangColors.OnSurfaceMuted,
-                )
+                if (isSending) {
+                    androidx.compose.material3.CircularProgressIndicator(
+                        modifier = Modifier.size(ScanPangDimens.icon16),
+                        strokeWidth = 2.dp,
+                        color = ScanPangColors.Primary,
+                    )
+                } else {
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Rounded.Send,
+                        contentDescription = s.send,
+                        modifier = Modifier.size(ScanPangDimens.icon16),
+                        tint = if (canSend) ScanPangColors.Primary else ScanPangColors.OnSurfaceMuted,
+                    )
+                }
             }
         }
     }
@@ -743,6 +761,7 @@ fun ArNavGuideInputBar(
     placeholder: String,
     modifier: Modifier = Modifier,
 ) {
+    val s = LocalStrings.current
     Surface(
         modifier = modifier
             .fillMaxWidth()
@@ -786,7 +805,7 @@ fun ArNavGuideInputBar(
                 Box(contentAlignment = Alignment.Center) {
                     Icon(
                         imageVector = Icons.Rounded.ArrowUpward,
-                        contentDescription = "전송",
+                        contentDescription = s.send,
                         modifier = Modifier.size(ScanPangDimens.arMicSendIcon),
                         tint = ScanPangColors.OnSurfaceMuted,
                     )
@@ -945,6 +964,7 @@ fun ArNavStopNavigationSheet(
     onStopNavigation: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val s = LocalStrings.current
     Box(modifier = modifier.fillMaxSize()) {
         Box(
             modifier = Modifier
@@ -983,7 +1003,7 @@ fun ArNavStopNavigationSheet(
                 ) {
                     Box(contentAlignment = Alignment.Center) {
                         Text(
-                            text = "길안내 종료",
+                            text = s.navStop,
                             style = ScanPangType.title16SemiBold,
                             color = Color.White,
                         )
@@ -1000,18 +1020,19 @@ fun ArNavStopConfirmDialog(
     onNavigateToHome: () -> Unit,
     onDismiss: () -> Unit,
 ) {
+    val s = LocalStrings.current
     AlertDialog(
         onDismissRequest = onDismiss,
         title = {
             Text(
-                text = "길안내를 종료할까요?",
+                text = s.navStopConfirm,
                 style = ScanPangType.arFilterTitle16,
                 color = ScanPangColors.OnSurfaceStrong,
             )
         },
         text = {
             Text(
-                text = "이동할 위치를 선택해주세요.",
+                text = s.navSelectDestination,
                 style = ScanPangType.body14Regular,
                 color = ScanPangColors.OnSurfaceMuted,
             )
@@ -1019,7 +1040,7 @@ fun ArNavStopConfirmDialog(
         confirmButton = {
             TextButton(onClick = onNavigateToExplore) {
                 Text(
-                    text = "탐색으로 돌아가기",
+                    text = s.navBackToExplore,
                     style = ScanPangType.title14,
                     color = ScanPangColors.Primary,
                 )
@@ -1028,7 +1049,7 @@ fun ArNavStopConfirmDialog(
         dismissButton = {
             TextButton(onClick = onNavigateToHome) {
                 Text(
-                    text = "홈으로 돌아가기",
+                    text = s.navBackToHome,
                     style = ScanPangType.title14,
                     color = ScanPangColors.OnSurfaceMuted,
                 )

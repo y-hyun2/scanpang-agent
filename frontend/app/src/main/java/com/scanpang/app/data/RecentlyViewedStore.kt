@@ -1,8 +1,19 @@
 package com.scanpang.app.data
 
 import android.content.Context
+import com.scanpang.app.data.auth.AuthRepository
+import com.scanpang.app.data.remote.RecentlyViewedUpdateRequest
+import com.scanpang.app.data.remote.RetrofitClient
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
 import org.json.JSONArray
 import org.json.JSONObject
+
+// RecentlyViewedStore.syncToBackend() 용 fire-and-forget IO scope.
+// SavedPlacesStore 와 동일 패턴.
+private val recentlyViewedSyncScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
 /**
  * 사용자가 상세 화면에 실제로 들어가 본 장소 한 건의 기록.
@@ -61,7 +72,7 @@ class RecentlyViewedStore(context: Context) {
 
     /**
      * 상세 화면 진입 시 호출 — 같은 id 가 다시 들어오면 timestamp 만 갱신해 최상단으로 끌어올린다.
-     * 리스트 길이는 [MAX_ITEMS] 로 캡.
+     * 리스트 길이는 [MAX_ITEMS] 로 캡. 변경 후 백엔드에 fire-and-forget sync.
      */
     fun record(entry: RecentlyViewedEntry) {
         val list = getAll().toMutableList()
@@ -69,15 +80,55 @@ class RecentlyViewedStore(context: Context) {
         list.add(0, entry.copy(viewedAt = System.currentTimeMillis()))
         while (list.size > MAX_ITEMS) list.removeAt(list.lastIndex)
         saveList(list)
+        syncToBackend(list)
+    }
+
+    /**
+     * 서버 pull 결과로 로컬 list 를 완전히 교체. syncToBackend 안 호출 — pull → write
+     * loop 방지. SavedPlacesStore.replaceAll 과 동일 패턴.
+     */
+    fun replaceAll(list: List<RecentlyViewedEntry>) {
+        saveList(list)
     }
 
     fun remove(id: String) {
         val list = getAll().toMutableList()
-        if (list.removeAll { it.id == id }) saveList(list)
+        if (list.removeAll { it.id == id }) {
+            saveList(list)
+            syncToBackend(list)
+        }
     }
 
     fun clearAll() {
         prefs.edit().remove(KEY_ITEMS).apply()
+        syncToBackend(emptyList())
+    }
+
+    /**
+     * 전체 list 를 backend `user_preferences.recently_viewed_places` 로 전송.
+     * Supabase Auth 안 돼 있으면 skip (FK 위반 방지). 실패해도 로컬은 유지.
+     */
+    private fun syncToBackend(list: List<RecentlyViewedEntry>) {
+        val userId = AuthRepository.currentUserId() ?: return
+        val items = list.map { e ->
+            mapOf(
+                "id" to e.id,
+                "name" to e.name,
+                "category" to e.category,
+                "target" to e.target.name,
+                "viewedAt" to e.viewedAt,
+                "lat" to e.lat,
+                "lng" to e.lng,
+            )
+        }
+        recentlyViewedSyncScope.launch {
+            try {
+                RetrofitClient.api.updateRecentlyViewed(userId, RecentlyViewedUpdateRequest(items = items))
+                android.util.Log.d("RecentlyViewedStore", "syncToBackend OK: ${items.size}건")
+            } catch (e: Exception) {
+                android.util.Log.e("RecentlyViewedStore", "syncToBackend FAILED", e)
+            }
+        }
     }
 
     private fun saveList(list: List<RecentlyViewedEntry>) {

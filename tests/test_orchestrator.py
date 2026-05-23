@@ -14,40 +14,51 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 # ── classify_intent 단위 테스트 (10개 라우팅 케이스) ──────────────────────────
 
-def _mock_llm_response(agent: str):
-    """ChatOpenAI.ainvoke 반환값을 흉내내는 mock."""
+def _mock_llm_response(agent: str, resolved: str = "", sub_category: str = ""):
+    """ChatOpenAI.ainvoke 반환값을 흉내내는 mock.
+    classify_intent 가 {selected_agent, resolved_message, sub_category} 3-key 출력을
+    파싱하므로 셋 다 채워준다."""
     msg = MagicMock()
-    msg.content = json.dumps({"selected_agent": agent})
+    msg.content = json.dumps({
+        "selected_agent":   agent,
+        "resolved_message": resolved,
+        "sub_category":     sub_category,
+    })
     return msg
 
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("message,expected_agent", [
-    # place (2)
+    # place — 관광지/랜드마크/지역 (매장 정보는 convenience)
     ("이 건물 뭐야?",             "place"),
-    ("여기 운영시간이 어떻게 돼?", "place"),
-    # navigation (2)
+    ("남산타워 언제 지어졌어?",    "place"),
+    # navigation — 새 목적지 지정
     ("거기 어떻게 가?",           "navigation"),
     ("롯데백화점까지 길 안내해줘", "navigation"),
-    # halal (3)
+    # nav_guide — AR 길안내 중 보조 질문
+    ("여기서 좌회전 맞아?",        "nav_guide"),
+    # halal — 종교 정보(기도시간/키블라)만. 할랄식당/기도실은 convenience
     ("기도 시간 알려줘",          "halal"),
-    ("할랄 식당 어디 있어?",      "halal"),
-    ("기도실 어디야?",            "halal"),
-    # convenience (3)
+    ("키블라 방향 알려줘",         "halal"),
+    # convenience — 모든 시설 검색 + 매장
     ("근처 ATM 찾아줘",           "convenience"),
     ("화장실 어디야?",            "convenience"),
     ("카페 추천해줘",             "convenience"),
+    ("할랄 식당 어디 있어?",      "convenience"),
+    ("기도실 어디야?",            "convenience"),
 ])
 async def test_classify_intent(message: str, expected_agent: str):
     """LLM 응답을 mock해서 각 메시지가 올바른 에이전트로 분류되는지 확인."""
     from agents.orchestrator_agent import classify_intent
 
     with patch("agents.orchestrator_agent._llm") as mock_llm:
-        mock_llm.ainvoke = AsyncMock(return_value=_mock_llm_response(expected_agent))
-        result = await classify_intent(message)
+        mock_llm.ainvoke = AsyncMock(
+            return_value=_mock_llm_response(expected_agent, resolved=message)
+        )
+        agent, _resolved, _sub = await classify_intent(message)
 
-    assert result == expected_agent, (
-        f"메시지 '{message}' → 예상 '{expected_agent}', 실제 '{result}'"
+    assert agent == expected_agent, (
+        f"메시지 '{message}' → 예상 '{expected_agent}', 실제 '{agent}'"
     )
 
 
@@ -60,9 +71,9 @@ async def test_classify_intent_fallback_on_llm_error():
 
     with patch("agents.orchestrator_agent._llm") as mock_llm:
         mock_llm.ainvoke = AsyncMock(side_effect=Exception("API timeout"))
-        result = await classify_intent("알 수 없는 요청")
+        agent, _resolved, _sub = await classify_intent("알 수 없는 요청")
 
-    assert result == "convenience"
+    assert agent == "smalltalk"
 
 
 @pytest.mark.asyncio
@@ -74,9 +85,9 @@ async def test_classify_intent_fallback_on_unknown_agent():
         mock_llm.ainvoke = AsyncMock(
             return_value=_mock_llm_response("unknown_agent")
         )
-        result = await classify_intent("이상한 메시지")
+        agent, _resolved, _sub = await classify_intent("이상한 메시지")
 
-    assert result == "convenience"
+    assert agent == "smalltalk"
 
 
 # ── run_orchestrator 통합 라우팅 테스트 ──────────────────────────────────────
@@ -93,8 +104,8 @@ async def test_orchestrator_routes_to_place():
 
     with (
         patch("agents.orchestrator_agent.classify_intent",
-              AsyncMock(return_value="place")),
-        patch("agents.orchestrator_agent.run_place_insight_agent",
+              AsyncMock(return_value=("place", "", ""))),
+        patch("agents.orchestrator_agent.run_place_chat_agent",
               AsyncMock(return_value=_sub_agent_mock("눈스퀘어입니다."))),
     ):
         result = await run_orchestrator("이 건물 뭐야?", 37.56, 126.98)
@@ -111,8 +122,8 @@ async def test_orchestrator_routes_to_navigation():
 
     with (
         patch("agents.orchestrator_agent.classify_intent",
-              AsyncMock(return_value="navigation")),
-        patch("agents.orchestrator_agent.run_search_agent",
+              AsyncMock(return_value=("navigation", "", ""))),
+        patch("agents.orchestrator_agent.run_route_search",
               AsyncMock(return_value=_sub_agent_mock("명동역 방향으로 안내합니다."))),
     ):
         result = await run_orchestrator("명동역 어떻게 가?", 37.56, 126.98)
@@ -128,7 +139,7 @@ async def test_orchestrator_routes_to_halal():
 
     with (
         patch("agents.orchestrator_agent.classify_intent",
-              AsyncMock(return_value="halal")),
+              AsyncMock(return_value=("halal", "", "prayer_time"))),
         patch("agents.orchestrator_agent.run_halal_agent",
               AsyncMock(return_value=_sub_agent_mock("기도 시간 안내입니다."))),
     ):
@@ -145,8 +156,8 @@ async def test_orchestrator_routes_to_convenience():
 
     with (
         patch("agents.orchestrator_agent.classify_intent",
-              AsyncMock(return_value="convenience")),
-        patch("agents.orchestrator_agent.run_convenience_agent",
+              AsyncMock(return_value=("convenience", "", ""))),
+        patch("agents.orchestrator_agent.run_search_agent",
               AsyncMock(return_value=_sub_agent_mock("근처 ATM이 2곳 있습니다."))),
     ):
         result = await run_orchestrator("근처 ATM 찾아줘", 37.56, 126.98)
@@ -156,18 +167,15 @@ async def test_orchestrator_routes_to_convenience():
 
 
 @pytest.mark.asyncio
-async def test_orchestrator_place_docent_speech():
-    """place 응답에서 docent.speech가 final_speech로 추출되는지 확인."""
+async def test_orchestrator_place_chat_speech():
+    """place chat 응답({speech, raw})에서 speech가 final_speech로 추출되는지 확인."""
     from agents.orchestrator_agent import run_orchestrator
 
-    place_response = {
-        "ar_overlay": {"name": "명동성당"},
-        "docent": {"speech": "명동성당은 1898년에 건립된..."},
-    }
+    place_response = {"speech": "명동성당은 1898년에 건립된...", "raw": {}}
     with (
         patch("agents.orchestrator_agent.classify_intent",
-              AsyncMock(return_value="place")),
-        patch("agents.orchestrator_agent.run_place_insight_agent",
+              AsyncMock(return_value=("place", "", ""))),
+        patch("agents.orchestrator_agent.run_place_chat_agent",
               AsyncMock(return_value=place_response)),
     ):
         result = await run_orchestrator("저 건물 설명해줘", 37.56, 126.98)
@@ -183,8 +191,8 @@ async def test_orchestrator_session_id_passthrough():
 
     with (
         patch("agents.orchestrator_agent.classify_intent",
-              AsyncMock(return_value="convenience")),
-        patch("agents.orchestrator_agent.run_convenience_agent",
+              AsyncMock(return_value=("convenience", "", ""))),
+        patch("agents.orchestrator_agent.run_search_agent",
               AsyncMock(return_value=_sub_agent_mock("화장실 안내"))),
     ):
         result = await run_orchestrator("화장실 어디야?", 37.56, 126.98)

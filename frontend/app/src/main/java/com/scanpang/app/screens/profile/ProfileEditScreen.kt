@@ -60,6 +60,7 @@ import androidx.navigation.NavController
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import com.scanpang.app.data.OnboardingPreferences
+import com.scanpang.app.i18n.LocalStrings
 import com.scanpang.app.ui.theme.ScanPangColors
 import com.scanpang.app.ui.theme.ScanPangDimens
 import com.scanpang.app.ui.theme.ScanPangShapes
@@ -76,6 +77,7 @@ fun ProfileEditScreen(
     navController: NavController,
     modifier: Modifier = Modifier,
 ) {
+    val s = LocalStrings.current
     val context = LocalContext.current
     val prefs = remember { OnboardingPreferences(context) }
     val focusManager = LocalFocusManager.current
@@ -125,12 +127,12 @@ fun ProfileEditScreen(
                 IconButton(onClick = { navController.popBackStack() }) {
                     Icon(
                         imageVector = Icons.AutoMirrored.Rounded.ArrowBack,
-                        contentDescription = "뒤로",
+                        contentDescription = s.back,
                         tint = ScanPangColors.OnSurfaceStrong,
                     )
                 }
                 Text(
-                    text = "프로필 편집",
+                    text = s.profileEditTitle,
                     style = ScanPangType.profileName18,
                     color = ScanPangColors.OnSurfaceStrong,
                     modifier = Modifier.weight(1f),
@@ -163,7 +165,7 @@ fun ProfileEditScreen(
                                     .data(photoUri)
                                     .crossfade(true)
                                     .build(),
-                                contentDescription = "프로필 사진",
+                                contentDescription = s.profileEditTitle,
                                 contentScale = ContentScale.Crop,
                                 modifier = Modifier.fillMaxSize(),
                             )
@@ -186,7 +188,7 @@ fun ProfileEditScreen(
                     ) {
                         Icon(
                             imageVector = Icons.Rounded.CameraAlt,
-                            contentDescription = "사진 변경",
+                            contentDescription = s.profileEditChangePhoto,
                             tint = Color.White,
                             modifier = Modifier.size(16.dp),
                         )
@@ -201,7 +203,7 @@ fun ProfileEditScreen(
                     verticalArrangement = Arrangement.spacedBy(6.dp),
                 ) {
                     Text(
-                        text = "이름",
+                        text = s.profileEditNameLabel,
                         style = ScanPangType.sectionLabelSemiBold13,
                         color = ScanPangColors.OnSurfaceMuted,
                     )
@@ -215,7 +217,7 @@ fun ProfileEditScreen(
                         singleLine = true,
                         placeholder = {
                             Text(
-                                text = "이름을 입력하세요",
+                                text = s.profileEditNamePlaceholder,
                                 style = ScanPangType.body15Medium,
                                 color = ScanPangColors.OnSurfacePlaceholder,
                             )
@@ -238,9 +240,9 @@ fun ProfileEditScreen(
                         val hasKorean = containsKorean(nameInput)
                         Text(
                             text = when {
-                                nameInput.isEmpty() -> "한글 최대 6자 · 영문 최대 12자"
-                                hasKorean -> "한글 최대 6자"
-                                else -> "영문 최대 12자"
+                                nameInput.isEmpty() -> s.profileEditNameHint
+                                hasKorean -> s.profileEditNameHintKo
+                                else -> s.profileEditNameHintEn
                             },
                             style = ScanPangType.caption12,
                             color = ScanPangColors.OnSurfacePlaceholder,
@@ -287,7 +289,7 @@ fun ProfileEditScreen(
                     )
                     Spacer(modifier = Modifier.size(6.dp))
                     Text(
-                        text = "저장",
+                        text = s.save,
                         style = ScanPangType.body15Medium,
                     )
                 }
@@ -309,7 +311,7 @@ fun ProfileEditScreen(
                     .padding(bottom = 32.dp),
             ) {
                 Text(
-                    text = "프로필 사진 변경",
+                    text = s.profileEditChangePhoto,
                     style = ScanPangType.sectionLabelSemiBold13,
                     color = ScanPangColors.OnSurfaceMuted,
                     modifier = Modifier.padding(
@@ -347,12 +349,12 @@ fun ProfileEditScreen(
                     }
                     Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                         Text(
-                            text = "기본 사진 사용",
+                            text = s.profileEditUseDefault,
                             style = ScanPangType.body15Medium,
                             color = ScanPangColors.OnSurfaceStrong,
                         )
                         Text(
-                            text = "기본 프로필 이미지로 변경합니다",
+                            text = s.profileEditUseDefaultConfirm,
                             style = ScanPangType.caption12,
                             color = ScanPangColors.OnSurfacePlaceholder,
                         )
@@ -388,12 +390,12 @@ fun ProfileEditScreen(
                     }
                     Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                         Text(
-                            text = "갤러리에서 선택",
+                            text = s.profileEditChooseGallery,
                             style = ScanPangType.body15Medium,
                             color = ScanPangColors.OnSurfaceStrong,
                         )
                         Text(
-                            text = "휴대폰 갤러리에서 사진을 불러옵니다",
+                            text = s.profileEditChooseGalleryDesc,
                             style = ScanPangType.caption12,
                             color = ScanPangColors.OnSurfacePlaceholder,
                         )

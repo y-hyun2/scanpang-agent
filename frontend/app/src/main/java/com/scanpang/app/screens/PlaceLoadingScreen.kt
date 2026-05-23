@@ -16,10 +16,17 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
@@ -27,9 +34,30 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.unit.dp
 import com.scanpang.app.ui.theme.ScanPangColors
 import com.scanpang.app.ui.theme.ScanPangType
+import kotlinx.coroutines.delay
+import kotlin.math.exp
 
+/**
+ * [loadingStartedAt] 이 제공되면 경과 시간 기반 progress bar 표시.
+ * 요청 시작 시각(millis) → 1 - e^(-t/2500) * 90% 곡선으로 증가.
+ * null 이면 기존 bouncing dots fallback.
+ */
 @Composable
-fun PlaceLoadingScreen(modifier: Modifier = Modifier) {
+fun PlaceLoadingScreen(
+    modifier: Modifier = Modifier,
+    loadingStartedAt: Long? = null,
+) {
+    var progress by remember { mutableFloatStateOf(0f) }
+
+    LaunchedEffect(loadingStartedAt) {
+        if (loadingStartedAt == null) return@LaunchedEffect
+        while (true) {
+            val elapsed = System.currentTimeMillis() - loadingStartedAt
+            progress = (1.0 - exp(-elapsed.toDouble() / 2500.0)).toFloat() * 0.9f
+            delay(50L)
+        }
+    }
+
     Box(
         modifier = modifier
             .fillMaxSize()
@@ -40,7 +68,25 @@ fun PlaceLoadingScreen(modifier: Modifier = Modifier) {
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center,
         ) {
-            BouncingDots()
+            if (loadingStartedAt != null) {
+                Text(
+                    text = "${(progress * 100).toInt()}%",
+                    style = ScanPangType.body15Medium,
+                    color = ScanPangColors.Primary,
+                )
+                Spacer(modifier = Modifier.height(10.dp))
+                LinearProgressIndicator(
+                    progress = { progress },
+                    modifier = Modifier
+                        .width(160.dp)
+                        .height(4.dp)
+                        .clip(RoundedCornerShape(2.dp)),
+                    color = ScanPangColors.Primary,
+                    trackColor = ScanPangColors.PrimarySoft,
+                )
+            } else {
+                BouncingDots()
+            }
             Spacer(modifier = Modifier.height(20.dp))
             Text(
                 text = "정보를 불러오는 중입니다",
@@ -49,7 +95,7 @@ fun PlaceLoadingScreen(modifier: Modifier = Modifier) {
             )
             Spacer(modifier = Modifier.height(6.dp))
             Text(
-                text = "매장을 스캔하면 더 빠르게 표시됩니다",
+                text = "조금만 기다리면 바로 표시돼요",
                 style = ScanPangType.caption12,
                 color = ScanPangColors.OnSurfacePlaceholder,
                 modifier = Modifier.padding(horizontal = 32.dp),

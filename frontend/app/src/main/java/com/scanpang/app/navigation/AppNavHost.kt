@@ -83,9 +83,13 @@ object AppRoutes {
 
     const val ArExplore = "ar_explore"
     const val ArNavMap = "ar_nav_map"
-    fun arNavMapRoute(destName: String = ""): String {
+    fun arNavMapRoute(destName: String = "", lat: Double? = null, lng: Double? = null): String {
         val encoded = URLEncoder.encode(destName, StandardCharsets.UTF_8.name())
-        return "$ArNavMap/$encoded"
+        return if (lat != null && lng != null) {
+            "$ArNavMap/$encoded?destLat=$lat&destLng=$lng"
+        } else {
+            "$ArNavMap/$encoded"
+        }
     }
 
     const val Login = "login"
@@ -153,11 +157,22 @@ fun AppNavHost(
         composable(AppRoutes.ArExplore) { ArExploreScreen(navController = navController) }
         composable(AppRoutes.ArNavMap) { ArNavigationMapScreen(navController = navController, destinationName = "") }
         composable(
-            route = "${AppRoutes.ArNavMap}/{destName}",
-            arguments = listOf(navArgument("destName") { type = NavType.StringType; defaultValue = "" }),
+            route = "${AppRoutes.ArNavMap}/{destName}?destLat={destLat}&destLng={destLng}",
+            arguments = listOf(
+                navArgument("destName") { type = NavType.StringType; defaultValue = "" },
+                navArgument("destLat") { type = NavType.StringType; defaultValue = "" },
+                navArgument("destLng") { type = NavType.StringType; defaultValue = "" },
+            ),
         ) { entry ->
             val destName = runCatching { URLDecoder.decode(entry.arguments?.getString("destName").orEmpty(), StandardCharsets.UTF_8.name()) }.getOrDefault("")
-            ArNavigationMapScreen(navController = navController, destinationName = destName)
+            val destLat = entry.arguments?.getString("destLat")?.toDoubleOrNull()
+            val destLng = entry.arguments?.getString("destLng")?.toDoubleOrNull()
+            ArNavigationMapScreen(
+                navController = navController,
+                destinationName = destName,
+                destinationLat = destLat,
+                destinationLng = destLng,
+            )
         }
         composable(AppRoutes.Login) {
             val context = androidx.compose.ui.platform.LocalContext.current

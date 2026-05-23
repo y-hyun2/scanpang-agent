@@ -259,6 +259,64 @@ def _trigger_background_pipeline(ufid: str) -> None:
         print(f"[place_insight] worker enqueue 실패 (무시): {e}")
 
 
+# ── Chat 진입점 (orchestrator 라우팅용) ────────────────────────────────────
+# `run_place_insight_agent` 는 /place/store endpoint 가 ufid 와 함께 호출하는
+# building scan 전용. orchestrator 채팅 흐름은 ufid 없이 lat/lng + 메시지만
+# 들고 오므로 별도 진입점이 필요하다. 매장 정보(상호명 발화)는 여기서 다루지
+# 않고 search_agent 로 라우팅된다 — 이 함수는 관광지/랜드마크/
+# 지역 정보에만 답한다.
+
+_PLACE_CHAT_SYSTEM = (
+    "You are a friendly Seoul tour guide for foreign visitors. "
+    "Answer questions about tourist attractions, landmarks, neighborhoods, "
+    "historic sites, and famous places in Seoul using your general knowledge. "
+    "Respond in 2-3 short sentences suitable for text-to-speech. "
+    "Be warm, concise, and informative. "
+    "If you don't recognize the place, say so honestly rather than guessing."
+)
+
+
+async def run_place_chat_agent(
+    message: str,
+    lat: float,
+    lng: float,
+    language: str = "ko",
+) -> dict:
+    """관광지/랜드마크/지역 정보 응답 — orchestrator chat 전용 진입점.
+
+    Returns:
+        {"speech": str, "raw": dict}
+    """
+    lang_map = {"ko": "Korean", "en": "English", "ar": "Arabic", "ja": "Japanese", "zh": "Chinese"}
+    response_lang_label = lang_map.get(language, language)
+
+    system_prompt = f"{_PLACE_CHAT_SYSTEM} Always respond in {response_lang_label}."
+    user_prompt   = f"User location: lat={lat}, lng={lng}\nUser question: {message}"
+
+    try:
+        response = await openai_client.chat.completions.create(
+            model="gpt-4o",
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user",   "content": user_prompt},
+            ],
+            max_tokens=300,
+        )
+        speech = response.choices[0].message.content.strip()
+    except Exception as e:
+        print(f"[place_chat] LLM 호출 실패: {e}")
+        fallback = {
+            "ko": "죄송합니다, 잠시 후 다시 시도해 주세요.",
+            "en": "Sorry, please try again in a moment.",
+            "ar": "آسف، يرجى المحاولة مرة أخرى بعد قليل.",
+            "ja": "申し訳ありません、しばらくしてからもう一度お試しください。",
+            "zh": "抱歉，请稍后再试。",
+        }
+        speech = fallback.get(language, fallback["en"])
+
+    return {"speech": speech, "raw": {}}
+
+
 def _partial_response(name: str, ufid: str = "") -> dict:
     return {
         "ar_overlay": {

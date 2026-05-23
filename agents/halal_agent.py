@@ -2,9 +2,14 @@
 halal_agent.py
 무슬림 관광객을 위한 Halal Agent.
 카테고리별 라우팅: prayer_time | qibla | restaurant | prayer_room
+
+진입 경로:
+  1. /halal/query 엔드포인트 (무슬림 허브 UI) — 4개 카테고리 모두 사용
+  2. orchestrator chat — prayer_time / qibla 만. (restaurant/prayer_room 은 search_agent 로 분리)
+
+호출자는 반드시 req.category 를 지정해야 한다. 빈 경우 prayer_time 으로 폴백.
 """
 
-import json
 import os
 from datetime import datetime, timezone, timedelta
 
@@ -25,51 +30,6 @@ load_dotenv()
 
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
 openai_client = AsyncOpenAI(api_key=OPENAI_API_KEY)
-
-
-# ── LLM: 카테고리 추출 ──────────────────────────────────────────────────────
-
-async def _extract_category(message: str) -> tuple:
-    """자유 텍스트 → (category, language, halal_type) 추출."""
-    system = """You are a classifier for a Muslim tourist assistant app.
-Given a user message, return JSON with:
-- "category": one of "prayer_time", "qibla", "restaurant", "prayer_room"
-- "language": detected language code ("en", "ko", "ar", "ja", "zh")
-- "halal_type": if restaurant, one of "HALAL_MEAT", "SEAFOOD", "VEGGIE", or "" if not specified
-
-Examples:
-- "When is the next prayer?" → {"category":"prayer_time","language":"en","halal_type":""}
-- "메카 방향 알려줘" → {"category":"qibla","language":"ko","halal_type":""}
-- "Find halal Korean food" → {"category":"restaurant","language":"en","halal_type":"HALAL_MEAT"}
-- "근처 해산물 식당" → {"category":"restaurant","language":"ko","halal_type":"SEAFOOD"}
-- "Where can I pray?" → {"category":"prayer_room","language":"en","halal_type":""}
-- "أين يمكنني الصلاة؟" → {"category":"prayer_room","language":"ar","halal_type":""}
-
-Return ONLY valid JSON, no explanation."""
-
-    try:
-        resp = await openai_client.chat.completions.create(
-            model="gpt-4o",
-            messages=[
-                {"role": "system", "content": system},
-                {"role": "user", "content": message},
-            ],
-            max_tokens=100,
-            temperature=0,
-        )
-        text = resp.choices[0].message.content.strip()
-        # JSON 파싱 (```json ... ``` 감싸져 있을 수 있음)
-        if text.startswith("```"):
-            text = text.split("```")[1].replace("json", "", 1).strip()
-        result = json.loads(text)
-        return (
-            result.get("category", "prayer_time"),
-            result.get("language", "en"),
-            result.get("halal_type", ""),
-        )
-    except Exception as e:
-        print(f"[Halal] 카테고리 추출 오류: {e}")
-        return "prayer_time", "en", ""
 
 
 # ── LLM: 음성 생성 ──────────────────────────────────────────────────────────
@@ -165,14 +125,12 @@ Be warm, helpful, and respectful of Islamic practices."""
 async def run_halal_agent(req: HalalRequest) -> dict:
     """Halal Agent 메인 함수."""
 
-    # 1) 카테고리 결정
-    category = req.category
+    # 1) 카테고리 결정 — 호출자(orchestrator / 무슬림 허브 UI)가 명시한 값 사용.
+    # 빈 경우 prayer_time 으로 폴백 (예전 LLM 기반 _extract_category 는 제거됨 —
+    # orchestrator 가 이미 sub_category 를 결정해 전달하므로 dead path 였음).
+    category = req.category or "prayer_time"
     language = req.language
     halal_type = req.halal_type
-
-    if not category and req.message:
-        category, language, halal_type = await _extract_category(req.message)
-    category = category or "prayer_time"
 
     # 2) 반경 결정
     radius = req.radius if req.radius > 0 else DEFAULT_RADIUS.get(category, 1000)

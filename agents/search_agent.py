@@ -1,6 +1,7 @@
 """
-convenience_agent.py
-편의시설 검색 에이전트.
+search_agent.py
+매장·편의시설·할랄식당·기도실 등 위치 기반 검색 에이전트.
+(이전 이름: convenience_agent — 책임 확장에 따라 개명)
 
 동작:
   1. category 파라미터 있음 → LLM 스킵, 바로 검색
@@ -25,13 +26,14 @@ from tools.convenience_tools import (
     public_restroom_search,
     seoul_locker_search,
 )
+from tools.halal_tools import halal_restaurant_search
 from tools.open_hours_parser import is_open_now_combined
 
 load_dotenv()
 
 openai_client = AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY", ""))
 
-ALL_CATEGORIES = list(CATEGORY_CONFIG.keys()) + list(DEFAULT_RADIUS.keys())
+ALL_CATEGORIES = list(CATEGORY_CONFIG.keys()) + list(DEFAULT_RADIUS.keys()) + ["halal_restaurant"]
 
 CATEGORY_EXTRACT_PROMPT = f"""
 You are a facility category classifier for a travel AR app.
@@ -40,7 +42,10 @@ Given a user message, return the most relevant facility category and detected la
 Categories:
 convenience_store, cafe, restaurant, pharmacy, hospital,
 bank, atm, shopping, parking, subway, tourist, accommodation, cultural,
-exchange, restroom, locker, prayer_room
+exchange, restroom, locker, prayer_room, halal_restaurant
+
+Use "halal_restaurant" if the message mentions halal food, muslim food, or
+muslim-friendly dining. Use "prayer_room" for prayer rooms / musalla / 기도실.
 
 Return JSON only:
 {{"category": "<one of the above>", "language": "<ko|en|ar|ja|zh>"}}
@@ -110,7 +115,7 @@ async def _generate_speech(facilities: list[dict], category: str, language: str)
     return resp.choices[0].message.content.strip()
 
 
-async def run_convenience_agent(req: ConvenienceRequest) -> ConvenienceResponse:
+async def run_search_agent(req: ConvenienceRequest) -> ConvenienceResponse:
     # Step 1: category 결정
     category = req.category.strip()
     language = req.language
@@ -134,7 +139,31 @@ async def run_convenience_agent(req: ConvenienceRequest) -> ConvenienceResponse:
     elif category == "locker":
         raw = await seoul_locker_search(req.lat, req.lng, radius)
     elif category == "prayer_room":
-        raw = prayer_room_search(req.lat, req.lng, radius)
+        raw = await prayer_room_search(req.lat, req.lng, radius)
+    elif category == "halal_restaurant":
+        # halal_restaurant_search 는 풍부한 필드(halal_type, cuisine_type 등) 반환 —
+        # Facility 표준 키로 normalize 하고 나머진 extra 에 보존.
+        halal_rows = await halal_restaurant_search(req.lat, req.lng, radius)
+        raw = [
+            {
+                "name":       r.get("name_ko") or r.get("name_en") or "할랄 식당",
+                "distance_m": r.get("distance_m", 0),
+                "lat":        r.get("lat"),
+                "lng":        r.get("lng"),
+                "address":    r.get("address", ""),
+                "phone":      r.get("phone", ""),
+                "open_hours": r.get("opening_hours", ""),
+                "extra": {
+                    "halal_type":             r.get("halal_type", ""),
+                    "muslim_cooks_available": r.get("muslim_cooks_available"),
+                    "no_alcohol_sales":       r.get("no_alcohol_sales"),
+                    "cuisine_type":           r.get("cuisine_type", []),
+                    "menu_examples":          r.get("menu_examples", []),
+                    "restaurant_id":          r.get("restaurant_id", ""),
+                },
+            }
+            for r in halal_rows
+        ]
     else:
         raw = []
 

@@ -22,6 +22,7 @@ class UserPreferencesResponse(BaseModel):
     value_added: Optional[str] = None
     saved_places: list = []
     search_history: list = []
+    recently_viewed_places: list = []
 
 
 class SavedPlacesUpdateRequest(BaseModel):
@@ -32,6 +33,12 @@ class SavedPlacesUpdateRequest(BaseModel):
 class SearchHistoryUpdateRequest(BaseModel):
     """search_history 전체 list 교체. 최근 검색어(string) 목록."""
     items: List[str] = []
+
+
+class RecentlyViewedUpdateRequest(BaseModel):
+    """recently_viewed_places 전체 list 교체. frontend RecentlyViewedStore 변경 시 호출.
+    형식: [{id, name, category, target, viewedAt, lat, lng}]. 길이 캡(20)은 frontend 가 관리."""
+    items: List[dict] = []
 
 
 class InquirySubmitRequest(BaseModel):

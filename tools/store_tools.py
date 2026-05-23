@@ -380,6 +380,7 @@ async def get_store_detail(
     return result
 
 
+
 def _row_to_dict(row) -> dict:
     """asyncpg Record → 일반 dict. JSONB 필드는 이미 파싱돼서 옴."""
     d = dict(row)

@@ -27,6 +27,7 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.navigation.NavController
 import com.scanpang.app.data.OnboardingPreferences
+import com.scanpang.app.i18n.LocalStrings
 import com.scanpang.app.navigation.AppRoutes
 import com.scanpang.app.ui.theme.ScanPangColors
 import com.scanpang.app.ui.theme.ScanPangShapes
@@ -40,6 +41,7 @@ fun OnboardingNameScreen(
 ) {
     val context = LocalContext.current
     val prefs = remember { OnboardingPreferences(context) }
+    val s = LocalStrings.current
     var name by remember {
         mutableStateOf(prefs.getDisplayName().orEmpty())
     }
@@ -67,19 +69,19 @@ fun OnboardingNameScreen(
                 OnboardingProgressHeader(step = 2)
                 Spacer(modifier = Modifier.height(ScanPangSpacing.lg))
                 Text(
-                    text = "어떻게 불러드릴까요?",
+                    text = s.onboardingNameTitle,
                     style = ScanPangType.titleLarge,
                     color = ScanPangColors.OnSurfaceStrong,
                 )
                 Spacer(modifier = Modifier.height(ScanPangSpacing.xs))
                 Text(
-                    text = "AR 가이드와 인사할 때 사용됩니다",
+                    text = s.onboardingNameSubtitle,
                     style = ScanPangType.body14Regular,
                     color = ScanPangColors.OnSurfaceMuted,
                 )
                 Spacer(modifier = Modifier.height(ScanPangSpacing.lg))
                 Text(
-                    text = "이름",
+                    text = s.onboardingNameLabel,
                     style = ScanPangType.caption12Medium,
                     color = ScanPangColors.OnSurfaceMuted,
                 )
@@ -90,7 +92,7 @@ fun OnboardingNameScreen(
                     modifier = Modifier.fillMaxWidth(),
                     placeholder = {
                         Text(
-                            text = "이름",
+                            text = s.onboardingNamePlaceholder,
                             style = ScanPangType.body15Medium,
                             color = ScanPangColors.OnSurfacePlaceholder,
                         )
@@ -113,7 +115,7 @@ fun OnboardingNameScreen(
                 Spacer(modifier = Modifier.height(ScanPangSpacing.lg))
             }
             OnboardingPrimaryButton(
-                text = "다음",
+                text = s.next,
                 enabled = canContinue,
                 onClick = {
                     prefs.setDisplayName(trimmed)

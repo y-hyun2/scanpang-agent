@@ -3,24 +3,25 @@ from typing import Optional
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 from schemas.navigation import NavRequest, RouteRequest
-from agents.navigation_agent import run_search_agent, run_route_agent
+from agents.navigation_agent import run_route_search, run_route_agent
 from schemas.place import PlaceRequest
 from agents.place_insight_agent import run_place_insight_agent
 from schemas.store import StoreRequest
 from tools.store_tools import get_store_detail
 from schemas.convenience import ConvenienceRequest
-from agents.convenience_agent import run_convenience_agent
+from agents.search_agent import run_search_agent
 from schemas.halal import HalalRequest
 from agents.halal_agent import run_halal_agent
 from agents.orchestrator_agent import run_orchestrator
 from core.session_store import get_session_store
 from schemas.restaurant import RestaurantDetailRequest
 from tools.restaurant_tools import get_restaurant_detail
-from schemas.search import SearchRequest, SearchResponse, SearchResultItem
+from schemas.search import SearchRequest, SearchResponse, SearchResultItem, AutocompleteRequest, AutocompleteResponse
 from schemas.place_detail import PlaceDetailRequest, PlaceDetailResponse
 from schemas.user import (
     UserPreferencesUpsertRequest, UserPreferencesResponse,
     SavedPlacesUpdateRequest, SearchHistoryUpdateRequest,
+    RecentlyViewedUpdateRequest,
     InquirySubmitRequest, InquirySubmitResponse,
 )
 from tools.open_hours_parser import is_open_now_combined as _is_open_now_combined
@@ -44,7 +45,6 @@ def _strip_html(text: str) -> str:
         return text
     cleaned = _re.sub(r"<br\s*/?>", "\n", text, flags=_re.IGNORECASE)
     cleaned = _re.sub(r"<[^>]+>", "", cleaned)
-    # 각 줄 내부 공백만 압축 — 줄바꿈은 유지 (영업시간 다중 줄 표시용)
     lines = [" ".join(line.split()) for line in cleaned.split("\n")]
     return "\n".join(lines).strip()
 
@@ -77,12 +77,21 @@ async def _ensure_translations(
 
 
 def _parse_jsonb_list(val) -> list:
+    """JSONB 컬럼 → Python list 변환. single/double encoded 및 asyncpg 반환 타입 모두 처리."""
     if val is None:
         return []
     if isinstance(val, list):
         return val
-    parsed = _json.loads(val)
-    return _json.loads(parsed) if isinstance(parsed, str) else parsed
+    try:
+        result = _json.loads(val)
+        if isinstance(result, list):
+            return result
+        if isinstance(result, str):
+            inner = _json.loads(result)
+            return inner if isinstance(inner, list) else []
+        return []
+    except (ValueError, TypeError):
+        return []
 from rag.automation.worker import start_worker, stop_worker
 from core.db import get_pool, close_pool
 from api.h3_buildings import router as h3_buildings_router
@@ -108,6 +117,20 @@ async def _shutdown():
 
 # ── Orchestrator 스키마 ───────────────────────────────────────────────────
 
+class NavContext(BaseModel):
+    """AR 길안내 중 채팅 호출에 frontend 가 같이 전송하는 현재 상태.
+    None 이면 일반 모드(검색/장소 정보 등), 값 있으면 nav_guide 라우팅 후보."""
+    is_routing: bool = False
+    destination_name: str = ""
+    direction: str = ""             # "LEFT" | "RIGHT" | "STRAIGHT" | "DESTINATION"
+    current_speech: str = ""        # 현재 턴 LLM 안내 ("스타벅스에서 좌회전")
+    current_distance_m: int = 0     # 다음 턴까지 거리
+    next_direction: str = ""
+    next_distance_m: int = 0
+    remaining_distance_m: int = 0   # 목적지까지 남은 총 거리
+    remaining_time_min: int = 0     # ETA
+
+
 class AgentChatRequest(BaseModel):
     message: str
     lat: float
@@ -115,6 +138,7 @@ class AgentChatRequest(BaseModel):
     heading: float = 0.0
     language: str = "ko"
     session_id: Optional[str] = None
+    nav_context: Optional[NavContext] = None
 
 
 class AgentChatResponse(BaseModel):
@@ -130,7 +154,7 @@ async def navigation_search(req: NavRequest):
     1단계: 자연어 메시지 → POI 후보 목록 반환
     앱에서 사용자에게 목적지 확인/선택 후 /navigation/route 호출
     """
-    return await run_search_agent(req)
+    return await run_route_search(req)
 
 
 @app.post("/navigation/route")
@@ -164,6 +188,7 @@ async def place_store(req: StoreRequest):
     return detail
 
 
+
 @app.post("/user/preferences", response_model=UserPreferencesResponse)
 async def user_preferences_upsert(req: UserPreferencesUpsertRequest):
     """
@@ -177,8 +202,8 @@ async def user_preferences_upsert(req: UserPreferencesUpsertRequest):
             """
             INSERT INTO user_preferences
                 (user_id, display_name, language, value_added, saved_places,
-                 search_history, created_at, updated_at)
-            VALUES ($1, $2, $3, $4, '[]'::jsonb, '[]'::jsonb, NOW(), NOW())
+                 search_history, recently_viewed_places, created_at, updated_at)
+            VALUES ($1, $2, $3, $4, '[]'::jsonb, '[]'::jsonb, '[]'::jsonb, NOW(), NOW())
             ON CONFLICT (user_id) DO UPDATE SET
                 display_name = COALESCE(EXCLUDED.display_name, user_preferences.display_name),
                 language     = COALESCE(EXCLUDED.language,     user_preferences.language),
@@ -186,7 +211,8 @@ async def user_preferences_upsert(req: UserPreferencesUpsertRequest):
                 updated_at   = NOW()
             RETURNING user_id, display_name, language, value_added,
                       saved_places::text AS saved_places,
-                      search_history::text AS search_history
+                      search_history::text AS search_history,
+                      recently_viewed_places::text AS recently_viewed_places
             """,
             req.user_id, req.display_name, req.language, req.value_added,
         )
@@ -197,6 +223,7 @@ async def user_preferences_upsert(req: UserPreferencesUpsertRequest):
         value_added=row["value_added"],
         saved_places=_parse_jsonb_list(row["saved_places"]),
         search_history=_parse_jsonb_list(row["search_history"]),
+        recently_viewed_places=_parse_jsonb_list(row["recently_viewed_places"]),
     )
 
 
@@ -209,7 +236,8 @@ async def user_preferences_get(user_id: str):
             """
             SELECT user_id, display_name, language, value_added,
                    saved_places::text AS saved_places,
-                   search_history::text AS search_history
+                   search_history::text AS search_history,
+                   recently_viewed_places::text AS recently_viewed_places
             FROM user_preferences WHERE user_id = $1
             """,
             user_id,
@@ -223,6 +251,7 @@ async def user_preferences_get(user_id: str):
         value_added=row["value_added"],
         saved_places=_parse_jsonb_list(row["saved_places"]),
         search_history=_parse_jsonb_list(row["search_history"]),
+        recently_viewed_places=_parse_jsonb_list(row["recently_viewed_places"]),
     )
 
 
@@ -264,6 +293,25 @@ async def user_search_history_update(user_id: str, req: SearchHistoryUpdateReque
     return {"user_id": user_id, "count": len(req.items)}
 
 
+@app.put("/user/preferences/{user_id}/recently-viewed")
+async def user_recently_viewed_update(user_id: str, req: RecentlyViewedUpdateRequest):
+    """RecentlyViewedStore 변경 시 호출. '최근 본 장소' list 전체 교체.
+    saved_places 와 동일 — jsonb codec 이 list 직렬화 담당, json.dumps 금지(더블 인코딩)."""
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        await conn.execute(
+            """
+            INSERT INTO user_preferences (user_id, recently_viewed_places, created_at, updated_at)
+            VALUES ($1, $2, NOW(), NOW())
+            ON CONFLICT (user_id) DO UPDATE SET
+                recently_viewed_places = EXCLUDED.recently_viewed_places,
+                updated_at             = NOW()
+            """,
+            user_id, req.items,
+        )
+    return {"user_id": user_id, "count": len(req.items)}
+
+
 @app.post("/user/inquiry", response_model=InquirySubmitResponse)
 async def user_inquiry_submit(req: InquirySubmitRequest):
     """
@@ -294,7 +342,7 @@ async def convenience_query(req: ConvenienceRequest):
     카테고리 탭 or 텍스트 검색 → 주변 편의시설 목록 반환
     category 있으면 LLM 없이 바로 검색, message만 있으면 LLM으로 카테고리 추출
     """
-    return await run_convenience_agent(req)
+    return await run_search_agent(req)
 
 
 @app.post("/halal/query")
@@ -309,8 +357,9 @@ async def halal_query(req: HalalRequest):
 @app.post("/ar/agent/chat", response_model=AgentChatResponse)
 async def ar_agent_chat(req: AgentChatRequest):
     """
-    LangGraph Orchestrator: 단일 엔드포인트에서 4개 에이전트를 자동 라우팅.
-    intent_classifier(GPT-4o) → place | navigation | halal | convenience → 통합 응답
+    LangGraph Orchestrator: 단일 엔드포인트에서 5개 에이전트를 자동 라우팅.
+    intent_classifier(GPT-4o) → place | navigation | nav_guide | halal | convenience → 통합 응답.
+    nav_context 가 있으면 길안내 중 사용자 발화로 간주, nav_guide 후보로 분류.
     """
     result = await run_orchestrator(
         message=req.message,
@@ -319,6 +368,7 @@ async def ar_agent_chat(req: AgentChatRequest):
         heading=req.heading,
         language=req.language,
         session_id=req.session_id,
+        nav_context=req.nav_context.model_dump() if req.nav_context else None,
     )
     return result
 
@@ -448,6 +498,45 @@ async def _outdoor_search(category_key: str, req: SearchRequest) -> SearchRespon
     return SearchResponse(query=req.query, count=len(results), results=results)
 
 
+@app.post("/place/autocomplete", response_model=AutocompleteResponse)
+async def place_autocomplete(req: AutocompleteRequest):
+    """
+    타이핑 중 debounce 후 호출. store_name prefix match + pg_trgm similarity 로 제안 반환.
+    """
+    q = (req.q or "").strip()
+    if not q:
+        return AutocompleteResponse(suggestions=[])
+
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        rows = await conn.fetch(
+            """
+            WITH matches AS (
+                SELECT DISTINCT store_name
+                FROM store_details
+                WHERE store_name ILIKE $1
+                   OR similarity(
+                        regexp_replace(store_name, '\\s+', '', 'g'),
+                        regexp_replace($2, '\\s+', '', 'g')
+                      ) >= 0.25
+            )
+            SELECT store_name
+            FROM matches
+            ORDER BY
+              CASE WHEN store_name ILIKE $1 THEN 0 ELSE 1 END,
+              similarity(
+                regexp_replace(store_name, '\\s+', '', 'g'),
+                regexp_replace($2, '\\s+', '', 'g')
+              ) DESC
+            LIMIT $3
+            """,
+            f"%{q}%",
+            q,
+            req.limit,
+        )
+    return AutocompleteResponse(suggestions=[r["store_name"] for r in rows])
+
+
 @app.post("/place/search", response_model=SearchResponse)
 async def place_search(req: SearchRequest):
     """
@@ -493,14 +582,26 @@ async def place_search(req: SearchRequest):
                    END AS dist_m
             FROM store_details
             WHERE store_name ILIKE $1
+               OR similarity(
+                    regexp_replace(store_name, '\\s+', '', 'g'),
+                    regexp_replace($6, '\\s+', '', 'g')
+                  ) >= 0.3
                OR ($3 != 'other' AND category_key = $3)
-            ORDER BY dist_m NULLS LAST, last_updated DESC NULLS LAST
+            ORDER BY
+              CASE WHEN store_name ILIKE $1 THEN 0 ELSE 1 END,
+              similarity(
+                regexp_replace(store_name, '\\s+', '', 'g'),
+                regexp_replace($6, '\\s+', '', 'g')
+              ) DESC,
+              dist_m NULLS LAST,
+              last_updated DESC NULLS LAST
             LIMIT $2
             """,
             f"%{q}%",
             req.limit,
             category_key,
             user_lng, user_lat,
+            q,
         )
 
     results: list[SearchResultItem] = []

@@ -41,6 +41,10 @@ interface ScanPangApi {
     @POST("place/search")
     suspend fun searchPlaces(@Body request: SearchRequest): SearchResponse
 
+    // ── Autocomplete ──
+    @POST("place/autocomplete")
+    suspend fun autocomplete(@Body request: AutocompleteRequest): AutocompleteResponse
+
     // ── Place Detail ──
     @POST("place/detail")
     suspend fun getPlaceDetail(@Body request: PlaceDetailRequest): PlaceDetailResponse
@@ -74,6 +78,14 @@ interface ScanPangApi {
         @Body request: SearchHistoryUpdateRequest,
     ): Map<String, Any>
 
+    // recently_viewed_places 전체 replace. PlaceDetail / AR 매장 오버레이 진입 시
+    // RecentlyViewedStore 가 record() 후 debounced 로 호출.
+    @retrofit2.http.PUT("user/preferences/{user_id}/recently-viewed")
+    suspend fun updateRecentlyViewed(
+        @retrofit2.http.Path("user_id") userId: String,
+        @Body request: RecentlyViewedUpdateRequest,
+    ): Map<String, Any>
+
     // 1:1 문의 — ContactScreen 의 제출 버튼이 호출.
     @POST("user/inquiry")
     suspend fun submitInquiry(@Body request: InquirySubmitRequest): InquirySubmitResponse
@@ -100,6 +112,10 @@ data class SearchHistoryUpdateRequest(
     val items: List<String> = emptyList(),
 )
 
+data class RecentlyViewedUpdateRequest(
+    val items: List<Map<String, Any>> = emptyList(),
+)
+
 data class UserPreferencesUpsertRequest(
     val user_id: String,
     val display_name: String? = null,
@@ -114,6 +130,7 @@ data class UserPreferencesResponse(
     val value_added: String? = null,
     val saved_places: List<Any> = emptyList(),
     val search_history: List<Any> = emptyList(),
+    val recently_viewed_places: List<Any> = emptyList(),
 )
 
 // ── Navigation DTOs ──
@@ -394,6 +411,21 @@ data class AgentChatRequest(
     val heading: Double = 0.0,
     val language: String = "ko",
     val session_id: String? = null,
+    // AR 길안내 화면에서 채팅 호출 시 현재 turn/거리/목적지를 함께 전송.
+    // backend orchestrator 가 nav_guide 로 라우팅하고 LLM 프롬프트에 주입.
+    val nav_context: NavContext? = null,
+)
+
+data class NavContext(
+    val is_routing: Boolean = false,
+    val destination_name: String = "",
+    val direction: String = "",
+    val current_speech: String = "",
+    val current_distance_m: Int = 0,
+    val next_direction: String = "",
+    val next_distance_m: Int = 0,
+    val remaining_distance_m: Int = 0,
+    val remaining_time_min: Int = 0,
 )
 
 data class AgentChatResponse(
@@ -469,6 +501,17 @@ data class SearchResponse(
     val query: String = "",
     val count: Int = 0,
     val results: List<SearchResultItem> = emptyList(),
+)
+
+data class AutocompleteRequest(
+    val q: String,
+    val lat: Double? = null,
+    val lng: Double? = null,
+    val limit: Int = 8,
+)
+
+data class AutocompleteResponse(
+    val suggestions: List<String> = emptyList(),
 )
 
 // ── Place Detail DTOs ──

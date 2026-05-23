@@ -40,3 +40,14 @@ class SearchResponse(BaseModel):
     query: str
     count: int
     results: List[SearchResultItem]
+
+
+class AutocompleteRequest(BaseModel):
+    q: str
+    lat: Optional[float] = None
+    lng: Optional[float] = None
+    limit: int = 8
+
+
+class AutocompleteResponse(BaseModel):
+    suggestions: List[str]

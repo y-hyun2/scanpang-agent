@@ -29,6 +29,7 @@ import com.scanpang.app.components.ar.ArAgentChatMessage
 import com.scanpang.app.data.remote.ScanPangViewModel
 import androidx.compose.ui.Modifier
 import androidx.navigation.NavController
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import com.scanpang.app.components.ar.ArNavCompass
 import com.scanpang.app.components.ar.ArNavMiniMap
@@ -54,7 +55,12 @@ import com.scanpang.app.ui.theme.ScanPangDimens
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import com.scanpang.app.data.AppSettingsPreferences
+import com.scanpang.app.data.OnboardingPreferences
+import com.scanpang.app.data.RecentlyViewedEntry
+import com.scanpang.app.data.RecentlyViewedStore
+import com.scanpang.app.data.SavedPlaceNavTarget
 import com.scanpang.app.data.TtsState
+import com.scanpang.app.i18n.LocalStrings
 
 private const val NAV_TAB_MAP = "map"
 private const val NAV_TAB_AI = "ai"
@@ -68,15 +74,26 @@ fun ArNavigationMapScreen(
     modifier: Modifier = Modifier,
     viewModel: ScanPangViewModel = viewModel(),
     destinationName: String = "",
+    /** Supabase에서 가져온 정확한 목적지 좌표. null이면 /navigation/search 단계를 거침. */
+    destinationLat: Double? = null,
+    destinationLng: Double? = null,
 ) {
+    val s = LocalStrings.current
     val appContext = LocalContext.current
     val appSettingsPrefs = remember { AppSettingsPreferences(appContext) }
     val scope = rememberCoroutineScope()
-    val agentService = remember { ScanPangAgentService() }
+    val agentService = remember(appContext) {
+        // 영어 모드면 backend 응답도 영어로 받기. ArExploreScreen 과 동일 패턴.
+        val langCode = OnboardingPreferences(appContext).getLanguageCode() ?: "ko"
+        ScanPangAgentService(language = langCode)
+    }
     val ttsController = remember(appContext) { ArExploreTtsController(appContext) {} }
     var chatMessages by remember {
-        mutableStateOf(listOf(ArAgentChatMessage(text = "길찾기 중 궁금한 점을 물어보세요!", isUser = false)))
+        mutableStateOf(listOf(ArAgentChatMessage(text = s.navInitialMessage, isUser = false)))
     }
+    // 응답 도착 전 보내기 연타로 같은 query 가 backend 에 N번 전송되던 문제 차단.
+    // ArExploreScreen 과 동일 패턴.
+    var isChatSending by remember { mutableStateOf(false) }
 
     // ArRealSceneView가 매 프레임 보고하는 길안내 상태 (좌/우/직진, 거리, 도착 등)
     var navUiState by remember { mutableStateOf(ArNavUiState()) }
@@ -96,7 +113,7 @@ fun ArNavigationMapScreen(
     val firstTurn = turnPoints.firstOrNull()
     val secondTurn = turnPoints.getOrNull(1)
     val displayDestinationName = arCommand?.destination?.name
-        ?: destinationName.ifEmpty { "목적지" }
+        ?: destinationName.ifEmpty { s.navDestination }
 
     // 표시용 값: 라우팅 중이면 navUiState, 아니면 폴백
     val isRouting = navUiState.phase == ArNavUiState.Phase.ROUTING || navUiState.phase == ArNavUiState.Phase.ARRIVED
@@ -106,8 +123,8 @@ fun ArNavigationMapScreen(
         isRouting && navUiState.currentSpeech.isNotBlank() -> navUiState.currentSpeech
         // 폴백: 단순 "좌회전 152m" 형식
         isRouting -> "${navUiState.direction} ${navUiState.currentDistanceM}m"
-        else -> firstTurn?.let { it.speech.ifEmpty { it.description.ifEmpty { "직진" } } }
-            ?: navUiState.statusMessage.ifEmpty { "위치 잡는 중..." }
+        else -> firstTurn?.let { it.speech.ifEmpty { it.description.ifEmpty { s.navGoStraight } } }
+            ?: navUiState.statusMessage.ifEmpty { s.navLocating }
     }
     val currentDistance = if (isRouting) "${navUiState.currentDistanceM}m"
         else firstTurn?.let { "${it.segment_distance_m}m" } ?: "—"
@@ -134,6 +151,13 @@ fun ArNavigationMapScreen(
     var showStopNavSheet by remember { mutableStateOf(false) }
     var showStopConfirmDialog by remember { mutableStateOf(false) }
 
+    LaunchedEffect(navUiState.isArrived) {
+        if (navUiState.isArrived) {
+            delay(2000L)
+            showStopNavSheet = true
+        }
+    }
+
     BackHandler(enabled = showStopConfirmDialog) {
         showStopConfirmDialog = false
     }
@@ -156,6 +180,8 @@ fun ArNavigationMapScreen(
         ArRealSceneView(
             modifier = Modifier.fillMaxSize(),
             targetDestination = destinationName,
+            targetLat = destinationLat,
+            targetLng = destinationLng,
             onPoseUpdate = { lat, lng, heading, _, _ ->
                 userLat = lat
                 userLng = lng
@@ -207,7 +233,7 @@ fun ArNavigationMapScreen(
                 // 도착 시: 파란 "X 안내 중" → 초록 "X 도착" (Figma 디자인)
                 ArNavDestinationPill(
                     text = displayDestinationName,
-                    suffix = if (navUiState.isArrived) "도착" else "안내 중",
+                    suffix = if (navUiState.isArrived) s.navArrivedBadge else s.navGuiding,
                     containerColor = if (navUiState.isArrived)
                         ScanPangColors.Success
                     else
@@ -246,18 +272,41 @@ fun ArNavigationMapScreen(
                         query = aiQuery,
                         onQueryChange = { aiQuery = it },
                         onSend = { text ->
+                            if (isChatSending) return@ArNavAiGuideTabWithTextField
                             val q = text.trim()
                             if (q.isEmpty()) return@ArNavAiGuideTabWithTextField
+                            isChatSending = true
                             chatMessages = chatMessages + ArAgentChatMessage(text = q, isUser = true)
                             aiQuery = ""
+                            // 현재 길안내 상태를 nav_context 로 같이 전송 — backend
+                            // orchestrator 가 'nav_guide' 로 라우팅하면 LLM 이 이 데이터
+                            // 보고 "여기서 좌회전 맞아?" "거의 다 왔어?" 등에 정확 응답.
+                            val totalRemain = arCommand?.total_distance_m ?: 0
+                            val totalTime = arCommand?.total_time_min ?: 0
+                            val navCtx = com.scanpang.app.data.remote.NavContext(
+                                is_routing = isRouting,
+                                destination_name = displayDestinationName,
+                                direction = navUiState.turnDirection.name,
+                                current_speech = navUiState.currentSpeech,
+                                current_distance_m = navUiState.currentDistanceM,
+                                next_direction = navUiState.nextTurnDirection.name,
+                                next_distance_m = navUiState.nextDistanceM,
+                                remaining_distance_m = totalRemain,
+                                remaining_time_min = totalTime,
+                            )
                             scope.launch {
-                                val reply = agentService.sendMessage(q)
-                                chatMessages = chatMessages + ArAgentChatMessage(text = reply, isUser = false)
-                                ttsController.speakIfEnabled(reply, isTtsOn)
+                                try {
+                                    val reply = agentService.sendMessage(q, navCtx)
+                                    chatMessages = chatMessages + ArAgentChatMessage(text = reply, isUser = false)
+                                    ttsController.speakIfEnabled(reply, isTtsOn)
+                                } finally {
+                                    isChatSending = false
+                                }
                             }
                         },
+                        isSending = isChatSending,
                         messages = chatMessages,
-                        placeholder = "무엇이든 물어보세요",
+                        placeholder = s.navChatPlaceholder,
                     )
                 },
             )
@@ -352,6 +401,25 @@ fun ArNavigationMapScreen(
             val placeUfid = placeResult?.ar_overlay?.ufid.orEmpty()
             LaunchedEffect(store) { viewModel.queryStore(placeId = placeUfid, storeName = store) }
             val s = storeResult?.takeIf { it.store_name == store }
+
+            // ── "최근 본 장소" 기록 (AR 네비 중 핀 탭→오버레이 케이스) ──
+            // PlaceDetailCommon 자동 record() 와 동일 규약. storeResult 도착 후 풀필드로.
+            val recentlyViewedStore = remember(appContext) { RecentlyViewedStore(appContext) }
+            if (s != null && placeUfid.isNotEmpty()) {
+                LaunchedEffect(s.id) {
+                    recentlyViewedStore.record(
+                        RecentlyViewedEntry(
+                            id = s.id.ifEmpty { "${placeUfid}__${store}" },
+                            name = s.name_ko.ifEmpty { store },
+                            category = s.category,
+                            target = SavedPlaceNavTarget.fromCategoryKey(s.category_key.orEmpty()),
+                            lat = s.lat ?: 0.0,
+                            lng = s.lng ?: 0.0,
+                        ),
+                    )
+                }
+            }
+
             ArFloorStoreGuideOverlay(
                 storeName = store,
                 onDismiss = { selectedStore = null },

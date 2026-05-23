@@ -63,6 +63,12 @@ class ScanPangViewModel : ViewModel() {
     private val _storeResult = MutableStateFlow<StoreResponse?>(null)
     val storeResult: StateFlow<StoreResponse?> = _storeResult
 
+    private val _storeLoadingAt = MutableStateFlow<Long?>(null)
+    val storeLoadingAt: StateFlow<Long?> = _storeLoadingAt
+
+    private val _buildingLoadingAt = MutableStateFlow<Long?>(null)
+    val buildingLoadingAt: StateFlow<Long?> = _buildingLoadingAt
+
     // ── Convenience ──
     private val _convenienceResult = MutableStateFlow<ConvenienceResponse?>(null)
     val convenienceResult: StateFlow<ConvenienceResponse?> = _convenienceResult
@@ -70,6 +76,10 @@ class ScanPangViewModel : ViewModel() {
     // ── Search ──
     private val _searchResults = MutableStateFlow<List<SearchResultItem>>(emptyList())
     val searchResults: StateFlow<List<SearchResultItem>> = _searchResults
+
+    // ── Autocomplete ──
+    private val _autocompleteSuggestions = MutableStateFlow<List<String>>(emptyList())
+    val autocompleteSuggestions: StateFlow<List<String>> = _autocompleteSuggestions.asStateFlow()
 
     private val _searchQuery = MutableStateFlow("")
     val searchQuery: StateFlow<String> = _searchQuery
@@ -206,22 +216,28 @@ class ScanPangViewModel : ViewModel() {
     fun queryPlace(heading: Double, lat: Double, lng: Double, alt: Double = 0.0, pitch: Double = 0.0, message: String = "", ufid: String? = null) {
         setUserLocation(lat, lng)
         viewModelScope.launch {
+            _buildingLoadingAt.value = System.currentTimeMillis()
             try {
                 _placeResult.value = api.queryPlace(
                     PlaceQueryRequest(heading = heading, user_lat = lat, user_lng = lng, user_alt = alt, pitch = pitch, user_message = message, ufid = ufid)
                 )
             } catch (e: Exception) {
                 Log.e("ScanPangVM", "queryPlace failed", e)
+            } finally {
+                _buildingLoadingAt.value = null
             }
         }
     }
 
     fun queryStore(placeId: String, storeName: String) {
         viewModelScope.launch {
+            _storeLoadingAt.value = System.currentTimeMillis()
             try {
                 _storeResult.value = api.queryStore(StoreRequest(place_id = placeId, store_name = storeName))
             } catch (e: Exception) {
                 Log.e("ScanPangVM", "queryStore failed", e)
+            } finally {
+                _storeLoadingAt.value = null
             }
         }
     }
@@ -288,6 +304,28 @@ class ScanPangViewModel : ViewModel() {
         _searchResults.value = emptyList()
     }
 
+    fun fetchAutocomplete(q: String, lat: Double? = null, lng: Double? = null) {
+        val trimmed = q.trim()
+        if (trimmed.isEmpty()) {
+            _autocompleteSuggestions.value = emptyList()
+            return
+        }
+        viewModelScope.launch {
+            runCatching {
+                api.autocomplete(AutocompleteRequest(q = trimmed, lat = lat, lng = lng))
+            }.onSuccess { res ->
+                _autocompleteSuggestions.value = res.suggestions
+            }.onFailure {
+                Log.e("ScanPangVM", "fetchAutocomplete FAILED", it)
+                _autocompleteSuggestions.value = emptyList()
+            }
+        }
+    }
+
+    fun clearAutocomplete() {
+        _autocompleteSuggestions.value = emptyList()
+    }
+
     /**
      * 통합 PlaceDetailScreen 에서 backend store_details row 를 가져온다.
      * 빈 id 면 호출 안 함 — Phase A 시절 NearbyHalal 등에서 id 없이 진입한 경우
@@ -327,6 +365,71 @@ class ScanPangViewModel : ViewModel() {
     fun clearPlaceDetail() {
         _placeDetail.value = null
         _lastPlaceDetailKey = null
+    }
+
+    /**
+     * outdoor 카테고리(subway/restroom/locker) 전용 detail 로더.
+     * store_details 테이블에 row 가 없어 /place/detail 이 404 → /convenience/query 결과에서 name 매칭.
+     *
+     * @param placeId  `__outdoor__{category}__{name}` 형태. name 파싱용
+     * @param apiCategory  convenience API category 키 (subway / restroom / locker)
+     */
+    fun loadOutdoorPlaceDetail(
+        placeId: String,
+        apiCategory: String,
+        userLat: Double? = null,
+        userLng: Double? = null,
+    ) {
+        if (placeId.isBlank()) {
+            _placeDetail.value = null
+            _lastPlaceDetailKey = null
+            return
+        }
+        val key = Triple(placeId, userLat, userLng)
+        if (key == _lastPlaceDetailKey && _placeDetail.value != null) return
+        _lastPlaceDetailKey = key
+
+        val targetName = placeId.substringAfterLast("__").trim()
+        val lat = userLat ?: 37.5636
+        val lng = userLng ?: 126.9822
+
+        viewModelScope.launch {
+            _loading.value = true
+            Log.d("ScanPangVM", "loadOutdoorPlaceDetail START (id=$placeId, cat=$apiCategory, name=$targetName)")
+            try {
+                val resp = api.queryConvenience(
+                    ConvenienceRequest(category = apiCategory, lat = lat, lng = lng)
+                )
+                val match = resp.facilities.firstOrNull { it.name == targetName }
+                    ?: resp.facilities.firstOrNull { it.name.contains(targetName) || targetName.contains(it.name) }
+                if (match == null) {
+                    Log.w("ScanPangVM", "loadOutdoorPlaceDetail: no match for name=$targetName in ${resp.facilities.size} facilities")
+                    _placeDetail.value = null
+                    return@launch
+                }
+                _placeDetail.value = PlaceDetailResponse(
+                    id = placeId,
+                    store_name = match.name,
+                    place_id = "__outdoor__",
+                    lat = match.lat,
+                    lng = match.lng,
+                    distance_m = match.distance_m,
+                    category = apiCategory,
+                    category_key = apiCategory,
+                    addr = match.address,
+                    phone = match.phone,
+                    open_hours = match.open_hours,
+                    details = match.extra,
+                    source = "convenience",
+                )
+                Log.d("ScanPangVM", "loadOutdoorPlaceDetail OK: ${match.name}")
+            } catch (e: Exception) {
+                Log.e("ScanPangVM", "loadOutdoorPlaceDetail FAILED for id=$placeId", e)
+                _placeDetail.value = null
+            } finally {
+                _loading.value = false
+            }
+        }
     }
 
     // ── Spatial API ──

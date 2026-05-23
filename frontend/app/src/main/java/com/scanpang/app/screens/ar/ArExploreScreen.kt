@@ -32,7 +32,12 @@ import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+<<<<<<< HEAD
 import androidx.compose.foundation.layout.heightIn
+=======
+import androidx.compose.foundation.layout.ime
+import androidx.compose.foundation.layout.imePadding
+>>>>>>> origin/main
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -125,8 +130,13 @@ import com.scanpang.app.components.ar.ArCategoryIconBadge
 import com.scanpang.app.components.ar.ArPoiCard
 import com.scanpang.app.data.AppSettingsPreferences
 import com.scanpang.app.data.OnboardingPreferences
+import com.scanpang.app.data.RecentlyViewedEntry
+import com.scanpang.app.data.RecentlyViewedStore
+import com.scanpang.app.data.SavedPlaceNavTarget
 import com.scanpang.app.data.SearchHistoryPreferences
 import com.scanpang.app.data.TtsState
+import com.scanpang.app.i18n.AppStrings
+import com.scanpang.app.i18n.LocalStrings
 import com.scanpang.app.navigation.AppRoutes
 import com.scanpang.app.ui.theme.ScanPangColors
 import com.scanpang.app.ui.theme.ScanPangDimens
@@ -197,9 +207,12 @@ fun ArExploreScreen(
     modifier: Modifier = Modifier,
     viewModel: ScanPangViewModel = viewModel(),
 ) {
+    val s = LocalStrings.current
     val placeResult by viewModel.placeResult.collectAsState()
     // 마커 탭 시 /place/store 응답 — ArFloorStoreGuideOverlay 메타 라인의 category·영업중 표시 원천
     val storeResult by viewModel.storeResult.collectAsState()
+    val storeLoadingAt by viewModel.storeLoadingAt.collectAsState()
+    val buildingLoadingAt by viewModel.buildingLoadingAt.collectAsState()
     val context = LocalContext.current
 
     val appContext = context.applicationContext
@@ -209,11 +222,14 @@ fun ArExploreScreen(
     val scope = rememberCoroutineScope()
     val chatListState = rememberLazyListState()
     var chatInput by remember { mutableStateOf("") }
+    // 응답 도착 전 보내기 연타로 같은 query 가 backend 에 N번 전송되던 버그
+    // (POST /ar/agent/chat 6번씩 찍힘) + UI 가 무반응으로 보이던 문제 차단.
+    var isChatSending by remember { mutableStateOf(false) }
     var chatMessages by remember {
         mutableStateOf(
             listOf(
                 ArAgentChatMessage(
-                    text = "안녕하세요! 스캔팡입니다. 주변 장소를 AR로 안내해 드릴게요.",
+                    text = s.arInitialGreeting,
                     isUser = false,
                 ),
             ),
@@ -254,7 +270,12 @@ fun ArExploreScreen(
     var speechHelperRef by remember { mutableStateOf<ArSpeechRecognizerHelper?>(null) }
     var pendingMicAfterPermission by remember { mutableStateOf(false) }
 
-    val agentService = remember { ScanPangAgentService() }
+    val agentService = remember(appContext) {
+        // 영어 모드면 backend 응답도 영어로 받기 — onboarding 에서 고른 언어 그대로 전달.
+        // updateLanguage 안 호출하면 기본값 "ko" 라 UI 는 영어인데 AI 응답만 한국어로 와서 mixed 상태.
+        val langCode = OnboardingPreferences(appContext).getLanguageCode() ?: "ko"
+        ScanPangAgentService(language = langCode)
+    }
     val ttsController = remember(appContext) {
         ArExploreTtsController(appContext) { playing -> ttsPlayingState.value = playing }
     }
@@ -268,15 +289,20 @@ fun ArExploreScreen(
         if (!isTtsOn) ttsController.stop()
     }
 
-    val onSttResult: (String) -> Unit = { text ->
-        chatInput = text
+    val onSttResult: (String) -> Unit = stt@{ text ->
+        if (isChatSending) return@stt
+        if (text.isBlank()) return@stt
+        isChatSending = true
+        chatInput = ""
+        chatMessages = chatMessages + ArAgentChatMessage(text = text, isUser = true)
         scope.launch {
-            val reply = sendVoiceMessage(text, agentService)
-            chatMessages = chatMessages +
-                    ArAgentChatMessage(text = text, isUser = true) +
-                    ArAgentChatMessage(text = reply, isUser = false)
-            chatInput = ""
-            ttsController.speakIfEnabled(reply, isTtsOn)
+            try {
+                val reply = sendVoiceMessage(text, agentService)
+                chatMessages = chatMessages + ArAgentChatMessage(text = reply, isUser = false)
+                ttsController.speakIfEnabled(reply, isTtsOn)
+            } finally {
+                isChatSending = false
+            }
         }
     }
     val latestOnSttResult = rememberUpdatedState(onSttResult)
@@ -294,7 +320,7 @@ fun ArExploreScreen(
                     code != SpeechRecognizer.ERROR_SPEECH_TIMEOUT
                 ) {
                     latestScope.value.launch {
-                        latestSnackbar.value.showSnackbar("음성 인식 중 오류가 났어요")
+                        latestSnackbar.value.showSnackbar(s.arVoiceError)
                     }
                 }
             },
@@ -312,7 +338,7 @@ fun ArExploreScreen(
         if (granted && pendingMicAfterPermission) {
             speechHelperRef?.startListening()
         } else if (!granted) {
-            scope.launch { snackbarHostState.showSnackbar("마이크 권한이 필요해요") }
+            scope.launch { snackbarHostState.showSnackbar(s.arMicPermission) }
         }
         pendingMicAfterPermission = false
     }
@@ -321,6 +347,9 @@ fun ArExploreScreen(
     var selectedPoiOverlay by remember { mutableStateOf<ArOverlay?>(null) }
     var activeDetailTab by remember { mutableStateOf(ArPoiTabBuilding) }
     var selectedStore by remember { mutableStateOf<String?>(null) }
+    // 층별탭에서 매장 패널로 전환 시 건물 패널 상태 보존 — X 닫을 때 복원
+    var previousPoi by remember { mutableStateOf<String?>(null) }
+    var previousPoiOverlay by remember { mutableStateOf<ArOverlay?>(null) }
     var storeListPoi by remember { mutableStateOf<DynamicPoi?>(null) }
 
     BackHandler(enabled = selectedPoi != null && selectedStore == null) {
@@ -329,6 +358,12 @@ fun ArExploreScreen(
     }
     BackHandler(enabled = selectedStore != null) {
         selectedStore = null
+        if (previousPoi != null) {
+            selectedPoi = previousPoi
+            selectedPoiOverlay = previousPoiOverlay
+            previousPoi = null
+            previousPoiOverlay = null
+        }
     }
 
     val categoryChipSpecs = remember { arExploreCategoryChipSpecs() }
@@ -670,8 +705,8 @@ fun ArExploreScreen(
                                         val poiToAdd: DynamicPoi? = if (categorySelection.isEmpty()) {
                                             DynamicPoi(
                                                 id = id,
-                                                name = cand.b.bld_nm ?: "이름 없는 건물",
-                                                category = "건물",
+                                                name = cand.b.bld_nm ?: s.arUnknownBuilding,
+                                                category = s.arBuilding,
                                                 distance = cand.dist,
                                                 latitude = markerPos.first,
                                                 longitude = markerPos.second,
@@ -843,7 +878,7 @@ fun ArExploreScreen(
                     contentAlignment = Alignment.Center,
                 ) {
                     Text(
-                        text = "위치 파악 중...",
+                        text = s.arLocating,
                         style = ScanPangType.arStatusPill15,
                         color = Color.White,
                     )
@@ -881,10 +916,10 @@ fun ArExploreScreen(
                 ) {
                     ArNavWhiteFab(
                         icon = if (isTtsOn) Icons.Rounded.Headset else Icons.Rounded.HeadsetOff,
-                        contentDescription = "음성 안내",
+                        contentDescription = s.profileTtsGuidance,
                         onClick = {
                             TtsState.toggle(appSettingsPrefs)
-                            val msg = if (isTtsOn) "음성 안내 꺼짐" else "음성 안내 켜짐"
+                            val msg = if (isTtsOn) s.arTtsOff else s.arTtsOn
                             scope.launch { snackbarHostState.showSnackbar(msg) }
                         },
                     )
@@ -906,7 +941,7 @@ fun ArExploreScreen(
                     }
                     ArNavWhiteFab(
                         icon = Icons.Rounded.Search,
-                        contentDescription = "검색",
+                        contentDescription = s.searchPlaceholder,
                         onClick = { isSearchOpen = true },
                     )
                 }
@@ -958,7 +993,7 @@ fun ArExploreScreen(
                 ) {
                     ArNavWhiteFab(
                         icon = Icons.Rounded.CameraAlt,
-                        contentDescription = "화면 고정",
+                        contentDescription = s.arScreenFreezing,
                         onClick = { isFrozen = !isFrozen },
                         isActive = isFrozen,
                     )
@@ -979,29 +1014,35 @@ fun ArExploreScreen(
             )
 
             // ── 하단 채팅 섹션 ──
+            val imeVisible = WindowInsets.ime.getBottom(LocalDensity.current) > 0
             Column(
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
                     .fillMaxWidth()
-                    .padding(bottom = ScanPangDimens.mainTabContentBottomInset)
-                    .navigationBarsPadding(),
+                    .then(if (imeVisible) Modifier.imePadding().offset(y = 180.dp) else Modifier.navigationBarsPadding().padding(bottom = ScanPangDimens.mainTabContentBottomInset - 16.dp)),
             ) {
                 ArExploreInteractiveChatSection(
                     messages = chatMessages,
                     inputText = chatInput,
                     onInputChange = { chatInput = it },
                     onSend = send@{
+                        if (isChatSending) return@send
                         val q = chatInput.trim()
                         if (q.isEmpty()) return@send
+                        isChatSending = true
+                        chatInput = ""
+                        chatMessages = chatMessages + ArAgentChatMessage(text = q, isUser = true)
                         scope.launch {
-                            val reply = agentService.sendMessage(q)
-                            chatMessages = chatMessages +
-                                    ArAgentChatMessage(text = q, isUser = true) +
-                                    ArAgentChatMessage(text = reply, isUser = false)
-                            chatInput = ""
-                            ttsController.speakIfEnabled(reply, isTtsOn)
+                            try {
+                                val reply = agentService.sendMessage(q)
+                                chatMessages = chatMessages + ArAgentChatMessage(text = reply, isUser = false)
+                                ttsController.speakIfEnabled(reply, isTtsOn)
+                            } finally {
+                                isChatSending = false
+                            }
                         }
                     },
+                    isSending = isChatSending,
                     isSttListening = isSttListening,
                     onMicClick = mic@{
                         val h = speechHelperRef
@@ -1011,13 +1052,13 @@ fun ArExploreScreen(
                         }
                         if (h == null) {
                             scope.launch {
-                                snackbarHostState.showSnackbar("음성 입력을 준비하지 못했어요")
+                                snackbarHostState.showSnackbar(s.arVoiceNotReady)
                             }
                             return@mic
                         }
                         if (!h.isRecognitionAvailable()) {
                             scope.launch {
-                                snackbarHostState.showSnackbar("이 기기에서 음성 인식을 쓸 수 없어요")
+                                snackbarHostState.showSnackbar(s.arVoiceNotAvailable)
                             }
                             return@mic
                         }
@@ -1145,19 +1186,25 @@ fun ArExploreScreen(
                         selectedPoi = null
                         selectedPoiOverlay = null
                         selectedStore = null
+                        previousPoi = null
+                        previousPoiOverlay = null
                         activeDetailTab = ArPoiTabBuilding
                     },
                     onFloorStoreClick = {
                         // 건물 패널 닫고 매장 floating 으로 전환 — 두 fillMaxSize 패널이
                         // 동시에 그려지면 겹쳐서 매장 카드가 잘려보임.
+                        // 건물 상태를 백업해두고 매장 X 닫을 때 복원.
+                        previousPoi = selectedPoi
+                        previousPoiOverlay = selectedPoiOverlay
                         selectedStore = it
                         selectedPoi = null
                     },
                     onSave = {
-                        scope.launch { snackbarHostState.showSnackbar("저장되었습니다") }
+                        scope.launch { snackbarHostState.showSnackbar(s.arSaved) }
                     },
                     modifier = Modifier.fillMaxSize(),
                     arOverlay = selectedPoiOverlay ?: placeResult?.ar_overlay,
+                    buildingLoadingStartedAt = buildingLoadingAt,
                 )
             }
 
@@ -1168,9 +1215,37 @@ fun ArExploreScreen(
                 val placeUfid = (selectedPoiOverlay?.ufid ?: placeResult?.ar_overlay?.ufid).orEmpty()
                 LaunchedEffect(store) { viewModel.queryStore(placeId = placeUfid, storeName = store) }
                 val s = storeResult?.takeIf { it.store_name == store }
+
+                // ── "최근 본 장소" 기록 (PlaceDetail 안 거치고 AR 오버레이에서만 보는 케이스 대응) ──
+                // PlaceDetailCommon 의 자동 record() 와 동일 규약:
+                //   id = '{place_id}__{store_name}' (또는 백엔드 StoreResponse.id)
+                //   storeResult 도착 후 풀필드(category, lat, lng)로 기록 — 옛 깨진 row 안 만듦.
+                val recentlyViewedStore = remember(context) { RecentlyViewedStore(context) }
+                if (s != null && placeUfid.isNotEmpty()) {
+                    LaunchedEffect(s.id) {
+                        recentlyViewedStore.record(
+                            RecentlyViewedEntry(
+                                id = s.id.ifEmpty { "${placeUfid}__${store}" },
+                                name = s.name_ko.ifEmpty { store },
+                                category = s.category,
+                                target = SavedPlaceNavTarget.fromCategoryKey(s.category_key.orEmpty()),
+                                lat = s.lat ?: 0.0,
+                                lng = s.lng ?: 0.0,
+                            ),
+                        )
+                    }
+                }
                 ArFloorStoreGuideOverlay(
                     storeName = store,
-                    onDismiss = { selectedStore = null },
+                    onDismiss = {
+                        selectedStore = null
+                        if (previousPoi != null) {
+                            selectedPoi = previousPoi
+                            selectedPoiOverlay = previousPoiOverlay
+                            previousPoi = null
+                            previousPoiOverlay = null
+                        }
+                    },
                     onStartNavigation = {
                         navController.navigate(AppRoutes.arNavMapRoute(store)) { launchSingleTop = true }
                         selectedStore = null
@@ -1179,6 +1254,7 @@ fun ArExploreScreen(
                     category = s?.category.orEmpty(),
                     isOpenNow = s?.is_open_now,
                     storeResult = s,
+                    storeLoadingStartedAt = storeLoadingAt,
                 )
             }
 
@@ -1227,6 +1303,7 @@ private fun BoxScope.ArDynamicPoiMarkers(
     anchorScreenPositions: Map<String, Offset>,
     onPoiClick: (DynamicPoi) -> Unit,
 ) {
+    val s = LocalStrings.current
     dynamicPois.forEach { poi ->
         val screenPos = anchorScreenPositions[poi.id] ?: return@forEach
         val xPx = screenPos.x.roundToInt()
@@ -1234,7 +1311,7 @@ private fun BoxScope.ArDynamicPoiMarkers(
 
         Box(modifier = Modifier.offset { IntOffset(xPx, yPx) }) {
             ArPoiCard(
-                title = if (poi.isPending) "분석 중..." else poi.name,
+                title = if (poi.isPending) s.arAnalyzing else poi.name,
                 subtitle = buildString {
                     if (poi.category.isNotEmpty()) append("${poi.category} · ")
                     append("${"%.0f".format(poi.distance)}m")
@@ -1276,8 +1353,9 @@ private fun ArFilteredStoreListOverlay(
                     .padding(top = ScanPangSpacing.md)
                     .verticalScroll(rememberScrollState()),
             ) {
+                val fs = LocalStrings.current
                 Text(
-                    text = "${poi.category} ${poi.storeCount}개",
+                    text = fs.arFilterStoreCount(poi.category, poi.storeCount),
                     style = ScanPangType.arFilterTitle16,
                     color = ScanPangColors.OnSurfaceStrong,
                     modifier = Modifier.padding(bottom = ScanPangSpacing.sm),
@@ -1331,6 +1409,7 @@ private fun ArExploreStatusPill(
     hasHighAccuracy: Boolean = true,
     onClick: () -> Unit,
 ) {
+    val ps = LocalStrings.current
     when {
         isFrozen -> {
             Surface(
@@ -1353,7 +1432,7 @@ private fun ArExploreStatusPill(
                         tint = Color.White,
                     )
                     Text(
-                        text = "화면 고정 중",
+                        text = ps.arScreenFreezing,
                         style = ScanPangType.arStatusPill15,
                         color = Color.White,
                         maxLines = 1,
@@ -1389,7 +1468,7 @@ private fun ArExploreStatusPill(
                         tint = ScanPangColors.OnSurfaceStrong,
                     )
                     Text(
-                        text = "VPS 탐색 중...",
+                        text = ps.arVpsScanning,
                         style = ScanPangType.arStatusPill15,
                         color = ScanPangColors.OnSurfaceStrong,
                         maxLines = 1,
@@ -1419,7 +1498,7 @@ private fun ArExploreStatusPill(
                         tint = ScanPangColors.OnSurfaceStrong,
                     )
                     Text(
-                        text = "AR 탐색 중",
+                        text = ps.arExploring,
                         style = ScanPangType.arStatusPill15,
                         color = ScanPangColors.OnSurfaceStrong,
                         maxLines = 1,
@@ -1435,7 +1514,7 @@ private fun ArExploreStatusPill(
             }
         }
         else -> {
-            val label = buildFilterPillLabel(selectedFilters)
+            val label = buildFilterPillLabel(selectedFilters, ps)
             Surface(
                 modifier = Modifier
                     .height(ScanPangDimens.arStatusPillHeight)
@@ -1485,11 +1564,11 @@ private fun filterArExploreHits(query: String, all: List<ArExploreSearchHitUi>):
     return filtered.ifEmpty { all }
 }
 
-private fun buildFilterPillLabel(selected: Set<String>): String {
+private fun buildFilterPillLabel(selected: Set<String>, s: AppStrings): String {
     val list = selected.toList()
     if (list.isEmpty()) return ""
-    if (list.size == 1) return "${list[0]} 탐색 중"
-    return "${list[0]} 외 ${list.size - 1}개 탐색 중"
+    if (list.size == 1) return s.arFilterScanning(list[0])
+    return s.arFilterScanningMultiple(list[0], list.size - 1)
 }
 
 /**

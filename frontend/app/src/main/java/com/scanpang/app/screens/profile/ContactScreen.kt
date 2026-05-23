@@ -58,6 +58,7 @@ import coil.request.ImageRequest
 import com.scanpang.app.data.auth.AuthRepository
 import com.scanpang.app.data.remote.InquirySubmitRequest
 import com.scanpang.app.data.remote.RetrofitClient
+import com.scanpang.app.i18n.LocalStrings
 import com.scanpang.app.ui.theme.ScanPangColors
 import com.scanpang.app.ui.theme.ScanPangDimens
 import com.scanpang.app.ui.theme.ScanPangShapes
@@ -66,15 +67,6 @@ import kotlinx.coroutines.launch
 import com.scanpang.app.ui.theme.ScanPangType
 
 private const val MAX_PHOTOS = 3
-
-private val inquiryCategories = listOf(
-    "카테고리 선택",
-    "오류 신고",
-    "장소 정보 수정 요청",
-    "장소 추가 요청",
-    "기능 제안",
-    "기타",
-)
 
 @Composable
 fun ContactScreen(
@@ -93,7 +85,7 @@ fun ContactScreen(
                 .statusBarsPadding(),
         ) {
             SettingsTitleBar(
-                title = "문의하기",
+                title = LocalStrings.current.profileInquiry,
                 onBack = { navController.popBackStack() },
             )
             InquiryTab()
@@ -105,8 +97,9 @@ fun ContactScreen(
 
 @Composable
 private fun InquiryTab() {
+    val s = LocalStrings.current
     val context = LocalContext.current
-    var selectedCategory by rememberSaveable { mutableStateOf(inquiryCategories[0]) }
+    var selectedCategory by rememberSaveable { mutableStateOf(s.contactCategoryDefault) }
     var showCategoryPicker by remember { mutableStateOf(false) }
     var titleValue by rememberSaveable(stateSaver = TextFieldValue.Saver) {
         mutableStateOf(TextFieldValue(""))
@@ -139,7 +132,7 @@ private fun InquiryTab() {
     if (submitted) {
         InquirySuccessBanner(onReset = {
             submitted = false
-            selectedCategory = inquiryCategories[0]
+            selectedCategory = s.contactCategoryDefault
             titleValue = TextFieldValue("")
             bodyValue = TextFieldValue("")
             attachedPhotos = emptyList()
@@ -159,14 +152,14 @@ private fun InquiryTab() {
     ) {
         item {
             Text(
-                text = "문의 내용을 남겨주시면\n빠르게 답변드리겠습니다.",
+                text = s.contactFormTitle,
                 style = ScanPangType.sectionTitle,
                 color = ScanPangColors.OnSurfaceStrong,
             )
         }
         item { Spacer(modifier = Modifier.height(4.dp)) }
         item {
-            InquiryFieldLabel("카테고리")
+            InquiryFieldLabel(s.contactCategoryLabel)
             Spacer(modifier = Modifier.height(6.dp))
             Box(
                 modifier = Modifier
@@ -185,7 +178,7 @@ private fun InquiryTab() {
                     Text(
                         text = selectedCategory,
                         style = ScanPangType.body15Medium,
-                        color = if (selectedCategory == inquiryCategories[0])
+                        color = if (selectedCategory == s.contactCategoryDefault)
                             ScanPangColors.OnSurfacePlaceholder
                         else ScanPangColors.OnSurfaceStrong,
                     )
@@ -210,7 +203,7 @@ private fun InquiryTab() {
                         .background(ScanPangColors.Surface)
                         .padding(vertical = ScanPangSpacing.sm),
                 ) {
-                    inquiryCategories.drop(1).forEach { cat ->
+                    s.contactCategories.forEach { cat ->
                         Text(
                             text = cat,
                             style = ScanPangType.body15Medium,
@@ -229,22 +222,22 @@ private fun InquiryTab() {
             }
         }
         item {
-            InquiryFieldLabel("제목")
+            InquiryFieldLabel(s.contactTitleLabel)
             Spacer(modifier = Modifier.height(6.dp))
             InquiryTextField(
                 value = titleValue,
                 onValueChange = { if (it.text.length <= 60) titleValue = it },
-                placeholder = "문의 제목을 입력하세요 (최대 60자)",
+                placeholder = s.contactTitlePlaceholder,
                 singleLine = true,
             )
         }
         item {
-            InquiryFieldLabel("내용")
+            InquiryFieldLabel(s.contactBodyLabel)
             Spacer(modifier = Modifier.height(6.dp))
             InquiryTextField(
                 value = bodyValue,
                 onValueChange = { if (it.text.length <= 500) bodyValue = it },
-                placeholder = "문의 내용을 자세히 입력해 주세요 (최대 500자)",
+                placeholder = s.contactBodyPlaceholder,
                 singleLine = false,
                 minHeight = 140.dp,
             )
@@ -262,7 +255,7 @@ private fun InquiryTab() {
                 horizontalArrangement = Arrangement.SpaceBetween,
                 modifier = Modifier.fillMaxWidth(),
             ) {
-                InquiryFieldLabel("사진 첨부 (선택)")
+                InquiryFieldLabel(s.contactPhotoLabel)
                 Text(
                     text = "${attachedPhotos.size}/$MAX_PHOTOS",
                     style = ScanPangType.caption12,
@@ -290,14 +283,14 @@ private fun InquiryTab() {
             }
             Spacer(modifier = Modifier.height(4.dp))
             Text(
-                text = "오류 화면이나 관련 사진을 첨부하면 더 빠른 처리에 도움이 됩니다.",
+                text = s.contactPhotoHint,
                 style = ScanPangType.caption12,
                 color = ScanPangColors.OnSurfacePlaceholder,
             )
         }
         item {
             val canSubmit = !submitting &&
-                selectedCategory != inquiryCategories[0] &&
+                selectedCategory != s.contactCategoryDefault &&
                 titleValue.text.isNotBlank() &&
                 bodyValue.text.isNotBlank()
             Box(
@@ -311,7 +304,7 @@ private fun InquiryTab() {
                         // user_id 는 Supabase Auth uid. 비로그인 케이스는 차단(보통
                         // ProfileScreen 까지 들어오면 로그인 상태지만 방어적으로).
                         val uid = AuthRepository.currentUserId() ?: run {
-                            submitError = "로그인이 필요합니다"
+                            submitError = s.contactNotLoggedIn
                             return@clickable
                         }
                         submitting = true
@@ -329,7 +322,7 @@ private fun InquiryTab() {
                                 submitted = true
                             } catch (e: Exception) {
                                 android.util.Log.e("ContactScreen", "submitInquiry failed", e)
-                                submitError = "전송 실패: 잠시 후 다시 시도해주세요"
+                                submitError = s.contactSubmitError
                             } finally {
                                 submitting = false
                             }
@@ -338,7 +331,7 @@ private fun InquiryTab() {
                 contentAlignment = Alignment.Center,
             ) {
                 Text(
-                    text = if (submitting) "전송 중..." else "문의 제출하기",
+                    text = if (submitting) s.contactSubmitting else s.contactSubmit,
                     style = ScanPangType.body15Medium,
                     color = Color.White,
                 )
@@ -358,6 +351,7 @@ private fun InquiryTab() {
 @Composable
 private fun PhotoThumbnail(uri: Uri, onRemove: () -> Unit) {
     val context = LocalContext.current
+    val s = LocalStrings.current
     Box(modifier = Modifier.size(80.dp)) {
         AsyncImage(
             model = ImageRequest.Builder(context).data(uri).crossfade(true).build(),
@@ -380,7 +374,7 @@ private fun PhotoThumbnail(uri: Uri, onRemove: () -> Unit) {
         ) {
             Icon(
                 imageVector = Icons.Rounded.Close,
-                contentDescription = "사진 제거",
+                contentDescription = s.contactPhotoRemove,
                 tint = Color.White,
                 modifier = Modifier.size(12.dp),
             )
@@ -390,6 +384,7 @@ private fun PhotoThumbnail(uri: Uri, onRemove: () -> Unit) {
 
 @Composable
 private fun PhotoAddButton(onClick: () -> Unit) {
+    val s = LocalStrings.current
     Box(
         modifier = Modifier
             .size(80.dp)
@@ -405,12 +400,12 @@ private fun PhotoAddButton(onClick: () -> Unit) {
         ) {
             Icon(
                 imageVector = Icons.Rounded.Image,
-                contentDescription = "사진 추가",
+                contentDescription = s.contactPhotoAdd,
                 tint = ScanPangColors.OnSurfacePlaceholder,
                 modifier = Modifier.size(24.dp),
             )
             Text(
-                text = "사진 추가",
+                text = s.contactPhotoAdd,
                 style = ScanPangType.caption12,
                 color = ScanPangColors.OnSurfacePlaceholder,
             )
@@ -463,6 +458,7 @@ private fun InquiryTextField(
 
 @Composable
 private fun InquirySuccessBanner(onReset: () -> Unit) {
+    val s = LocalStrings.current
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -478,13 +474,13 @@ private fun InquirySuccessBanner(onReset: () -> Unit) {
         )
         Spacer(modifier = Modifier.height(ScanPangSpacing.lg))
         Text(
-            text = "문의가 접수되었습니다",
+            text = s.contactSuccessTitle,
             style = ScanPangType.sectionTitle,
             color = ScanPangColors.OnSurfaceStrong,
         )
         Spacer(modifier = Modifier.height(ScanPangSpacing.sm))
         Text(
-            text = "빠른 시일 내에 답변 드리겠습니다.\n답변은 가입하신 이메일로 발송됩니다.",
+            text = s.contactSuccessDesc,
             style = ScanPangType.meta13,
             color = ScanPangColors.OnSurfaceMuted,
         )
@@ -498,7 +494,7 @@ private fun InquirySuccessBanner(onReset: () -> Unit) {
             contentAlignment = Alignment.Center,
         ) {
             Text(
-                text = "새 문의 작성",
+                text = s.contactNewInquiry,
                 style = ScanPangType.body15Medium,
                 color = ScanPangColors.OnSurfaceStrong,
             )
