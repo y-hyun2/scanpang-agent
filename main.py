@@ -25,8 +25,55 @@ from schemas.user import (
     InquirySubmitRequest, InquirySubmitResponse,
 )
 from tools.open_hours_parser import is_open_now_combined as _is_open_now_combined
+from tools.translation import translate_fields, apply_lang
 import json as _json
+import re as _re
 from datetime import datetime, timedelta, timezone
+
+
+def _extract_url(text: str) -> str:
+    """'<a href="URL">...</a>' 형태에서 URL만 추출. 일반 URL이면 그대로 반환."""
+    if not text:
+        return text
+    m = _re.search(r'href=["\']([^"\']+)["\']', text)
+    return m.group(1) if m else _re.sub(r"<[^>]+>", "", text).strip()
+
+
+def _strip_html(text: str) -> str:
+    """Tour API 텍스트 필드의 HTML 태그를 제거한다. <br>은 줄바꿈으로 변환, 줄 구조 유지."""
+    if not text:
+        return text
+    cleaned = _re.sub(r"<br\s*/?>", "\n", text, flags=_re.IGNORECASE)
+    cleaned = _re.sub(r"<[^>]+>", "", cleaned)
+    lines = [" ".join(line.split()) for line in cleaned.split("\n")]
+    return "\n".join(lines).strip()
+
+
+async def _ensure_translations(
+    pool,
+    table: str,
+    pk_col: str,
+    pk_val: str,
+    fields: dict,
+    lat: float,
+    lng: float,
+    language: str,
+    existing: dict = None,
+) -> dict:
+    if language == "ko":
+        return {}
+    trans = existing or {}
+    if trans.get(language):
+        return trans[language]
+    en_fields = await translate_fields(fields, lat=lat, lng=lng, lang=language)
+    if en_fields:
+        trans[language] = en_fields
+        async with pool.acquire() as conn:
+            await conn.execute(
+                f"UPDATE {table} SET translations = COALESCE(translations, '{{}}'::jsonb) || $1::jsonb WHERE {pk_col} = $2",
+                _json.dumps({language: en_fields}), pk_val,
+            )
+    return en_fields
 
 
 def _parse_jsonb_list(val) -> list:
@@ -131,7 +178,7 @@ async def place_store(req: StoreRequest):
     """
     사용자가 층별 매장 탭 → 매장 상세 정보 반환 (Kakao on-demand + Chroma 캐싱)
     """
-    detail = await get_store_detail(req.place_id, req.store_name)
+    detail = await get_store_detail(req.place_id, req.store_name, language=req.language)
     if isinstance(detail, dict):
         details = detail.get("details") or {}
         schedule = details.get("schedule") if isinstance(details, dict) else None
@@ -337,7 +384,7 @@ async def restaurant_detail(req: RestaurantDetailRequest):
     return result
 
 
-_OUTDOOR_CATEGORIES = {"restroom", "subway", "locker", "prayer_room", "halal_restaurant", "vegan_restaurant", "vegan_cafe"}
+_OUTDOOR_CATEGORIES = {"restroom", "subway", "locker", "prayer_room", "halal_restaurant", "vegan_restaurant", "vegan_cafe", "accommodation", "tourist", "cultural"}
 
 
 def _vegan_category_label(vegan_level: str, category_key: str) -> str:
@@ -402,6 +449,10 @@ async def _outdoor_search(category_key: str, req: SearchRequest) -> SearchRespon
             }
             for r in raw
         ]
+    elif category_key == "accommodation":
+        return await _accommodation_search(req, lat, lng)
+    elif category_key in ("tourist", "cultural"):
+        return await _tourist_search(req, lat, lng)
     else:
         rows = []
 
@@ -520,6 +571,7 @@ async def place_search(req: SearchRequest):
             """
             SELECT id, store_name, category, category_key, addr, phone,
                    place_id, lat, lng, floor, image_urls, open_hours, details,
+                   COALESCE(translations::text, '{}') AS translations,
                    CASE
                      WHEN lat IS NOT NULL AND lng IS NOT NULL THEN
                        ST_Distance(
@@ -575,13 +627,20 @@ async def place_search(req: SearchRequest):
             except (ValueError, TypeError):
                 schedule = None
 
+        _rt = r["translations"]
+        if isinstance(_rt, str):
+            try: _rt = _json.loads(_rt)
+            except Exception: _rt = {}
+        if not isinstance(_rt, dict):
+            _rt = {}
+        _tl = _rt.get(req.language, {})
         results.append(
             SearchResultItem(
                 id=r["id"],
-                store_name=r["store_name"],
+                store_name=_tl.get("name") or r["store_name"],
                 category=r["category"],
                 category_key=r["category_key"],
-                addr=r["addr"],
+                addr=_tl.get("addr") or r["addr"],
                 phone=r["phone"],
                 place_id=r["place_id"],
                 lat=r["lat"],
@@ -596,14 +655,14 @@ async def place_search(req: SearchRequest):
     return SearchResponse(query=req.query, count=len(results), results=results)
 
 
-async def _restroom_detail(mng_no: str) -> PlaceDetailResponse:
+async def _restroom_detail(mng_no: str, language: str = "ko") -> PlaceDetailResponse:
     """public_restrooms 테이블 1건 → PlaceDetailResponse.
     details 키는 store_details schema 와 동일 — male_toilt_cnt, has_disabled 등."""
     pool = await get_pool()
     async with pool.acquire() as conn:
         row = await conn.fetchrow(
             "SELECT mng_no, name, type, addr_road, addr_lot, phone, open_hours, "
-            "       lat, lng, raw "
+            "       lat, lng, raw, COALESCE(translations::text, '{}') AS translations "
             "FROM public_restrooms WHERE mng_no = $1",
             mng_no,
         )
@@ -635,19 +694,33 @@ async def _restroom_detail(mng_no: str) -> PlaceDetailResponse:
         "waste_method":      raw.get("WSTE_PRCS_MTH_NM") or "",
     }
     open_hours = row["open_hours"] or ""
+    _rt = row["translations"]
+    if isinstance(_rt, str):
+        try: _rt = _json.loads(_rt)
+        except Exception: _rt = {}
+    if not isinstance(_rt, dict):
+        _rt = {}
+    if language != "ko":
+        _t = await _ensure_translations(
+            pool, "public_restrooms", "mng_no", mng_no,
+            {"name": row["name"] or "", "addr": row["addr_road"] or row["addr_lot"] or "", "open_hours": open_hours},
+            lat=float(row["lat"] or 0), lng=float(row["lng"] or 0), language=language, existing=_rt,
+        )
+    else:
+        _t = {}
     return PlaceDetailResponse(
         id=f"restroom__{row['mng_no']}",
-        store_name=row["name"] or "",
+        store_name=_t.get("name") or row["name"] or "",
         place_id=None,
         lat=row["lat"], lng=row["lng"],
         category=details["type"],
         category_key="restroom",
-        addr=row["addr_road"] or row["addr_lot"] or "",
+        addr=_t.get("addr") or row["addr_road"] or row["addr_lot"] or "",
         phone=row["phone"] or "",
         floor=None,
         homepage=None,
         place_url=None,
-        open_hours=open_hours,
+        open_hours=_t.get("open_hours") or open_hours,
         closed_days=None,
         is_open_now=_is_open_now_combined(open_hours, None),
         image_urls=[],
@@ -657,7 +730,7 @@ async def _restroom_detail(mng_no: str) -> PlaceDetailResponse:
     )
 
 
-async def _halal_detail(restaurant_id: str) -> PlaceDetailResponse:
+async def _halal_detail(restaurant_id: str, language: str = "ko") -> PlaceDetailResponse:
     """halal_restaurants 테이블 1건 → PlaceDetailResponse."""
     pool = await get_pool()
     async with pool.acquire() as conn:
@@ -672,7 +745,8 @@ async def _halal_detail(restaurant_id: str) -> PlaceDetailResponse:
                    break_time::text AS break_time,
                    last_order::text AS last_order,
                    image_urls::text AS image_urls,
-                   lat, lng
+                   lat, lng,
+                   COALESCE(translations::text, '{}') AS translations
             FROM halal_restaurants WHERE restaurant_id = $1
             """,
             restaurant_id,
@@ -703,20 +777,36 @@ async def _halal_detail(restaurant_id: str) -> PlaceDetailResponse:
         "last_order":             _j(row["last_order"]) or {},
         "weekly_open_hours":      oh_raw if isinstance(oh_raw, dict) else {},
     }
+    _lat_h = float(row["lat"]) if row["lat"] is not None else None
+    _lng_h = float(row["lng"]) if row["lng"] is not None else None
+    _rt = row["translations"]
+    if isinstance(_rt, str):
+        try: _rt = _json.loads(_rt)
+        except Exception: _rt = {}
+    if not isinstance(_rt, dict):
+        _rt = {}
+    if language != "ko":
+        _t = await _ensure_translations(
+            pool, "halal_restaurants", "restaurant_id", restaurant_id,
+            {"name": row["name_ko"] or row["name_en"] or "", "addr": row["address"] or "", "open_hours": open_hours_str},
+            lat=_lat_h or 0, lng=_lng_h or 0, language=language, existing=_rt,
+        )
+    else:
+        _t = {}
     return PlaceDetailResponse(
         id=f"halal__{row['restaurant_id']}",
-        store_name=row["name_ko"] or row["name_en"] or "",
+        store_name=_t.get("name") or row["name_ko"] or row["name_en"] or "",
         place_id=None,
-        lat=float(row["lat"]) if row["lat"] is not None else None,
-        lng=float(row["lng"]) if row["lng"] is not None else None,
+        lat=_lat_h,
+        lng=_lng_h,
         category="할랄 식당",
         category_key="halal_restaurant",
-        addr=row["address"] or "",
+        addr=_t.get("addr") or row["address"] or "",
         phone=row["phone"] or "",
         floor=None,
         homepage=None,
         place_url=None,
-        open_hours=open_hours_str,
+        open_hours=_t.get("open_hours") or open_hours_str,
         closed_days=None,
         is_open_now=_is_open_now_combined(open_hours_str, None),
         image_urls=(_j(row["image_urls"]) or []),
@@ -726,7 +816,7 @@ async def _halal_detail(restaurant_id: str) -> PlaceDetailResponse:
     )
 
 
-async def _vegan_detail(vegan_id: str) -> PlaceDetailResponse:
+async def _vegan_detail(vegan_id: str, language: str = "ko") -> PlaceDetailResponse:
     """vegan_restaurants 테이블 1건 → PlaceDetailResponse."""
     pool = await get_pool()
     async with pool.acquire() as conn:
@@ -736,7 +826,8 @@ async def _vegan_detail(vegan_id: str) -> PlaceDetailResponse:
                    details::text AS details,
                    open_hours, closed_days, homepage,
                    image_urls::text AS image_urls,
-                   floor, place_url, lat, lng, last_updated
+                   floor, place_url, lat, lng, last_updated,
+                   COALESCE(translations::text, '{}') AS translations
             FROM vegan_restaurants WHERE id = $1
             """,
             vegan_id,
@@ -755,21 +846,37 @@ async def _vegan_detail(vegan_id: str) -> PlaceDetailResponse:
     vegan_level = d.get("vegan_level", "")
     resp_category = _vegan_category_label(vegan_level, resp_category_key)
     open_hours = row["open_hours"] or ""
+    _lat_v = float(row["lat"]) if row["lat"] is not None else None
+    _lng_v = float(row["lng"]) if row["lng"] is not None else None
+    _rt = row["translations"]
+    if isinstance(_rt, str):
+        try: _rt = _json.loads(_rt)
+        except Exception: _rt = {}
+    if not isinstance(_rt, dict):
+        _rt = {}
+    if language != "ko":
+        _t = await _ensure_translations(
+            pool, "vegan_restaurants", "id", vegan_id,
+            {"name": row["store_name"] or "", "addr": row["addr"] or "", "open_hours": open_hours, "closed_days": row["closed_days"] or ""},
+            lat=_lat_v or 0, lng=_lng_v or 0, language=language, existing=_rt,
+        )
+    else:
+        _t = {}
     return PlaceDetailResponse(
         id=f"vegan__{row['id']}",
-        store_name=row["store_name"] or "",
+        store_name=_t.get("name") or row["store_name"] or "",
         place_id=None,
-        lat=float(row["lat"]) if row["lat"] is not None else None,
-        lng=float(row["lng"]) if row["lng"] is not None else None,
+        lat=_lat_v,
+        lng=_lng_v,
         category=resp_category,
         category_key=resp_category_key,
-        addr=row["addr"] or "",
+        addr=_t.get("addr") or row["addr"] or "",
         phone=row["phone"] or "",
         floor=row["floor"] or None,
         homepage=row["homepage"] or None,
         place_url=row["place_url"] or None,
-        open_hours=open_hours,
-        closed_days=row["closed_days"] or None,
+        open_hours=_t.get("open_hours") or open_hours,
+        closed_days=_t.get("closed_days") or row["closed_days"] or None,
         is_open_now=_is_open_now_combined(open_hours, None),
         image_urls=(_j(row["image_urls"]) or []),
         details={
@@ -782,7 +889,7 @@ async def _vegan_detail(vegan_id: str) -> PlaceDetailResponse:
     )
 
 
-async def _prayer_detail(room_id: str) -> PlaceDetailResponse:
+async def _prayer_detail(room_id: str, language: str = "ko") -> PlaceDetailResponse:
     """prayer_rooms 테이블 1건 → PlaceDetailResponse."""
     pool = await get_pool()
     async with pool.acquire() as conn:
@@ -792,7 +899,8 @@ async def _prayer_detail(room_id: str) -> PlaceDetailResponse:
                    floor, lat, lng,
                    facilities::text AS facilities,
                    availability_status, capacity, notes,
-                   image_urls::text AS image_urls
+                   image_urls::text AS image_urls,
+                   COALESCE(translations::text, '{}') AS translations
             FROM prayer_rooms WHERE room_id = $1
             """,
             room_id,
@@ -817,26 +925,295 @@ async def _prayer_detail(room_id: str) -> PlaceDetailResponse:
         "capacity":             row["capacity"] or "",
         "notes":                row["notes"] or "",
     }
+    _lat_p = float(row["lat"]) if row["lat"] is not None else None
+    _lng_p = float(row["lng"]) if row["lng"] is not None else None
+    _rt = row["translations"]
+    if isinstance(_rt, str):
+        try: _rt = _json.loads(_rt)
+        except Exception: _rt = {}
+    if not isinstance(_rt, dict):
+        _rt = {}
+    if language != "ko":
+        _t = await _ensure_translations(
+            pool, "prayer_rooms", "room_id", room_id,
+            {"name": row["name"] or "", "addr": row["address"] or "", "open_hours": row["open_hours"] or ""},
+            lat=_lat_p or 0, lng=_lng_p or 0, language=language, existing=_rt,
+        )
+    else:
+        _t = {}
     return PlaceDetailResponse(
         id=f"prayer__{row['room_id']}",
-        store_name=row["name"] or "",
+        store_name=_t.get("name") or row["name"] or "",
         place_id=None,
-        lat=float(row["lat"]) if row["lat"] is not None else None,
-        lng=float(row["lng"]) if row["lng"] is not None else None,
+        lat=_lat_p,
+        lng=_lng_p,
         category="기도실",
         category_key="prayer_room",
-        addr=row["address"] or "",
+        addr=_t.get("addr") or row["address"] or "",
         phone=row["phone"] or "",
         floor=row["floor"] or None,
         homepage=None,
         place_url=None,
-        open_hours=row["open_hours"] or "",
+        open_hours=_t.get("open_hours") or row["open_hours"] or "",
         closed_days=None,
         is_open_now=_is_open_now_combined(row["open_hours"] or "", None),
         image_urls=(_j(row["image_urls"]) or []),
         details=details,
         source="prayer_rooms",
         last_updated=None,
+    )
+
+
+async def _accommodation_search(req: SearchRequest, lat: float, lng: float, language: str = "ko") -> SearchResponse:
+    """accommodation_places 테이블 거리 정렬 검색."""
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        rows = await conn.fetch(
+            """
+            SELECT id, name_ko, category, addr, phone, lat, lng, image_url,
+                   CASE
+                     WHEN lat IS NOT NULL AND lng IS NOT NULL THEN
+                       ST_Distance(
+                         ST_SetSRID(ST_MakePoint(lng, lat), 4326)::geography,
+                         ST_SetSRID(ST_MakePoint($2::float, $3::float), 4326)::geography
+                       )
+                     ELSE NULL
+                   END AS dist_m
+            FROM accommodation_places
+            ORDER BY dist_m NULLS LAST, last_updated DESC NULLS LAST
+            LIMIT $1
+            """,
+            req.limit, lng, lat,
+        )
+    results = [
+        SearchResultItem(
+            id=r["id"],
+            store_name=r["name_ko"] or "",
+            category=r["category"] or "숙박",
+            category_key="accommodation",
+            addr=r["addr"] or "",
+            phone=r["phone"] or "",
+            lat=r["lat"],
+            lng=r["lng"],
+            image_url=r["image_url"] or None,
+            distance_m=round(float(r["dist_m"]), 1) if r["dist_m"] is not None else None,
+            is_open_now=None,
+        )
+        for r in rows
+    ]
+    return SearchResponse(query=req.query, count=len(results), results=results)
+
+
+async def _tourist_search(req: SearchRequest, lat: float, lng: float, language: str = "ko") -> SearchResponse:
+    """tourist_places 테이블 거리 정렬 검색 (관광지 + 문화시설 통합)."""
+    from tools.category_classifier import classify_category
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        rows = await conn.fetch(
+            """
+            SELECT id, name_ko, category, addr, phone, lat, lng, image_url,
+                   CASE
+                     WHEN lat IS NOT NULL AND lng IS NOT NULL THEN
+                       ST_Distance(
+                         ST_SetSRID(ST_MakePoint(lng, lat), 4326)::geography,
+                         ST_SetSRID(ST_MakePoint($2::float, $3::float), 4326)::geography
+                       )
+                     ELSE NULL
+                   END AS dist_m
+            FROM tourist_places
+            ORDER BY dist_m NULLS LAST, last_updated DESC NULLS LAST
+            LIMIT $1
+            """,
+            req.limit, lng, lat,
+        )
+    results = []
+    for r in rows:
+        key = classify_category(r["category"] or "", r["name_ko"] or "")
+        if key not in ("tourist", "cultural"):
+            key = "tourist"
+        results.append(
+            SearchResultItem(
+                id=r["id"],
+                store_name=r["name_ko"] or "",
+                category=r["category"] or "관광지",
+                category_key=key,
+                addr=r["addr"] or "",
+                phone=r["phone"] or "",
+                lat=r["lat"],
+                lng=r["lng"],
+                image_url=r["image_url"] or None,
+                distance_m=round(float(r["dist_m"]), 1) if r["dist_m"] is not None else None,
+                is_open_now=None,
+            )
+        )
+    return SearchResponse(query=req.query, count=len(results), results=results)
+
+
+async def _accommodation_detail(acc_id: str, language: str = "ko") -> PlaceDetailResponse:
+    """accommodation_places 테이블 1건 → PlaceDetailResponse."""
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        row = await conn.fetchrow(
+            """
+            SELECT id, content_id, name_ko, lat, lng, addr, phone, category,
+                   image_url, homepage, open_hours,
+                   checkintime, checkouttime, infocenterlodging, parkinglodging,
+                   reservationlodging, reservationurl,
+                   conveniences, source, last_updated,
+                   COALESCE(translations::text, '{}') AS translations
+            FROM accommodation_places WHERE id = $1
+            """,
+            acc_id,
+        )
+    if row is None:
+        raise HTTPException(status_code=404, detail=f"숙박업소 '{acc_id}' 없음")
+    convs = row["conveniences"]
+    if isinstance(convs, str):
+        import json as _json
+        try:
+            convs = _json.loads(convs)
+        except Exception:
+            convs = []
+    open_hours_str = row["open_hours"] or ""
+    is_open = _is_open_now_combined(open_hours_str, None) if open_hours_str else None
+    _lat_a = float(row["lat"]) if row["lat"] is not None else None
+    _lng_a = float(row["lng"]) if row["lng"] is not None else None
+    _rt = row["translations"]
+    if isinstance(_rt, str):
+        try: _rt = _json.loads(_rt)
+        except Exception: _rt = {}
+    if not isinstance(_rt, dict):
+        _rt = {}
+    if language != "ko":
+        _t = await _ensure_translations(
+            pool, "accommodation_places", "id", acc_id,
+            {"name": row["name_ko"] or "", "addr": row["addr"] or "", "open_hours": open_hours_str},
+            lat=_lat_a or 0, lng=_lng_a or 0, language=language, existing=_rt,
+        )
+    else:
+        _t = {}
+    return PlaceDetailResponse(
+        id=row["id"],
+        store_name=_t.get("name") or row["name_ko"] or "",
+        place_id=row["content_id"] or None,
+        lat=_lat_a,
+        lng=_lng_a,
+        category=row["category"] or "숙박",
+        category_key="accommodation",
+        addr=_t.get("addr") or row["addr"] or "",
+        phone=row["phone"] or "",
+        floor=None,
+        homepage=_extract_url(row["homepage"] or "") or None,
+        place_url=None,
+        open_hours=_t.get("open_hours") or open_hours_str or None,
+        closed_days=None,
+        is_open_now=is_open,
+        image_urls=[row["image_url"]] if row["image_url"] else [],
+        details={
+            "checkintime":        _strip_html(row["checkintime"] or ""),
+            "checkouttime":       _strip_html(row["checkouttime"] or ""),
+            "infocenterlodging":  _strip_html(row["infocenterlodging"] or ""),
+            "parkinglodging":     _strip_html(row["parkinglodging"] or ""),
+            "reservationlodging": _strip_html(row["reservationlodging"] or ""),
+            "reservationurl":     _extract_url(row["reservationurl"] or ""),
+            "conveniences":       convs or [],
+        },
+        source=row["source"] or "accommodation_places",
+        last_updated=row["last_updated"].isoformat() if row["last_updated"] else None,
+    )
+
+
+async def _tourist_detail(tourist_id: str, language: str = "ko") -> PlaceDetailResponse:
+    """tourist_places 테이블 1건 → PlaceDetailResponse."""
+    from tools.category_classifier import classify_category
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        row = await conn.fetchrow(
+            """
+            SELECT id, content_id, content_type_id, name_ko, lat, lng, addr, phone, category,
+                   overview, image_url, homepage, open_hours,
+                   infocenter, parking, restdate, usetime,
+                   infocenterculture, parkingculture, parkingfee,
+                   restdateculture, usefee, usetimeculture,
+                   conveniences, source, last_updated,
+                   COALESCE(translations::text, '{}') AS translations
+            FROM tourist_places WHERE id = $1
+            """,
+            tourist_id,
+        )
+    if row is None:
+        raise HTTPException(status_code=404, detail=f"관광지/문화시설 '{tourist_id}' 없음")
+    key = classify_category(row["category"] or "", row["name_ko"] or "")
+    if key not in ("tourist", "cultural"):
+        key = "tourist"
+    convs = row["conveniences"]
+    if isinstance(convs, str):
+        import json as _json
+        try:
+            convs = _json.loads(convs)
+        except Exception:
+            convs = []
+    ctype = row["content_type_id"]
+    if ctype == 14:
+        type_details = {
+            "infocenterculture": _strip_html(row["infocenterculture"] or ""),
+            "parkingculture":    _strip_html(row["parkingculture"] or ""),
+            "parkingfee":        _strip_html(row["parkingfee"] or ""),
+            "restdateculture":   _strip_html(row["restdateculture"] or ""),
+            "usefee":            _strip_html(row["usefee"] or ""),
+            "usetimeculture":    _strip_html(row["usetimeculture"] or ""),
+        }
+    else:
+        type_details = {
+            "infocenter": _strip_html(row["infocenter"] or ""),
+                        "parking":    _strip_html(row["parking"] or ""),
+            "restdate":   _strip_html(row["restdate"] or ""),
+            "usetime":    _strip_html(row["usetime"] or ""),
+        }
+    open_hours_str = row["open_hours"] or ""
+    is_open = _is_open_now_combined(open_hours_str, None) if open_hours_str else None
+    overview_raw = row["overview"] or ""
+    overview = _re.sub(r"<[^>]+>", "", overview_raw).strip()
+    _lat_t = float(row["lat"]) if row["lat"] is not None else None
+    _lng_t = float(row["lng"]) if row["lng"] is not None else None
+    _rt = row["translations"]
+    if isinstance(_rt, str):
+        try: _rt = _json.loads(_rt)
+        except Exception: _rt = {}
+    if not isinstance(_rt, dict):
+        _rt = {}
+    if language != "ko":
+        _t = await _ensure_translations(
+            pool, "tourist_places", "id", tourist_id,
+            {"name": row["name_ko"] or "", "addr": row["addr"] or "", "open_hours": open_hours_str, "description": overview},
+            lat=_lat_t or 0, lng=_lng_t or 0, language=language, existing=_rt,
+        )
+    else:
+        _t = {}
+    return PlaceDetailResponse(
+        id=row["id"],
+        store_name=_t.get("name") or row["name_ko"] or "",
+        place_id=row["content_id"] or None,
+        lat=_lat_t,
+        lng=_lng_t,
+        category=row["category"] or "관광지",
+        category_key=key,
+        addr=_t.get("addr") or row["addr"] or "",
+        phone=row["phone"] or "",
+        floor=None,
+        homepage=_extract_url(row["homepage"] or "") or None,
+        place_url=None,
+        open_hours=_t.get("open_hours") or open_hours_str or None,
+        closed_days=None,
+        is_open_now=is_open,
+        image_urls=[row["image_url"]] if row["image_url"] else [],
+        details={
+            "overview":     _t.get("description") or overview,
+            "conveniences": convs or [],
+            **type_details,
+        },
+        source=row["source"] or "tourist_places",
+        last_updated=row["last_updated"].isoformat() if row["last_updated"] else None,
     )
 
 
@@ -847,18 +1224,23 @@ async def place_detail(req: PlaceDetailRequest):
     - `restroom__{mng_no}` → public_restrooms 테이블
     - `halal__{restaurant_id}` → halal_restaurants 테이블
     - `prayer__{room_id}` → prayer_rooms 테이블
-    - `tourist__{ufid}` → store_details 테이블 (import_tourist_places.py 배치 적재)
+    - `accommodation__{content_id}` → accommodation_places 테이블
+    - `tourist__{content_id}` → tourist_places 테이블
     - 그 외 → store_details 테이블 (건물 내 매장 캐시)
     """
     # outdoor 라우팅
     if req.id.startswith("restroom__"):
-        return await _restroom_detail(req.id[len("restroom__"):])
+        return await _restroom_detail(req.id[len("restroom__"):], language=req.language)
     if req.id.startswith("halal__"):
-        return await _halal_detail(req.id[len("halal__"):])
+        return await _halal_detail(req.id[len("halal__"):], language=req.language)
     if req.id.startswith("vegan__"):
-        return await _vegan_detail(req.id[len("vegan__"):])
+        return await _vegan_detail(req.id[len("vegan__"):], language=req.language)
     if req.id.startswith("prayer__"):
-        return await _prayer_detail(req.id[len("prayer__"):])
+        return await _prayer_detail(req.id[len("prayer__"):], language=req.language)
+    if req.id.startswith("accommodation__"):
+        return await _accommodation_detail(req.id, language=req.language)
+    if req.id.startswith("tourist__"):
+        return await _tourist_detail(req.id, language=req.language)
 
     pool = await get_pool()
     async with pool.acquire() as conn:
@@ -868,7 +1250,8 @@ async def place_detail(req: PlaceDetailRequest):
                    category, category_key, addr, phone, floor,
                    homepage, place_url,
                    open_hours, closed_days,
-                   image_urls, details, source, last_updated
+                   image_urls, details, source, last_updated,
+                   COALESCE(translations::text, '{}') AS translations
             FROM store_details
             WHERE id = $1
             """,
@@ -891,7 +1274,7 @@ async def place_detail(req: PlaceDetailRequest):
         place_id_part = req.id[:idx] if idx >= 0 else (row["place_id"] or "")
         store_name_part = req.id[idx + len(sep):] if idx >= 0 else row["store_name"]
         try:
-            await get_store_detail(place_id_part, store_name_part)
+            await get_store_detail(place_id_part, store_name_part, language=req.language)
             async with pool.acquire() as conn:
                 row = await conn.fetchrow(
                     """
@@ -899,7 +1282,8 @@ async def place_detail(req: PlaceDetailRequest):
                            category, category_key, addr, phone, floor,
                            homepage, place_url,
                            open_hours, closed_days,
-                           image_urls, details, source, last_updated
+                           image_urls, details, source, last_updated,
+                           COALESCE(translations::text, '{}') AS translations
                     FROM store_details WHERE id = $1
                     """,
                     req.id,
@@ -951,22 +1335,29 @@ async def place_detail(req: PlaceDetailRequest):
         a = _math.sin(dlat/2)**2 + _math.cos(lat1) * _math.cos(lat2) * _math.sin(dlng/2)**2
         distance_m = round(2 * R * _math.asin(_math.sqrt(a)), 1)
 
+    raw_trans = row["translations"]
+    if isinstance(raw_trans, str):
+        try: raw_trans = _json.loads(raw_trans)
+        except Exception: raw_trans = {}
+    if not isinstance(raw_trans, dict):
+        raw_trans = {}
+    t = raw_trans.get(req.language, {})
     return PlaceDetailResponse(
         id=row["id"],
-        store_name=row["store_name"],
+        store_name=t.get("name") or row["store_name"],
         place_id=row["place_id"],
         lat=row["lat"],
         lng=row["lng"],
         distance_m=distance_m,
         category=row["category"],
         category_key=row["category_key"],
-        addr=row["addr"],
+        addr=t.get("addr") or row["addr"],
         phone=row["phone"],
         floor=row["floor"],
         homepage=row["homepage"],
         place_url=row["place_url"],
-        open_hours=row["open_hours"],
-        closed_days=row["closed_days"],
+        open_hours=t.get("open_hours") or row["open_hours"],
+        closed_days=t.get("closed_days") or row["closed_days"],
         is_open_now=_is_open_now_combined(row["open_hours"], details.get("schedule")),
         image_urls=image_urls,
         details=details,

@@ -36,8 +36,12 @@ import androidx.compose.material.icons.rounded.Star
 import androidx.compose.material.icons.rounded.Store
 import androidx.compose.material.icons.rounded.Verified
 import androidx.compose.material.icons.rounded.Wc
+import androidx.compose.material.icons.rounded.ConfirmationNumber
+import androidx.compose.material.icons.rounded.EventBusy
 import androidx.compose.material.icons.rounded.KeyboardArrowDown
 import androidx.compose.material.icons.rounded.KeyboardArrowUp
+import androidx.compose.material.icons.rounded.Login
+import androidx.compose.material.icons.rounded.Logout
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -62,6 +66,7 @@ import androidx.compose.ui.unit.dp
 import androidx.navigation.NavController
 import com.scanpang.app.data.ExchangeRate
 import com.scanpang.app.data.MenuItem
+import com.scanpang.app.data.OnboardingPreferences
 import com.scanpang.app.data.Place
 import com.scanpang.app.data.RestaurantPlace
 import com.scanpang.app.data.ScheduleDay
@@ -104,6 +109,7 @@ fun PlaceDetailScreen(
     viewModel: ScanPangViewModel = viewModel(),
 ) {
     val context = LocalContext.current
+    val language = remember { OnboardingPreferences(context).getLanguageCode() ?: "ko" }
     // GPS — NavHost destination 마다 viewModel() 인스턴스가 달라 다른 화면의
     // setUserLocation 이 이 화면 인스턴스에 안 닿음. SearchDefaultScreen 처럼
     // 자체적으로 lastLocation 받아 백엔드 거리 계산에 사용.
@@ -157,7 +163,7 @@ fun PlaceDetailScreen(
         if (outdoorApiCategory != null) {
             viewModel.loadOutdoorPlaceDetail(placeId, outdoorApiCategory, userLat, userLng)
         } else {
-            viewModel.loadPlaceDetail(placeId, userLat = userLat, userLng = userLng)
+            viewModel.loadPlaceDetail(placeId, userLat = userLat, userLng = userLng, language = language)
         }
     }
     DisposableEffect(Unit) {
@@ -323,10 +329,11 @@ fun PlaceDetailScreen(
             )
 
             // 오늘 방문 가능 여부 — 영업시간이 있는 카테고리만
+            // is_open_now=null 이면 openHours 비어있으니 조건 자연스럽게 불통과
             val showVisitStatus = categoryKey in setOf(
                 "restaurant", "halal_restaurant", "cafe", "shopping", "mall",
                 "convenience", "convenience_store", "exchange",
-                "bank", "hospital", "pharmacy", "tourist", "tourist_spot", "attraction",
+                "bank", "hospital", "pharmacy", "tourist", "cultural", "accommodation",
             )
             if (showVisitStatus && place.openHours.isNotBlank()) {
                 DetailScreenDivider()
@@ -433,6 +440,12 @@ private fun PlaceDetailContent(
                 DetailInfoLine(Icons.Rounded.Security, "안전시설", place.safetyTags)
             if (place.convenienceServices.isNotBlank()) DetailInfoLine(Icons.Rounded.MiscellaneousServices, "편의시설", place.convenienceServices)
             if (place.departments.isNotBlank()) DetailInfoLine(Icons.Rounded.Healing, "진료과목", place.departments)
+            // 관광지/문화시설 전용
+            if (place.closedDates.isNotBlank())  DetailInfoLine(Icons.Rounded.EventBusy, "휴무일", place.closedDates)
+            if (place.admissionFee.isNotBlank()) DetailInfoLine(Icons.Rounded.ConfirmationNumber, "이용요금", place.admissionFee)
+            // 숙박 전용
+            if (place.checkinTime.isNotBlank())   DetailInfoLine(Icons.Rounded.Login,  "체크인", place.checkinTime)
+            if (place.checkoutTime.isNotBlank())  DetailInfoLine(Icons.Rounded.Logout, "체크아웃", place.checkoutTime)
         }
     }
 
@@ -667,8 +680,24 @@ private fun PlaceDetailResponse.mergeOnto(fallback: Place?, categoryKey: String)
     val parkingValue = if (conveniences.any { it.contains("주차") }) "가능" else ""
     val convenienceServicesValue = conveniences.filter { !it.contains("주차") }.joinToString(", ")
 
-    // 소개 — 할랄 식당: short_description_ko / naver scraper: intro / 기도실: notes.
-    val backendDesc = (details["short_description_ko"] as? String)?.trim().orEmpty()
+    // Tour API 관광지/문화시설/숙박 전용 필드
+    val checkinTimeValue  = (details["checkintime"]        as? String).orEmpty().trim()
+    val checkoutTimeValue = (details["checkouttime"]       as? String).orEmpty().trim()
+    val admissionFeeValue = (details["usefee"]             as? String).orEmpty().trim()
+    val closedDatesValue  = (details["restdate"]           as? String).orEmpty()
+        .ifBlank { (details["restdateculture"] as? String).orEmpty() }.trim()
+    val reservationUrlValue = (details["reservationurl"]   as? String).orEmpty().trim()
+    // usetime / usetimeculture → openHours fallback (Tour API 운영시간)
+    val tourOpenHours = (details["usetime"] as? String).orEmpty()
+        .ifBlank { (details["usetimeculture"] as? String).orEmpty() }.trim()
+    // parking: Tour API parking/parkingculture/parkinglodging 텍스트 (conveniences 보다 우선)
+    val tourParkingText = (details["parking"] as? String).orEmpty()
+        .ifBlank { (details["parkingculture"] as? String).orEmpty() }
+        .ifBlank { (details["parkinglodging"] as? String).orEmpty() }.trim()
+
+    // 소개 — 관광지: overview / 할랄 식당: short_description_ko / naver scraper: intro / 기도실: notes.
+    val backendDesc = (details["overview"] as? String)?.trim().orEmpty()
+        .ifBlank { (details["short_description_ko"] as? String)?.trim().orEmpty() }
         .ifBlank { (details["intro"] as? String)?.trim().orEmpty() }
         .ifBlank { (details["notes"] as? String)?.trim().orEmpty() }
 
@@ -698,11 +727,11 @@ private fun PlaceDetailResponse.mergeOnto(fallback: Place?, categoryKey: String)
         distance = backendDistance.ifBlank { base.distance },
         address = addr ?: base.address,
         phone = phone ?: base.phone,
-        openHours = open_hours ?: base.openHours,
+        openHours = open_hours ?: tourOpenHours.ifBlank { base.openHours },
         // 백엔드 is_open_now=null 이면 fallback 유지(휴리스틱 실패).
         isOpen = is_open_now ?: base.isOpen,
         floor = floor ?: base.floor,
-        website = homepage ?: base.website,
+        website = homepage ?: reservationUrlValue.ifBlank { base.website },
         categoryKey = categoryKey,
         latitude = lat ?: base.latitude,
         longitude = lng ?: base.longitude,
@@ -712,8 +741,13 @@ private fun PlaceDetailResponse.mergeOnto(fallback: Place?, categoryKey: String)
         toiletFemale = toiletFemale.ifBlank { base.toiletFemale },
         facilityTags = if (facilityList.isNotEmpty()) facilityList.joinToString(", ") else base.facilityTags,
         safetyTags   = if (safetyList.isNotEmpty())   safetyList.joinToString(", ")   else base.safetyTags,
-        parking            = parkingValue.ifBlank { base.parking },
+        parking             = tourParkingText.ifBlank { parkingValue.ifBlank { base.parking } },
         convenienceServices = convenienceServicesValue.ifBlank { base.convenienceServices },
+        checkinTime   = checkinTimeValue.ifBlank  { base.checkinTime },
+        checkoutTime  = checkoutTimeValue.ifBlank { base.checkoutTime },
+        admissionFee  = admissionFeeValue.ifBlank { base.admissionFee },
+        closedDates   = closedDatesValue.ifBlank  { base.closedDates },
+        reservationUrl = reservationUrlValue.ifBlank { base.reservationUrl },
     )
 }
 

@@ -211,6 +211,7 @@ fun ArExploreScreen(
 
     val appContext = context.applicationContext
     val appSettingsPrefs = remember { AppSettingsPreferences(appContext) }
+    val language = remember { OnboardingPreferences(appContext).getLanguageCode() ?: "ko" }
     val snackbarHostState = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
     val chatListState = rememberLazyListState()
@@ -482,7 +483,7 @@ fun ArExploreScreen(
             for (cat in categorySelection) {
                 try {
                     val resp = api.searchPlaces(
-                        SearchRequest(query = cat, lat = currentLat, lng = currentLng, limit = 100)
+                        SearchRequest(query = cat, lat = currentLat, lng = currentLng, limit = 100, language = language)
                     )
                     results.addAll(resp.results)
                 } catch (e: Exception) {
