@@ -170,6 +170,7 @@ fun PlaceDetailScreen(
         categoryKey = categoryKey,
         rawCategory = place.category,
         veganLevel = (backend?.details?.get("vegan_level") as? String).orEmpty(),
+        strings = s,
     )
 
     val restaurantExtra = remember(categoryKey, backend, s) {

@@ -48,6 +48,7 @@ interface AppStrings {
     val catRestroom: String
     val catLocker: String
     val catAll: String
+    val catVeganFriendly: String
 
     // ── Home ─────────────────────────────────────────────────────────────────
     val homeGreetingDefault: String
@@ -273,6 +274,17 @@ interface AppStrings {
     val placeBookmarked: String
 
     // ── Place Detail ──────────────────────────────────────────────────────────
+    val detailNavigate: String
+    val detailVisitAvailable: String
+    val detailOperationEnded: String
+    val detailGuide: String
+    val detailContactStore: String
+    val detailLoadingInfo: String
+    val detailUnsaved: String
+    val detailSavedToast: String
+    val detailOpenNow: String
+    val detailClosedNow: String
+    val detailTodayVisit: String
     val detailCollapse: String
     val detailExpandMore: (Int) -> String
     val detailIntro: String
@@ -378,6 +390,7 @@ val KoStrings: AppStrings = object : AppStrings {
     override val catRestroom = "화장실"
     override val catLocker = "물품보관함"
     override val catAll = "전체"
+    override val catVeganFriendly = "채식가능"
 
     override val homeGreetingDefault = "안녕하세요!"
     override val homeGreetingWithName: (String) -> String = { name -> "안녕하세요, ${name}님!" }
@@ -611,6 +624,17 @@ val KoStrings: AppStrings = object : AppStrings {
     override val placeFloorInfo = "층별 정보"
     override val placeBookmarked = "저장됨"
 
+    override val detailNavigate = "길안내 시작"
+    override val detailVisitAvailable = "지금 방문 가능"
+    override val detailOperationEnded = "운영 종료"
+    override val detailGuide = "안내"
+    override val detailContactStore = "상세 정보는 매장에 문의해 주세요."
+    override val detailLoadingInfo = "매장 정보를 불러오는 중입니다"
+    override val detailUnsaved = "저장이 해제되었습니다"
+    override val detailSavedToast = "저장되었습니다"
+    override val detailOpenNow = "지금 영업 중"
+    override val detailClosedNow = "지금 영업 종료"
+    override val detailTodayVisit = "오늘 방문 가능 여부"
     override val detailCollapse = "접기"
     override val detailExpandMore: (Int) -> String = { n -> "더보기 (${n}개)" }
     override val detailIntro = "소개"
@@ -714,6 +738,7 @@ val EnStrings: AppStrings = object : AppStrings {
     override val catRestroom = "Restroom"
     override val catLocker = "Locker"
     override val catAll = "All"
+    override val catVeganFriendly = "Vegetarian-Friendly"
 
     override val homeGreetingDefault = "Hello!"
     override val homeGreetingWithName: (String) -> String = { name -> "Hello, $name!" }
@@ -947,6 +972,17 @@ val EnStrings: AppStrings = object : AppStrings {
     override val placeFloorInfo = "Floor Info"
     override val placeBookmarked = "Saved"
 
+    override val detailNavigate = "Get Directions"
+    override val detailVisitAvailable = "Available Now"
+    override val detailOperationEnded = "Closed"
+    override val detailGuide = "Info"
+    override val detailContactStore = "Contact the store for details."
+    override val detailLoadingInfo = "Loading store info..."
+    override val detailUnsaved = "Removed from saved"
+    override val detailSavedToast = "Saved!"
+    override val detailOpenNow = "Open now"
+    override val detailClosedNow = "Closed now"
+    override val detailTodayVisit = "Today's Availability"
     override val detailCollapse = "Collapse"
     override val detailExpandMore: (Int) -> String = { n -> "Show more ($n)" }
     override val detailIntro = "Introduction"
@@ -1005,3 +1041,24 @@ val EnStrings: AppStrings = object : AppStrings {
 }
 
 val LocalStrings = compositionLocalOf<AppStrings> { KoStrings }
+
+fun AppStrings.categoryLabel(key: String): String? = when (key) {
+    "halal_restaurant"               -> catHalalRestaurant
+    "prayer_room"                    -> catPrayerRoom
+    "tourist", "tourist_spot"        -> catTouristSpot
+    "vegan_restaurant"               -> catVeganRestaurant
+    "vegan_cafe"                     -> catVeganCafe
+    "restaurant"                     -> catRestaurant
+    "cafe"                           -> catCafe
+    "shopping"                       -> catShopping
+    "hospital"                       -> catHospital
+    "pharmacy"                       -> catPharmacy
+    "exchange"                       -> catExchange
+    "convenience_store"              -> catConvenienceStore
+    "atm"                            -> catAtm
+    "bank"                           -> catBank
+    "subway", "subway_station"       -> catSubwayStation
+    "restroom", "public_restroom"    -> catRestroom
+    "locker", "lockers"              -> catLocker
+    else                             -> null
+}
