@@ -460,6 +460,11 @@ async def _outdoor_search(category_key: str, req: SearchRequest) -> SearchRespon
             return f"vegan__{r['vegan_id']}"
         if category == "prayer_room" and r.get("room_id"):
             return f"prayer__{r['room_id']}"
+        # subway/locker: 매장명 = "역명 호선" 또는 보관함 이름. _subway_detail / _locker_detail 가 query 로 사용.
+        if category == "subway":
+            return f"subway__{r.get('name','')}"
+        if category == "locker":
+            return f"locker__{r.get('name','')}"
         return f"__outdoor__{category}__{r.get('name','')}"
 
     # 화면 표시용 한국어 카테고리 라벨
@@ -1222,6 +1227,94 @@ async def _tourist_detail(tourist_id: str, language: str = "ko") -> PlaceDetailR
     )
 
 
+async def _subway_detail(station_query: str, language: str = "ko") -> PlaceDetailResponse:
+    """지하철역 detail — subway_exits 테이블 + seoul_metro fetcher (TAGO 시간표/빠른하차).
+
+    `station_query`: search API 에서 받은 "역명 호선" 텍스트. 예: "명동역 4호선" / "을지로입구역 2호선".
+    seoul_metro.fetch() 가 _parse_query() 로 역명+호선 분리 → subway_exits 조회 + TAGO API 호출.
+    details 키: station_name, line, station_id, exits[], schedule{}, exit_count, fast_alights[]
+    """
+    from tools.details_fetchers import seoul_metro
+    del language  # TODO: TAGO 응답은 한국어 고정. 추후 다국어 시 사용.
+    if not station_query:
+        raise HTTPException(status_code=400, detail="station query 필요")
+    fetched = await seoul_metro.fetch(
+        store_name=station_query, lat=37.5636, lng=126.9822,
+        building_ufid="", category_name="지하철역",
+    )
+    if not fetched or not fetched.get("details", {}).get("station_name"):
+        raise HTTPException(status_code=404, detail=f"지하철역 '{station_query}' 없음")
+    details = fetched.get("details", {}) or {}
+    # 출구 평균 좌표 (대표 좌표 — 카드 거리 계산용)
+    exits = details.get("exits", []) or []
+    lat = lng = None
+    valid_coords = [(e["lat"], e["lng"]) for e in exits if e.get("lat") and e.get("lng")]
+    if valid_coords:
+        lat = sum(c[0] for c in valid_coords) / len(valid_coords)
+        lng = sum(c[1] for c in valid_coords) / len(valid_coords)
+    open_hours = fetched.get("open_hours", "") or ""
+    return PlaceDetailResponse(
+        id=f"subway__{station_query}",
+        store_name=f"{details.get('station_name','')} {details.get('line','')}".strip(),
+        place_id=details.get("station_id") or None,
+        lat=lat, lng=lng,
+        category="지하철역",
+        category_key="subway",
+        addr="",
+        phone=fetched.get("phone", "") or "",
+        floor=None,
+        homepage=None,
+        place_url=None,
+        open_hours=open_hours or None,
+        closed_days=None,
+        is_open_now=_is_open_now_combined(open_hours, None),
+        image_urls=[],
+        details=details,
+        source=fetched.get("source", "tago_subway"),
+        last_updated=None,
+    )
+
+
+async def _locker_detail(query: str, language: str = "ko") -> PlaceDetailResponse:
+    """물품보관함 detail — 서울 OpenAPI 실시간 (seoul_openapi fetcher).
+
+    `query`: search API 에서 받은 매장명 (예: 보관함 위치 명). seoul_openapi.fetch 가 좌표 근처
+    locker 데이터 가져옴. 별도 테이블 없이 매번 외부 API 호출.
+    """
+    from tools.details_fetchers import seoul_openapi
+    del language  # TODO: 서울 OpenAPI 한국어 고정. 추후 다국어 시 사용.
+    if not query:
+        raise HTTPException(status_code=400, detail="locker query 필요")
+    fetched = await seoul_openapi.fetch(
+        store_name=query, lat=37.5636, lng=126.9822,
+        building_ufid="", category_name="물품보관함",
+    )
+    if not fetched:
+        raise HTTPException(status_code=404, detail=f"보관함 '{query}' 없음")
+    details = fetched.get("details", {}) or {}
+    return PlaceDetailResponse(
+        id=f"locker__{query}",
+        store_name=query,
+        place_id=None,
+        lat=details.get("lat"),
+        lng=details.get("lng"),
+        category="물품보관함",
+        category_key="locker",
+        addr=fetched.get("addr", "") or "",
+        phone=fetched.get("phone", "") or "",
+        floor=None,
+        homepage=None,
+        place_url=None,
+        open_hours=fetched.get("open_hours", "") or None,
+        closed_days=None,
+        is_open_now=None,
+        image_urls=[],
+        details=details,
+        source=fetched.get("source", "seoul_openapi"),
+        last_updated=None,
+    )
+
+
 @app.post("/place/detail", response_model=PlaceDetailResponse)
 async def place_detail(req: PlaceDetailRequest):
     """
@@ -1246,6 +1339,16 @@ async def place_detail(req: PlaceDetailRequest):
         return await _accommodation_detail(req.id, language=req.language)
     if req.id.startswith("tourist__"):
         return await _tourist_detail(req.id, language=req.language)
+    if req.id.startswith("subway__"):
+        return await _subway_detail(req.id[len("subway__"):], language=req.language)
+    if req.id.startswith("locker__"):
+        return await _locker_detail(req.id[len("locker__"):], language=req.language)
+    # 구버전 호환 — search API 가 폴백 prefix '__outdoor__{cat}__{name}' 로 만든 id.
+    # subway/locker 명시 prefix 적용되기 전 캐시/북마크 데이터 대응용.
+    if req.id.startswith("__outdoor__subway__"):
+        return await _subway_detail(req.id[len("__outdoor__subway__"):], language=req.language)
+    if req.id.startswith("__outdoor__locker__"):
+        return await _locker_detail(req.id[len("__outdoor__locker__"):], language=req.language)
 
     pool = await get_pool()
     async with pool.acquire() as conn:
