@@ -542,9 +542,14 @@ async def place_search(req: SearchRequest):
     if not q:
         return SearchResponse(query=req.query, count=0, results=[])
 
-    # 쿼리 → category_key. 한국어 카테고리명("카페"/"화장실") 우선, 그 외엔 매장명 분류 fallback.
+    # 방안 1: 노이즈 단어 제거 — "근처 스타벅스" → "스타벅스", "근처 카페" → "카페"
+    # trgm 유사도 계산과 category 분류 모두 clean_q 기준으로 수행.
+    _NOISE_RE = _re.compile(r'\s*(근처|주변에|주변|가까운|nearby|near)\s*', _re.IGNORECASE)
+    clean_q = _NOISE_RE.sub(' ', q).strip() or q
+
+    # 쿼리 → category_key. 노이즈 제거 후 clean_q 기준으로 분류.
     from tools.category_classifier import classify_query
-    category_key = classify_query(q)
+    category_key = classify_query(clean_q)
     if category_key in _OUTDOOR_CATEGORIES:
         return await _outdoor_search(category_key, req)
 
@@ -553,47 +558,53 @@ async def place_search(req: SearchRequest):
     user_lat = req.lat if req.lat is not None else 37.5636
     user_lng = req.lng if req.lng is not None else 126.9822
     used_fallback = req.lat is None or req.lng is None
-    print(f"[place_search] q={q!r} category_key={category_key!r} "
+    print(f"[place_search] q={q!r} clean_q={clean_q!r} category_key={category_key!r} "
           f"user=({user_lat:.4f},{user_lng:.4f}){' [FALLBACK 명동]' if used_fallback else ''}")
     async with pool.acquire() as conn:
-        # store_details: 매장명 ILIKE OR 분류된 category_key 매칭.
-        # ORDER BY 거리(사용자 좌표 기준) — '식당' 칩이 용인 위치에서 외대 까르보네를
-        # 명동 멜팅소울보다 먼저 보여주는 게 자연스러움. 좌표 없는 row 는 last_updated fallback.
         rows = await conn.fetch(
             """
-            SELECT id, store_name, category, category_key, addr, phone,
-                   place_id, lat, lng, floor, image_urls, open_hours, details,
-                   COALESCE(translations::text, '{}') AS translations,
-                   CASE
-                     WHEN lat IS NOT NULL AND lng IS NOT NULL THEN
-                       ST_Distance(
-                         ST_SetSRID(ST_MakePoint(lng, lat), 4326)::geography,
-                         ST_SetSRID(ST_MakePoint($4::float, $5::float), 4326)::geography
-                       )
-                     ELSE NULL
-                   END AS dist_m
-            FROM store_details
-            WHERE store_name ILIKE $1
-               OR similarity(
-                    regexp_replace(store_name, '\\s+', '', 'g'),
-                    regexp_replace($6, '\\s+', '', 'g')
-                  ) >= 0.3
-               OR ($3 != 'other' AND category_key = $3)
+            SELECT * FROM (
+              SELECT id, store_name, category, category_key, addr, phone,
+                     place_id, lat, lng, floor, image_urls, open_hours, details,
+                     COALESCE(translations::text, '{}') AS translations,
+                     last_updated,
+                     CASE
+                       WHEN lat IS NOT NULL AND lng IS NOT NULL THEN
+                         ST_Distance(
+                           ST_SetSRID(ST_MakePoint(lng, lat), 4326)::geography,
+                           ST_SetSRID(ST_MakePoint($4::float, $5::float), 4326)::geography
+                         )
+                       ELSE NULL
+                     END AS dist_m
+              FROM store_details
+              WHERE store_name ILIKE $1
+                 OR similarity(
+                      regexp_replace(store_name, '\\s+', '', 'g'),
+                      regexp_replace($6, '\\s+', '', 'g')
+                    ) >= 0.3
+                 OR ($3 != 'other' AND category_key = $3)
+            ) sub
             ORDER BY
-              CASE WHEN store_name ILIKE $1 THEN 0 ELSE 1 END,
-              similarity(
-                regexp_replace(store_name, '\\s+', '', 'g'),
-                regexp_replace($6, '\\s+', '', 'g')
-              ) DESC,
-              dist_m NULLS LAST,
-              last_updated DESC NULLS LAST
+              CASE
+                WHEN $3 = 'other' AND store_name ILIKE $1 THEN 0
+                WHEN $3 = 'other' AND similarity(
+                       regexp_replace(store_name, '\\s+', '', 'g'),
+                       regexp_replace($6, '\\s+', '', 'g')
+                     ) >= 0.6 THEN 1
+                WHEN $3 = 'other' AND similarity(
+                       regexp_replace(store_name, '\\s+', '', 'g'),
+                       regexp_replace($6, '\\s+', '', 'g')
+                     ) >= 0.3 THEN 2
+                ELSE 3
+              END,
+              dist_m NULLS LAST
             LIMIT $2
             """,
-            f"%{q}%",
+            f"%{clean_q}%",  # ILIKE도 clean_q 기준
             req.limit,
             category_key,
             user_lng, user_lat,
-            q,
+            clean_q,          # trgm도 clean_q 기준
         )
 
     results: list[SearchResultItem] = []
