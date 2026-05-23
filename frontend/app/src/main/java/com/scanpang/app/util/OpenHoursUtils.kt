@@ -48,7 +48,7 @@ object OpenHoursUtils {
         if (ALWAYS_OPEN.any { text.contains(it) }) return "24시간"
 
         val schedule = parseSchedule(text)
-        if (schedule.isEmpty()) return text          // 파싱 실패 → 원문 fallback
+        if (schedule.isEmpty()) return ""            // 파싱 불가 → 표시 안 함
 
         return schedule[todayIndex()] ?: ""          // 오늘 휴무이면 빈 문자열
     }

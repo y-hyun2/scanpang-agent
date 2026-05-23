@@ -30,6 +30,25 @@ import re as _re
 from datetime import datetime, timedelta, timezone
 
 
+def _extract_url(text: str) -> str:
+    """'<a href="URL">...</a>' 형태에서 URL만 추출. 일반 URL이면 그대로 반환."""
+    if not text:
+        return text
+    m = _re.search(r'href=["\']([^"\']+)["\']', text)
+    return m.group(1) if m else _re.sub(r"<[^>]+>", "", text).strip()
+
+
+def _strip_html(text: str) -> str:
+    """Tour API 텍스트 필드의 HTML 태그를 제거한다. <br>은 줄바꿈으로 변환, 줄 구조 유지."""
+    if not text:
+        return text
+    cleaned = _re.sub(r"<br\s*/?>", "\n", text, flags=_re.IGNORECASE)
+    cleaned = _re.sub(r"<[^>]+>", "", cleaned)
+    # 각 줄 내부 공백만 압축 — 줄바꿈은 유지 (영업시간 다중 줄 표시용)
+    lines = [" ".join(line.split()) for line in cleaned.split("\n")]
+    return "\n".join(lines).strip()
+
+
 async def _ensure_translations(
     pool,
     table: str,
@@ -983,19 +1002,19 @@ async def _accommodation_detail(acc_id: str, language: str = "ko") -> PlaceDetai
         addr=_t.get("addr") or row["addr"] or "",
         phone=row["phone"] or "",
         floor=None,
-        homepage=row["homepage"] or None,
+        homepage=_extract_url(row["homepage"] or "") or None,
         place_url=None,
         open_hours=_t.get("open_hours") or open_hours_str or None,
         closed_days=None,
         is_open_now=is_open,
         image_urls=[row["image_url"]] if row["image_url"] else [],
         details={
-            "checkintime":        row["checkintime"] or "",
-            "checkouttime":       row["checkouttime"] or "",
-            "infocenterlodging":  row["infocenterlodging"] or "",
-            "parkinglodging":     row["parkinglodging"] or "",
-            "reservationlodging": row["reservationlodging"] or "",
-            "reservationurl":     row["reservationurl"] or "",
+            "checkintime":        _strip_html(row["checkintime"] or ""),
+            "checkouttime":       _strip_html(row["checkouttime"] or ""),
+            "infocenterlodging":  _strip_html(row["infocenterlodging"] or ""),
+            "parkinglodging":     _strip_html(row["parkinglodging"] or ""),
+            "reservationlodging": _strip_html(row["reservationlodging"] or ""),
+            "reservationurl":     _extract_url(row["reservationurl"] or ""),
             "conveniences":       convs or [],
         },
         source=row["source"] or "accommodation_places",
@@ -1036,20 +1055,20 @@ async def _tourist_detail(tourist_id: str, language: str = "ko") -> PlaceDetailR
     ctype = row["content_type_id"]
     if ctype == 14:
         type_details = {
-            "infocenterculture": row["infocenterculture"] or "",
-            "parkingculture":    row["parkingculture"] or "",
-            "parkingfee":        row["parkingfee"] or "",
-            "restdateculture":   row["restdateculture"] or "",
-            "usefee":            row["usefee"] or "",
-            "usetimeculture":    row["usetimeculture"] or "",
+            "infocenterculture": _strip_html(row["infocenterculture"] or ""),
+            "parkingculture":    _strip_html(row["parkingculture"] or ""),
+            "parkingfee":        _strip_html(row["parkingfee"] or ""),
+            "restdateculture":   _strip_html(row["restdateculture"] or ""),
+            "usefee":            _strip_html(row["usefee"] or ""),
+            "usetimeculture":    _strip_html(row["usetimeculture"] or ""),
         }
     else:
         type_details = {
-            "infocenter": row["infocenter"] or "",
-            "opendate":   row["opendate"] or "",
-            "parking":    row["parking"] or "",
-            "restdate":   row["restdate"] or "",
-            "usetime":    row["usetime"] or "",
+            "infocenter": _strip_html(row["infocenter"] or ""),
+            "opendate":   _strip_html(row["opendate"] or ""),
+            "parking":    _strip_html(row["parking"] or ""),
+            "restdate":   _strip_html(row["restdate"] or ""),
+            "usetime":    _strip_html(row["usetime"] or ""),
         }
     open_hours_str = row["open_hours"] or ""
     is_open = _is_open_now_combined(open_hours_str, None) if open_hours_str else None
@@ -1082,7 +1101,7 @@ async def _tourist_detail(tourist_id: str, language: str = "ko") -> PlaceDetailR
         addr=_t.get("addr") or row["addr"] or "",
         phone=row["phone"] or "",
         floor=None,
-        homepage=row["homepage"] or None,
+        homepage=_extract_url(row["homepage"] or "") or None,
         place_url=None,
         open_hours=_t.get("open_hours") or open_hours_str or None,
         closed_days=None,
