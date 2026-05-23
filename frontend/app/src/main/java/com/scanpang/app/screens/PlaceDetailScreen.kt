@@ -74,6 +74,8 @@ import com.scanpang.app.data.remote.PlaceDetailResponse
 import com.scanpang.app.data.remote.ScanPangViewModel
 import com.scanpang.app.data.toSubwayDetail
 import com.scanpang.app.navigation.AppRoutes
+import com.scanpang.app.i18n.AppStrings
+import com.scanpang.app.i18n.LocalStrings
 import com.scanpang.app.ui.theme.ScanPangColors
 import com.scanpang.app.ui.theme.ScanPangDimens
 import com.scanpang.app.ui.theme.ScanPangShapes
@@ -103,6 +105,7 @@ fun PlaceDetailScreen(
     modifier: Modifier = Modifier,
     viewModel: ScanPangViewModel = viewModel(),
 ) {
+    val s = LocalStrings.current
     val context = LocalContext.current
     // GPS — NavHost destination 마다 viewModel() 인스턴스가 달라 다른 화면의
     // setUserLocation 이 이 화면 인스턴스에 안 닿음. SearchDefaultScreen 처럼
@@ -153,7 +156,7 @@ fun PlaceDetailScreen(
     }
     val backend by viewModel.placeDetail.collectAsState()
 
-    val place = remember(backend) { backend?.mergeOnto(null, categoryKey) }
+    val place = remember(backend, s) { backend?.mergeOnto(null, categoryKey, s) }
     if (place == null) {
         if (backend != null) {
             LaunchedEffect(Unit) { navController.popBackStack() }
@@ -169,9 +172,9 @@ fun PlaceDetailScreen(
         veganLevel = (backend?.details?.get("vegan_level") as? String).orEmpty(),
     )
 
-    val restaurantExtra = remember(categoryKey, backend) {
+    val restaurantExtra = remember(categoryKey, backend, s) {
         if (categoryKey !in setOf("restaurant", "halal_restaurant")) return@remember null
-        backend?.toRestaurantPlaceOrNull()
+        backend?.toRestaurantPlaceOrNull(s)
     }
     val menuItems = remember(backend, categoryKey) {
         if (categoryKey !in setOf("restaurant", "halal_restaurant", "cafe", "vegan_restaurant", "vegan_cafe")) return@remember emptyList()
@@ -346,6 +349,7 @@ private fun PlaceDetailContent(
     exchangeRates: List<ExchangeRate>,
     subwayDetail: SubwayDetail? = null,
 ) {
+    val s = LocalStrings.current
     val isSubway = subwayDetail != null
     // 화장실 카테고리는 소개·웹사이트·매장 층수 숨김.
     val isRestroom = place.categoryKey in setOf("restroom", "public_restroom")
@@ -353,7 +357,7 @@ private fun PlaceDetailContent(
     if (menuItems.isNotEmpty()) {
         var isMenuExpanded by remember { mutableStateOf(false) }
         val visibleMenus = if (isMenuExpanded) menuItems else menuItems.take(5)
-        DetailSection(title = "대표 메뉴") {
+        DetailSection(title = s.placeFeaturedMenu) {
             Column(verticalArrangement = Arrangement.spacedBy(ScanPangSpacing.sm)) {
                 visibleMenus.forEach { m -> DetailMenuPriceRow(name = m.name, price = m.price) }
                 if (menuItems.size > 5) {
@@ -367,7 +371,7 @@ private fun PlaceDetailContent(
                             modifier = Modifier.size(ScanPangDimens.icon16),
                         )
                         Text(
-                            text = if (isMenuExpanded) "접기" else "더보기 (${menuItems.size - 5}개)",
+                            text = if (isMenuExpanded) s.detailCollapse else s.detailExpandMore(menuItems.size - 5),
                             style = ScanPangType.caption12Medium,
                         )
                     }
@@ -378,7 +382,7 @@ private fun PlaceDetailContent(
     }
 
     if (!isRestroom && place.description.isNotBlank()) {
-        DetailSection(title = "소개") {
+        DetailSection(title = s.detailIntro) {
             DetailIntroBody(text = place.description)
         }
         DetailScreenDivider()
@@ -387,40 +391,40 @@ private fun PlaceDetailContent(
     // 상세 정보(공통) — 지하철 섹션 위로. 피그마 시안 순서.
     // 지하철은 영업시간을 별도 '열차 시간표' 섹션으로 표시하므로 여기선 숨김.
     // Kakao place.map URL(homepage)은 공식 웹사이트가 아니라 카카오 자체 페이지라 지하철엔 숨김.
-    DetailSection(title = "상세 정보") {
+    DetailSection(title = s.detailInfo) {
         Column(verticalArrangement = Arrangement.spacedBy(INFO_ROW_SPACING)) {
             if (!isSubway && place.openHours.isNotBlank()) {
                 val groupedHours = remember(place.openHours) {
                     OpenHoursUtils.groupedHoursText(place.openHours)
                 }
-                DetailInfoLine(Icons.Rounded.AccessTime, "영업시간", groupedHours)
+                DetailInfoLine(Icons.Rounded.AccessTime, s.detailOpenHours, groupedHours)
             }
-            if (place.address.isNotBlank()) DetailInfoLine(Icons.Rounded.Place, "주소", place.address)
-            if (place.phone.isNotBlank()) DetailInfoLine(Icons.Rounded.Phone, "전화", place.phone)
+            if (place.address.isNotBlank()) DetailInfoLine(Icons.Rounded.Place, s.detailAddress, place.address)
+            if (place.phone.isNotBlank()) DetailInfoLine(Icons.Rounded.Phone, s.detailPhone, place.phone)
             if (!isRestroom && place.floor.isNotBlank())
-                DetailInfoLine(Icons.Rounded.Store, "매장 층수", place.floor)
+                DetailInfoLine(Icons.Rounded.Store, s.detailFloor, place.floor)
             val showParking = place.parking.isNotBlank() &&
                 place.categoryKey !in setOf("prayer_room", "prayer", "lockers", "locker", "restroom", "public_restroom", "subway", "subway_station")
-            if (showParking) DetailInfoLine(Icons.Rounded.LocalParking, "주차 가능 여부", place.parking)
+            if (showParking) DetailInfoLine(Icons.Rounded.LocalParking, s.detailParking, place.parking)
             if (!isSubway && !isRestroom && place.website.isNotBlank())
-                DetailInfoLine(Icons.Rounded.Language, "웹사이트", place.website)
+                DetailInfoLine(Icons.Rounded.Language, s.detailWebsite, place.website)
             // 화장실 카테고리 — 칸 수 / 편의시설 / 안전시설 (피그마 상세-매장(화장실))
             // DB에 0/공란/문자 인 row 도 있어서 "남성 0칸" 같이 무의미한 표시 회피.
             // 숫자 파싱해서 양수만 노출, 둘 다 0/없으면 칸 수 행 자체 숨김.
             val maleCnt   = place.toiletMale.toIntOrNull() ?: 0
             val femaleCnt = place.toiletFemale.toIntOrNull() ?: 0
             val toiletStr = buildList {
-                if (maleCnt > 0)   add("남성 ${maleCnt}칸")
-                if (femaleCnt > 0) add("여성 ${femaleCnt}칸")
+                if (maleCnt > 0)   add(s.placeMaleStalls(maleCnt))
+                if (femaleCnt > 0) add(s.placeFemaleStalls(femaleCnt))
             }.joinToString(", ")
             if (toiletStr.isNotBlank())
-                DetailInfoLine(Icons.Rounded.Wc, "칸 수", toiletStr)
+                DetailInfoLine(Icons.Rounded.Wc, s.detailToiletStalls, toiletStr)
             if (place.facilityTags.isNotBlank())
-                DetailInfoLine(Icons.AutoMirrored.Rounded.Accessible, "편의시설", place.facilityTags)
+                DetailInfoLine(Icons.AutoMirrored.Rounded.Accessible, s.detailFacility, place.facilityTags)
             if (place.safetyTags.isNotBlank())
-                DetailInfoLine(Icons.Rounded.Security, "안전시설", place.safetyTags)
-            if (place.convenienceServices.isNotBlank()) DetailInfoLine(Icons.Rounded.MiscellaneousServices, "편의시설", place.convenienceServices)
-            if (place.departments.isNotBlank()) DetailInfoLine(Icons.Rounded.Healing, "진료과목", place.departments)
+                DetailInfoLine(Icons.Rounded.Security, s.detailSafety, place.safetyTags)
+            if (place.convenienceServices.isNotBlank()) DetailInfoLine(Icons.Rounded.MiscellaneousServices, s.detailFacility, place.convenienceServices)
+            if (place.departments.isNotBlank()) DetailInfoLine(Icons.Rounded.Healing, s.detailDepartments, place.departments)
         }
     }
 
@@ -428,19 +432,19 @@ private fun PlaceDetailContent(
     if (subwayDetail != null) {
         if (subwayDetail.scheduleUp != null || subwayDetail.scheduleDown != null) {
             DetailScreenDivider()
-            DetailSection(title = "열차 시간표") {
+            DetailSection(title = s.detailSubwaySchedule) {
                 SubwayScheduleSection(subwayDetail)
             }
         }
         if (subwayDetail.fastAlights.isNotEmpty()) {
             DetailScreenDivider()
-            DetailSection(title = "빠른 하차") {
+            DetailSection(title = s.detailSubwayFastAlight) {
                 SubwayFastAlightsSection(subwayDetail.fastAlights)
             }
         }
         if (subwayDetail.exits.isNotEmpty()) {
             DetailScreenDivider()
-            DetailSection(title = "출구 정보") {
+            DetailSection(title = s.detailSubwayExits) {
                 SubwayExitsSection(subwayDetail.exits)
             }
         }
@@ -448,7 +452,7 @@ private fun PlaceDetailContent(
 
     if (exchangeRates.isNotEmpty()) {
         DetailScreenDivider()
-        DetailSection(title = "오늘의 환율") {
+        DetailSection(title = s.placeTodayExchangeRate) {
             Column(verticalArrangement = Arrangement.spacedBy(ScanPangSpacing.sm)) {
                 exchangeRates.forEach { row -> ExchangeRateRow(row) }
             }
@@ -493,13 +497,14 @@ private fun DetailInfoLine(icon: ImageVector, label: String, value: String) {
 
 @Composable
 private fun AtmOperationBadge(place: Place) {
+    val s = LocalStrings.current
     val is24h = place.openHours.contains("24") || place.tags.any { it.contains("24") }
     Surface(
         shape = ScanPangShapes.badge6,
         color = if (is24h) ScanPangColors.DetailVisitOpenSurface else ScanPangColors.DetailFacilityTagBackground,
     ) {
         Text(
-            text = if (is24h) "24시간" else "시간제",
+            text = if (is24h) s.detailAtm24h else s.detailAtmHourly,
             modifier = Modifier.padding(horizontal = ScanPangSpacing.sm, vertical = ScanPangDimens.chipPadVertical),
             style = ScanPangType.category11SemiBold,
             color = if (is24h) ScanPangColors.TrustPillText else ScanPangColors.OnSurfaceMuted,
@@ -622,7 +627,7 @@ private fun formatDistanceMeters(m: Double?): String = when {
     else      -> "%.1fkm".format(m / 1000.0)
 }
 
-private fun PlaceDetailResponse.mergeOnto(fallback: Place?, categoryKey: String): Place {
+private fun PlaceDetailResponse.mergeOnto(fallback: Place?, categoryKey: String, strings: AppStrings): Place {
     val backendDistance = formatDistanceMeters(distance_m)
     val base = fallback ?: Place(
         id = id,
@@ -636,18 +641,18 @@ private fun PlaceDetailResponse.mergeOnto(fallback: Place?, categoryKey: String)
     val toiletMale   = (details["male_toilt_cnt"]   as? String).orEmpty()
     val toiletFemale = (details["female_toilt_cnt"] as? String).orEmpty()
     val facilityList = buildList {
-        if (details["has_disabled"]     as? Boolean == true) add("장애인 화장실")
-        if (details["has_child"]        as? Boolean == true) add("유아 화장실")
-        if (details["has_diaper_table"] as? Boolean == true) add("기저귀 교환대")
+        if (details["has_disabled"]     as? Boolean == true) add(strings.placeDisabledRestroom)
+        if (details["has_child"]        as? Boolean == true) add(strings.placeChildRestroom)
+        if (details["has_diaper_table"] as? Boolean == true) add(strings.placeDiaperTable)
         // 기도실 카테고리 — facilities 객체 평탄화
-        if (details["wudu"]              as? Boolean == true) add("우두 시설")
-        if (details["gender_separation"] as? Boolean == true) add("남녀 분리")
-        if (details["prayer_mat"]        as? Boolean == true) add("기도 매트")
-        if (details["quran_available"]   as? Boolean == true) add("꾸란 비치")
+        if (details["wudu"]              as? Boolean == true) add(strings.placeWudu)
+        if (details["gender_separation"] as? Boolean == true) add(strings.placeGenderSeparated)
+        if (details["prayer_mat"]        as? Boolean == true) add(strings.placePrayerMat)
+        if (details["quran_available"]   as? Boolean == true) add(strings.placeQuran)
     }
     val safetyList = buildList {
         if (details["has_cctv"]           as? Boolean == true) add("CCTV")
-        if (details["has_emergency_bell"] as? Boolean == true) add("비상벨")
+        if (details["has_emergency_bell"] as? Boolean == true) add(strings.placeEmergencyBell)
     }
 
     // conveniences 배열 — 주차 여부 + 편의시설 텍스트
@@ -673,8 +678,8 @@ private fun PlaceDetailResponse.mergeOnto(fallback: Place?, categoryKey: String)
 
     // 할랄 신뢰 태그 — details 에 있으면 덮어씀
     val halalTags = buildList {
-        if (details["muslim_cooks_available"] as? Boolean == true) add("무슬림 조리사")
-        if (details["no_alcohol_sales"]       as? Boolean == true) add("주류 미판매")
+        if (details["muslim_cooks_available"] as? Boolean == true) add(strings.placeMuslimChef)
+        if (details["no_alcohol_sales"]       as? Boolean == true) add(strings.placeNoAlcohol)
     }
 
     return base.copy(
@@ -764,14 +769,14 @@ private fun PlaceDetailResponse.extractMenuItems(): List<MenuItem> {
  * `/place/detail` 응답 → RestaurantPlace.
  * halal_type 이 없고 category_key 도 halal_restaurant 이 아니면 null 반환.
  */
-private fun PlaceDetailResponse.toRestaurantPlaceOrNull(): RestaurantPlace? {
+private fun PlaceDetailResponse.toRestaurantPlaceOrNull(strings: AppStrings): RestaurantPlace? {
     val halalType = (details["halal_type"] as? String).orEmpty()
     if (halalType.isEmpty() && category_key != "halal_restaurant") return null
 
     val cuisineList = (details["cuisine_type"] as? List<*>)?.filterIsInstance<String>() ?: emptyList()
     val tags = buildList {
-        if (details["muslim_cooks_available"] as? Boolean == true) add("무슬림 조리사")
-        if (details["no_alcohol_sales"]       as? Boolean == true) add("주류 미판매")
+        if (details["muslim_cooks_available"] as? Boolean == true) add(strings.placeMuslimChef)
+        if (details["no_alcohol_sales"]       as? Boolean == true) add(strings.placeNoAlcohol)
     }
     val place = com.scanpang.app.data.Place(
         id = id,
@@ -813,13 +818,13 @@ private fun PlaceDetailResponse.toRestaurantPlaceOrNull(): RestaurantPlace? {
 
 @Composable
 private fun SubwayScheduleSection(detail: SubwayDetail) {
-    // 오늘 요일을 default 선택. 사용자가 다른 요일도 볼 수 있게 토글 칩 제공.
+    val s = LocalStrings.current
     var selectedDay by remember { mutableStateOf(detail.todayKind()) }
     val (up, down) = detail.scheduleFor(selectedDay)
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         SubwayScheduleDayTabs(selected = selectedDay, onSelect = { selectedDay = it })
-        up?.let   { SubwayScheduleRow("상행", it) }
-        down?.let { SubwayScheduleRow("하행", it) }
+        up?.let   { SubwayScheduleRow(s.detailSubwayUp, it) }
+        down?.let { SubwayScheduleRow(s.detailSubwayDown, it) }
     }
 }
 
@@ -828,10 +833,11 @@ private fun SubwayScheduleDayTabs(
     selected: ScheduleDay,
     onSelect: (ScheduleDay) -> Unit,
 ) {
+    val s = LocalStrings.current
     val items = listOf(
-        ScheduleDay.WEEKDAY  to "평일",
-        ScheduleDay.SATURDAY to "토요일",
-        ScheduleDay.HOLIDAY  to "일·공휴일",
+        ScheduleDay.WEEKDAY  to s.detailSubwayWeekday,
+        ScheduleDay.SATURDAY to s.detailSubwaySaturday,
+        ScheduleDay.HOLIDAY  to s.detailSubwayHoliday,
     )
     Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
         items.forEach { (day, label) ->
@@ -854,6 +860,7 @@ private fun SubwayScheduleDayTabs(
 
 @Composable
 private fun SubwayScheduleRow(label: String, dir: SubwayScheduleDir) {
+    val s = LocalStrings.current
     Surface(
         modifier = Modifier.fillMaxWidth(),
         shape = ScanPangShapes.radius12,
@@ -872,7 +879,7 @@ private fun SubwayScheduleRow(label: String, dir: SubwayScheduleDir) {
                 )
             }
             Text(
-                text = "  ${dir.toward} 방면",
+                text = "  ${s.detailSubwayToward(dir.toward)}",
                 modifier = Modifier.weight(1f),
                 style = ScanPangType.caption12,
                 color = ScanPangColors.OnSurfaceMuted,
@@ -882,14 +889,14 @@ private fun SubwayScheduleRow(label: String, dir: SubwayScheduleDir) {
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.spacedBy(2.dp),
                 ) {
-                    Text("첫차", style = ScanPangType.tag11Medium, color = ScanPangColors.OnSurfaceMuted)
+                    Text(s.detailSubwayFirst, style = ScanPangType.tag11Medium, color = ScanPangColors.OnSurfaceMuted)
                     Text(dir.first, style = ScanPangType.detailSectionTitle15, color = ScanPangColors.OnSurfaceStrong)
                 }
                 Column(
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.spacedBy(2.dp),
                 ) {
-                    Text("막차", style = ScanPangType.tag11Medium, color = ScanPangColors.OnSurfaceMuted)
+                    Text(s.detailSubwayLast, style = ScanPangType.tag11Medium, color = ScanPangColors.OnSurfaceMuted)
                     Text(dir.last, style = ScanPangType.detailSectionTitle15, color = ScanPangColors.OnSurfaceStrong)
                 }
             }
@@ -899,6 +906,7 @@ private fun SubwayScheduleRow(label: String, dir: SubwayScheduleDir) {
 
 @Composable
 private fun SubwayExitsSection(exits: List<SubwayExit>) {
+    val s = LocalStrings.current
     var selectedExitNo by remember { mutableStateOf(exits.firstOrNull()?.exitNo ?: "") }
     val selectedExit = exits.firstOrNull { it.exitNo == selectedExitNo }
 
@@ -912,7 +920,7 @@ private fun SubwayExitsSection(exits: List<SubwayExit>) {
                     color = if (selected) ScanPangColors.Primary else ScanPangColors.Background,
                 ) {
                     Text(
-                        text = "${exit.exitNo}번",
+                        text = s.detailSubwayExitLabel(exit.exitNo),
                         modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
                         style = ScanPangType.quickLabel12,
                         color = if (selected) Color.White else ScanPangColors.OnSurfaceMuted,
@@ -931,7 +939,7 @@ private fun SubwayExitsSection(exits: List<SubwayExit>) {
                     verticalArrangement = Arrangement.spacedBy(6.dp),
                 ) {
                     Text(
-                        text = "${exit.exitNo}번 출구 주변",
+                        text = s.detailSubwayExitAround(exit.exitNo),
                         style = ScanPangType.quickLabel12,
                         color = ScanPangColors.OnSurfaceStrong,
                     )
@@ -957,6 +965,7 @@ private fun SubwayExitsSection(exits: List<SubwayExit>) {
 
 @Composable
 private fun SubwayFastAlightsSection(fastAlights: List<SubwayFastAlight>) {
+    val s = LocalStrings.current
     // direction(예: 회현/충무로)별로 첫 항목만 — 백엔드 응답엔 동일 방면이 차량문·
     // 이동설비별로 중복돼 들어오므로 화면엔 방면당 1건만 (피그마 시안과 동일).
     val perDirection = fastAlights
@@ -978,7 +987,7 @@ private fun SubwayFastAlightsSection(fastAlights: List<SubwayFastAlight>) {
                     verticalArrangement = Arrangement.spacedBy(6.dp),
                 ) {
                     Text(
-                        text = "${item.direction} 방면",
+                        text = s.detailSubwayToward(item.direction),
                         style = ScanPangType.caption12,
                         color = ScanPangColors.OnSurfaceMuted,
                     )

@@ -272,6 +272,37 @@ interface AppStrings {
     val placeFloorInfo: String
     val placeBookmarked: String
 
+    // ── Place Detail ──────────────────────────────────────────────────────────
+    val detailCollapse: String
+    val detailExpandMore: (Int) -> String
+    val detailIntro: String
+    val detailInfo: String
+    val detailOpenHours: String
+    val detailAddress: String
+    val detailPhone: String
+    val detailFloor: String
+    val detailParking: String
+    val detailWebsite: String
+    val detailToiletStalls: String
+    val detailFacility: String
+    val detailSafety: String
+    val detailDepartments: String
+    val detailSubwaySchedule: String
+    val detailSubwayFastAlight: String
+    val detailSubwayExits: String
+    val detailAtm24h: String
+    val detailAtmHourly: String
+    val detailSubwayUp: String
+    val detailSubwayDown: String
+    val detailSubwayWeekday: String
+    val detailSubwaySaturday: String
+    val detailSubwayHoliday: String
+    val detailSubwayFirst: String
+    val detailSubwayLast: String
+    val detailSubwayToward: (String) -> String
+    val detailSubwayExitLabel: (String) -> String
+    val detailSubwayExitAround: (String) -> String
+
     // ── Navigation ────────────────────────────────────────────────────────────
     val navInitialMessage: String
     val navDestination: String
@@ -580,6 +611,36 @@ val KoStrings: AppStrings = object : AppStrings {
     override val placeFloorInfo = "층별 정보"
     override val placeBookmarked = "저장됨"
 
+    override val detailCollapse = "접기"
+    override val detailExpandMore: (Int) -> String = { n -> "더보기 (${n}개)" }
+    override val detailIntro = "소개"
+    override val detailInfo = "상세 정보"
+    override val detailOpenHours = "영업시간"
+    override val detailAddress = "주소"
+    override val detailPhone = "전화"
+    override val detailFloor = "매장 층수"
+    override val detailParking = "주차 가능 여부"
+    override val detailWebsite = "웹사이트"
+    override val detailToiletStalls = "칸 수"
+    override val detailFacility = "편의시설"
+    override val detailSafety = "안전시설"
+    override val detailDepartments = "진료과목"
+    override val detailSubwaySchedule = "열차 시간표"
+    override val detailSubwayFastAlight = "빠른 하차"
+    override val detailSubwayExits = "출구 정보"
+    override val detailAtm24h = "24시간"
+    override val detailAtmHourly = "시간제"
+    override val detailSubwayUp = "상행"
+    override val detailSubwayDown = "하행"
+    override val detailSubwayWeekday = "평일"
+    override val detailSubwaySaturday = "토요일"
+    override val detailSubwayHoliday = "일·공휴일"
+    override val detailSubwayFirst = "첫차"
+    override val detailSubwayLast = "막차"
+    override val detailSubwayToward: (String) -> String = { dir -> "${dir} 방면" }
+    override val detailSubwayExitLabel: (String) -> String = { no -> "${no}번" }
+    override val detailSubwayExitAround: (String) -> String = { no -> "${no}번 출구 주변" }
+
     override val navInitialMessage = "길찾기 중 궁금한 점을 물어보세요!"
     override val navDestination = "목적지"
     override val navGoStraight = "직진"
@@ -885,6 +946,36 @@ val EnStrings: AppStrings = object : AppStrings {
     override val placeBuildingInfo = "Building Info"
     override val placeFloorInfo = "Floor Info"
     override val placeBookmarked = "Saved"
+
+    override val detailCollapse = "Collapse"
+    override val detailExpandMore: (Int) -> String = { n -> "Show more ($n)" }
+    override val detailIntro = "Introduction"
+    override val detailInfo = "Details"
+    override val detailOpenHours = "Hours"
+    override val detailAddress = "Address"
+    override val detailPhone = "Phone"
+    override val detailFloor = "Floor"
+    override val detailParking = "Parking"
+    override val detailWebsite = "Website"
+    override val detailToiletStalls = "Stalls"
+    override val detailFacility = "Facilities"
+    override val detailSafety = "Safety"
+    override val detailDepartments = "Departments"
+    override val detailSubwaySchedule = "Train Schedule"
+    override val detailSubwayFastAlight = "Quick Exit"
+    override val detailSubwayExits = "Exit Info"
+    override val detailAtm24h = "24 Hours"
+    override val detailAtmHourly = "By Schedule"
+    override val detailSubwayUp = "Upbound"
+    override val detailSubwayDown = "Downbound"
+    override val detailSubwayWeekday = "Weekdays"
+    override val detailSubwaySaturday = "Saturday"
+    override val detailSubwayHoliday = "Sun & Holidays"
+    override val detailSubwayFirst = "First"
+    override val detailSubwayLast = "Last"
+    override val detailSubwayToward: (String) -> String = { dir -> "Toward $dir" }
+    override val detailSubwayExitLabel: (String) -> String = { no -> "Exit $no" }
+    override val detailSubwayExitAround: (String) -> String = { no -> "Around Exit $no" }
 
     override val navInitialMessage = "Ask me anything during navigation!"
     override val navDestination = "Destination"
