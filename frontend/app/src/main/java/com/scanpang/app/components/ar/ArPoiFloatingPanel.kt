@@ -205,8 +205,10 @@ fun ArPoiFloatingDetailOverlay(
                 }
                 Spacer(modifier = Modifier.height(6.dp))
                 ArPoiStatusMetaRow(
-                    category = arOverlay.category,
-                    openHours = arOverlay.open_hours,
+                    // Gson/Retrofit 이 backend null 응답을 ArOverlay non-null String 필드에
+                    // 그대로 주입 → .isBlank() NPE. orEmpty() 로 방어 (data class default 우회 케이스).
+                    category = arOverlay.category.orEmpty(),
+                    openHours = arOverlay.open_hours.orEmpty(),
                     isEstimated = arOverlay.is_estimated,
                     distanceM = arOverlay.distance_m,
                 )
