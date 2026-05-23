@@ -719,6 +719,7 @@ private fun SearchResultSimpleCard(
     modifier: Modifier = Modifier,
     halalType: String? = null,
 ) {
+    val s = LocalStrings.current
     Row(
         modifier = modifier
             .fillMaxWidth()
@@ -779,7 +780,7 @@ private fun SearchResultSimpleCard(
                             .background(ScanPangColors.StatusOpen),
                     )
                     Text(
-                        text = "영업 중",
+                        text = s.placeOpen,
                         style = ScanPangType.meta11SemiBold,
                         color = ScanPangColors.StatusOpen,
                     )

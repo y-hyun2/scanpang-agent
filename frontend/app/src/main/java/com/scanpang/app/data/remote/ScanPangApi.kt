@@ -234,7 +234,7 @@ data class ArOverlay(
     val halal_info: String = "",
     val image_url: String = "",
     val homepage: String = "",
-    val open_hours: String = "",
+    val open_hours: String? = null,
     val closed_days: String = "",
     val parking_info: String = "",
     val admission_fee: String = "",

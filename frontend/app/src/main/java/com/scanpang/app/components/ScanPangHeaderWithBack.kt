@@ -14,6 +14,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextOverflow
+import com.scanpang.app.i18n.LocalStrings
 import com.scanpang.app.ui.theme.ScanPangColors
 import com.scanpang.app.ui.theme.ScanPangDimens
 import com.scanpang.app.ui.theme.ScanPangSpacing
@@ -25,6 +26,7 @@ fun ScanPangHeaderWithBack(
     onBackClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val s = LocalStrings.current
     Row(
         modifier = modifier
             .fillMaxWidth()
@@ -38,7 +40,7 @@ fun ScanPangHeaderWithBack(
     ) {
         Icon(
             imageVector = Icons.AutoMirrored.Rounded.ArrowBackIos,
-            contentDescription = "뒤로",
+            contentDescription = s.back,
             modifier = Modifier
                 .size(ScanPangDimens.tabIcon)
                 .clickable(onClick = onBackClick),

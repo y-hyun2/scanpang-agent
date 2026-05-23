@@ -32,6 +32,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.unit.dp
+import com.scanpang.app.i18n.LocalStrings
 import com.scanpang.app.ui.theme.ScanPangColors
 import com.scanpang.app.ui.theme.ScanPangType
 import kotlinx.coroutines.delay
@@ -47,6 +48,7 @@ fun PlaceLoadingScreen(
     modifier: Modifier = Modifier,
     loadingStartedAt: Long? = null,
 ) {
+    val s = LocalStrings.current
     var progress by remember { mutableFloatStateOf(0f) }
 
     LaunchedEffect(loadingStartedAt) {
@@ -89,13 +91,13 @@ fun PlaceLoadingScreen(
             }
             Spacer(modifier = Modifier.height(20.dp))
             Text(
-                text = "정보를 불러오는 중입니다",
+                text = s.placeLoading,
                 style = ScanPangType.body15Medium,
                 color = ScanPangColors.OnSurfaceMuted,
             )
             Spacer(modifier = Modifier.height(6.dp))
             Text(
-                text = "조금만 기다리면 바로 표시돼요",
+                text = s.placeLoadingSubtitle,
                 style = ScanPangType.caption12,
                 color = ScanPangColors.OnSurfacePlaceholder,
                 modifier = Modifier.padding(horizontal = 32.dp),

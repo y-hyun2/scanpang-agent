@@ -56,6 +56,7 @@ import io.github.sceneview.rememberEngine
 import io.github.sceneview.rememberMaterialLoader
 import io.github.sceneview.rememberModelLoader
 import io.github.sceneview.rememberViewNodeManager
+import com.scanpang.app.i18n.LocalStrings
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
@@ -73,7 +74,7 @@ private data class NavBuildingCandidate(
 data class ArNavUiState(
     val phase: Phase = Phase.LOCALIZING,
     val statusMessage: String = "",
-    val direction: String = "직진",
+    val direction: String = "",
     val currentDistanceM: Int = 0,
     val nextDistanceM: Int = 0,
     val isArrived: Boolean = false,
@@ -122,6 +123,7 @@ fun ArRealSceneView(
     buildingsCache: Map<String, Building> = emptyMap(),
     onBuildingPinClick: (pinName: String, ufid: String?) -> Unit = { _, _ -> },
 ) {
+    val s = LocalStrings.current
     val context = LocalContext.current
     val engine = rememberEngine()
     val modelLoader = rememberModelLoader(engine)
@@ -166,7 +168,7 @@ fun ArRealSceneView(
             onNavigationUpdate(
                 ArNavUiState(
                     phase = ArNavUiState.Phase.LOCALIZING,
-                    statusMessage = "주변을 스캔하세요.",
+                    statusMessage = s.navScanArea,
                 ),
             )
         }
@@ -497,7 +499,7 @@ fun ArRealSceneView(
                 onNavigationUpdate(
                     ArNavUiState(
                         phase = ArNavUiState.Phase.LOCALIZING,
-                        statusMessage = "경로 탐색 중...",
+                        statusMessage = s.navRouting,
                     ),
                 )
                 return@ARScene
@@ -512,8 +514,8 @@ fun ArRealSceneView(
                     ArNavUiState(
                         phase = ArNavUiState.Phase.ARRIVED,
                         isArrived = true,
-                        statusMessage = "목적지에 도착했습니다.",
-                        direction = "목적지",
+                        statusMessage = s.navArrivedSpeech,
+                        direction = s.navDestination,
                         turnDirection = TurnDirection.DESTINATION,
                     ),
                 )
@@ -575,7 +577,7 @@ fun ArRealSceneView(
                         )
                     }
 
-                    val arrivalSpeech = tn.speech.ifBlank { "목적지에 도착했습니다." }
+                    val arrivalSpeech = tn.speech.ifBlank { s.navArrivedSpeech }
                     if (!hasSpokenArrival) {
                         coroutineScope.launch {
                             delay(2000)
@@ -589,7 +591,7 @@ fun ArRealSceneView(
                             phase = ArNavUiState.Phase.ARRIVED,
                             isArrived = true,
                             statusMessage = arrivalSpeech,
-                            direction = "목적지",
+                            direction = s.navDestination,
                             turnDirection = TurnDirection.DESTINATION,
                             currentSpeech = arrivalSpeech,
                         ),
@@ -599,18 +601,18 @@ fun ArRealSceneView(
 
                 // 다음 턴 방향
                 val direction = when (tn.type) {
-                    NodeType.END -> "목적지"
+                    NodeType.END -> s.navDestination
                     NodeType.TURN_POINT -> when (turnDirectionMap[currentTargetPointIndex]) {
-                        true -> if (tn.turnType == 18) "우측 경로" else "우회전"
-                        false -> if (tn.turnType == 17) "좌측 경로" else "좌회전"
-                        null -> "직진"
+                        true -> if (tn.turnType == 18) s.navRightPath else s.navTurnRight
+                        false -> if (tn.turnType == 17) s.navLeftPath else s.navTurnLeft
+                        null -> s.navStraight
                     }
-                    else -> "직진"
+                    else -> s.navStraight
                 }
                 val turnDir = when (direction) {
-                    "좌회전", "좌측 경로" -> TurnDirection.LEFT
-                    "우회전", "우측 경로" -> TurnDirection.RIGHT
-                    "목적지" -> TurnDirection.DESTINATION
+                    s.navTurnLeft, s.navLeftPath -> TurnDirection.LEFT
+                    s.navTurnRight, s.navRightPath -> TurnDirection.RIGHT
+                    s.navDestination -> TurnDirection.DESTINATION
                     else -> TurnDirection.STRAIGHT
                 }
 
@@ -649,7 +651,7 @@ fun ArRealSceneView(
                         nextDistanceM = nextDist,
                         turnDirection = turnDir,
                         nextTurnDirection = nextTurnDir,
-                        statusMessage = "${direction}까지 ${dist.toInt()}m",
+                        statusMessage = s.navStatusDistance(direction, dist.toInt()),
                         showCompass = isLookingDown,
                         compassAngleDeg = compassAngle,
                         currentSpeech = tn.speech,

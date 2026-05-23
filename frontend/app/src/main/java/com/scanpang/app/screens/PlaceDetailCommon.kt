@@ -451,8 +451,8 @@ fun resolveCategoryLabel(
     strings: AppStrings? = null,
 ): String = when {
     categoryKey == "vegan_restaurant" ->
-        if (veganLevel == "채식가능") strings?.catVeganFriendly ?: "채식가능"
-        else strings?.catVeganRestaurant ?: "비건 식당"
+        if (veganLevel == "채식가능") strings?.catVeganFriendly ?: PLACE_CATEGORY_KO["vegan_friendly"] ?: "채식가능"
+        else strings?.catVeganRestaurant ?: PLACE_CATEGORY_KO["vegan_restaurant"] ?: "비건 식당"
     categoryKey in PLACE_USE_RAW_CATEGORY ->
         rawCategory.substringAfterLast(">").trim()
             .ifBlank { strings?.categoryLabel(categoryKey) ?: PLACE_CATEGORY_KO[categoryKey] ?: categoryKey }

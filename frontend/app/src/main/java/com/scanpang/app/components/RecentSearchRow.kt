@@ -15,6 +15,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextOverflow
+import com.scanpang.app.i18n.LocalStrings
 import com.scanpang.app.ui.theme.ScanPangColors
 import com.scanpang.app.ui.theme.ScanPangDimens
 import com.scanpang.app.ui.theme.ScanPangSpacing
@@ -27,6 +28,7 @@ fun RecentSearchRow(
     onRemoveClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val s = LocalStrings.current
     Row(
         modifier = modifier
             .fillMaxWidth()
@@ -57,7 +59,7 @@ fun RecentSearchRow(
         }
         Icon(
             imageVector = Icons.Rounded.Close,
-            contentDescription = "삭제",
+            contentDescription = s.delete,
             modifier = Modifier
                 .size(ScanPangDimens.icon16)
                 .clickable(onClick = onRemoveClick),

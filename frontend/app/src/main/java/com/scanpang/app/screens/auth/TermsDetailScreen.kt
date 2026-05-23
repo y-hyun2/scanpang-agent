@@ -23,6 +23,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import com.scanpang.app.i18n.LocalStrings
 import com.scanpang.app.ui.theme.ScanPangColors
 import com.scanpang.app.ui.theme.ScanPangSpacing
 import com.scanpang.app.ui.theme.ScanPangType
@@ -160,6 +161,7 @@ fun TermsDetailScreen(
     onBack: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val s = LocalStrings.current
     val content = TERMS_CONTENT[termId] ?: return
 
     Scaffold(
@@ -184,7 +186,7 @@ fun TermsDetailScreen(
             ) {
                 Icon(
                     imageVector = Icons.AutoMirrored.Rounded.ArrowBackIos,
-                    contentDescription = "뒤로",
+                    contentDescription = s.back,
                     modifier = Modifier
                         .size(24.dp)
                         .clickable(onClick = onBack),

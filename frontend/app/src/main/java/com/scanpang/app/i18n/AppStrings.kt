@@ -28,6 +28,18 @@ interface AppStrings {
     val more: String
     val required: String
     val optional: String
+    val logout: String
+    val logoutConfirm: String
+    val clearSearch: String
+    val selectedDesc: String
+    val selectDesc: String
+    val capture: String
+    val navMyLocation: String
+    val kakaoStart: String
+    val placeLoading: String
+    val placeLoadingSubtitle: String
+    val prayerTimeTitle: String
+    val prayerTimeNext: String
 
     // ── Categories (shared across Home / Search / Saved) ─────────────────────
     val catHalalRestaurant: String
@@ -60,6 +72,12 @@ interface AppStrings {
     val homeNoRecentlyViewed: String
     val homeNextPrayer: String
     val homeQiblaDirection: String
+    val homeLocationFetching: String
+    val homeLocationPermission: String
+    val homeLocationNear: (String, String) -> String
+    val homeLocationCoord: (Double, Double) -> String
+    val homeLocationUnknown: String
+    val homeLocationFail: String
 
     // ── Search ───────────────────────────────────────────────────────────────
     val searchPlaceholder: String
@@ -332,6 +350,15 @@ interface AppStrings {
     val navBackToExplore: String
     val navBackToHome: String
     val navVoiceGuide: String
+    val navScanArea: String
+    val navTurnLeft: String
+    val navTurnRight: String
+    val navLeftPath: String
+    val navRightPath: String
+    val navStraight: String
+    val navArrivedSpeech: String
+    val navRouting: String
+    val navStatusDistance: (String, Int) -> String
 
     // ── AR Explore ────────────────────────────────────────────────────────────
     val arFilter: String
@@ -342,6 +369,7 @@ interface AppStrings {
     val arNavigate: String
     val arRecentSearches: String
     val arClearAll: String
+    val arTrackingReady: (String) -> String
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -371,6 +399,18 @@ val KoStrings: AppStrings = object : AppStrings {
     override val more = "더보기"
     override val required = "필수"
     override val optional = "선택"
+    override val logout = "로그아웃"
+    override val logoutConfirm = "로그아웃하시겠어요?"
+    override val clearSearch = "지우기"
+    override val selectedDesc = "선택됨"
+    override val selectDesc = "선택"
+    override val capture = "촬영"
+    override val navMyLocation = "내 위치"
+    override val kakaoStart = "카카오로 시작하기"
+    override val placeLoading = "정보를 불러오는 중입니다"
+    override val placeLoadingSubtitle = "조금만 기다리면 바로 표시돼요"
+    override val prayerTimeTitle = "오늘의 기도 시간"
+    override val prayerTimeNext = "다음"
 
     override val catHalalRestaurant = "할랄 식당"
     override val catPrayerRoom = "기도실"
@@ -401,6 +441,12 @@ val KoStrings: AppStrings = object : AppStrings {
     override val homeNoRecentlyViewed = "아직 본 장소가 없어요"
     override val homeNextPrayer = "다음 기도"
     override val homeQiblaDirection = "키블라 방향"
+    override val homeLocationFetching = "현재 위치를 가져오는 중..."
+    override val homeLocationPermission = "위치 권한이 필요합니다"
+    override val homeLocationNear: (String, String) -> String = { dong, detail -> "현재 위치: $dong $detail 근처".trim() }
+    override val homeLocationCoord: (Double, Double) -> String = { lat, lng -> "현재 위치: %.4f, %.4f".format(lat, lng) }
+    override val homeLocationUnknown = "현재 위치를 확인할 수 없습니다"
+    override val homeLocationFail = "위치 가져오기 실패"
 
     override val searchPlaceholder = "장소, 식당, 카테고리 검색"
     override val searchRecentLabel = "최근 검색"
@@ -681,6 +727,15 @@ val KoStrings: AppStrings = object : AppStrings {
     override val navBackToExplore = "탐색으로 돌아가기"
     override val navBackToHome = "홈으로 돌아가기"
     override val navVoiceGuide = "음성 안내"
+    override val navScanArea = "주변을 스캔하세요."
+    override val navTurnLeft = "좌회전"
+    override val navTurnRight = "우회전"
+    override val navLeftPath = "좌측 경로"
+    override val navRightPath = "우측 경로"
+    override val navStraight = "직진"
+    override val navArrivedSpeech = "목적지에 도착했습니다."
+    override val navRouting = "경로 탐색 중..."
+    override val navStatusDistance: (String, Int) -> String = { dir, dist -> "${dir}까지 ${dist}m" }
 
     override val arFilter = "필터"
     override val arFilterReset = "초기화"
@@ -690,6 +745,7 @@ val KoStrings: AppStrings = object : AppStrings {
     override val arNavigate = "길안내"
     override val arRecentSearches = "최근 검색"
     override val arClearAll = "전체 삭제"
+    override val arTrackingReady: (String) -> String = { acc -> "위치 파악 완료 (오차: ${acc}m)" }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -719,6 +775,18 @@ val EnStrings: AppStrings = object : AppStrings {
     override val more = "More"
     override val required = "Required"
     override val optional = "Optional"
+    override val logout = "Log Out"
+    override val logoutConfirm = "Log out of the app?"
+    override val clearSearch = "Clear"
+    override val selectedDesc = "Selected"
+    override val selectDesc = "Select"
+    override val capture = "Capture"
+    override val navMyLocation = "My Location"
+    override val kakaoStart = "Start with Kakao"
+    override val placeLoading = "Loading info..."
+    override val placeLoadingSubtitle = "Almost there!"
+    override val prayerTimeTitle = "Today's Prayer Times"
+    override val prayerTimeNext = "Next"
 
     override val catHalalRestaurant = "Halal\nRestaurant"
     override val catPrayerRoom = "Prayer Room"
@@ -749,6 +817,12 @@ val EnStrings: AppStrings = object : AppStrings {
     override val homeNoRecentlyViewed = "No recently viewed places"
     override val homeNextPrayer = "Next Prayer"
     override val homeQiblaDirection = "Qibla Direction"
+    override val homeLocationFetching = "Getting your location..."
+    override val homeLocationPermission = "Location permission required"
+    override val homeLocationNear: (String, String) -> String = { dong, detail -> "Near $dong $detail".trim() }
+    override val homeLocationCoord: (Double, Double) -> String = { lat, lng -> "Location: %.4f, %.4f".format(lat, lng) }
+    override val homeLocationUnknown = "Could not determine location"
+    override val homeLocationFail = "Failed to get location"
 
     override val searchPlaceholder = "Search places & categories"
     override val searchRecentLabel = "Recent Searches"
@@ -1029,6 +1103,15 @@ val EnStrings: AppStrings = object : AppStrings {
     override val navBackToExplore = "Back to Explore"
     override val navBackToHome = "Back to Home"
     override val navVoiceGuide = "Voice Guide"
+    override val navScanArea = "Scan the area."
+    override val navTurnLeft = "Turn left"
+    override val navTurnRight = "Turn right"
+    override val navLeftPath = "Left path"
+    override val navRightPath = "Right path"
+    override val navStraight = "Go straight"
+    override val navArrivedSpeech = "You have arrived at your destination."
+    override val navRouting = "Finding route..."
+    override val navStatusDistance: (String, Int) -> String = { dir, dist -> "${dist}m to $dir" }
 
     override val arFilter = "Filter"
     override val arFilterReset = "Reset"
@@ -1038,6 +1121,7 @@ val EnStrings: AppStrings = object : AppStrings {
     override val arNavigate = "Navigate"
     override val arRecentSearches = "Recent Searches"
     override val arClearAll = "Clear All"
+    override val arTrackingReady: (String) -> String = { acc -> "Location ready (accuracy: ${acc}m)" }
 }
 
 val LocalStrings = compositionLocalOf<AppStrings> { KoStrings }

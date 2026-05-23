@@ -206,7 +206,7 @@ fun ArPoiFloatingDetailOverlay(
                 Spacer(modifier = Modifier.height(6.dp))
                 ArPoiStatusMetaRow(
                     category = arOverlay.category,
-                    openHours = arOverlay.open_hours,
+                    openHours = arOverlay.open_hours.orEmpty(),
                     isEstimated = arOverlay.is_estimated,
                     distanceM = arOverlay.distance_m,
                 )
