@@ -143,10 +143,22 @@ fun PlaceDetailScreen(
         }
     }
 
-    // 1) 백엔드 store_details 조회 — placeId/userLat/userLng 변경 시 재호출
-    //    (캐시 키에 lat/lng 포함). 화면 떠날 때 placeDetail 초기화로 stale 방지.
+    // outdoor 카테고리(subway/restroom/locker)는 store_details 테이블에 row 가 없어 /place/detail 404.
+    // → /convenience/query 결과에서 name 매칭으로 폴백.
+    val outdoorApiCategory: String? = when (categoryKey) {
+        "subway", "subway_station" -> "subway"
+        "restroom", "public_restroom" -> "restroom"
+        "locker", "lockers" -> "locker"
+        else -> null
+    }
+
+    // 1) 백엔드 detail 조회 — outdoor 분기 처리
     LaunchedEffect(placeId, userLat, userLng) {
-        viewModel.loadPlaceDetail(placeId, userLat = userLat, userLng = userLng)
+        if (outdoorApiCategory != null) {
+            viewModel.loadOutdoorPlaceDetail(placeId, outdoorApiCategory, userLat, userLng)
+        } else {
+            viewModel.loadPlaceDetail(placeId, userLat = userLat, userLng = userLng)
+        }
     }
     DisposableEffect(Unit) {
         onDispose { viewModel.clearPlaceDetail() }
