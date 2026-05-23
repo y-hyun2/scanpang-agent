@@ -14,8 +14,6 @@ from schemas.halal import HalalRequest
 from agents.halal_agent import run_halal_agent
 from agents.orchestrator_agent import run_orchestrator
 from core.session_store import get_session_store
-from schemas.restaurant import RestaurantDetailRequest
-from tools.restaurant_tools import get_restaurant_detail
 from schemas.search import SearchRequest, SearchResponse, SearchResultItem, AutocompleteRequest, AutocompleteResponse
 from schemas.place_detail import PlaceDetailRequest, PlaceDetailResponse
 from schemas.user import (
@@ -376,16 +374,6 @@ async def ar_agent_chat(req: AgentChatRequest):
     )
     return result
 
-
-@app.post("/restaurant/detail")
-async def restaurant_detail(req: RestaurantDetailRequest):
-    """
-    식당 이름으로 상세 정보 조회 (일반 식당 + 할랄 식당 통합 검색)
-    """
-    result = get_restaurant_detail(req.name)
-    if result is None:
-        raise HTTPException(status_code=404, detail=f"식당 '{req.name}' 정보를 찾을 수 없습니다.")
-    return result
 
 
 _OUTDOOR_CATEGORIES = {"restroom", "subway", "locker", "prayer_room", "halal_restaurant", "vegan_restaurant", "vegan_cafe", "accommodation", "tourist", "cultural"}
