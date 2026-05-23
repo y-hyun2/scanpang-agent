@@ -178,7 +178,11 @@ async def place_store(req: StoreRequest):
     """
     사용자가 층별 매장 탭 → 매장 상세 정보 반환 (Kakao on-demand + Chroma 캐싱)
     """
-    detail = await get_store_detail(req.place_id, req.store_name, language=req.language)
+    detail = await get_store_detail(
+        req.place_id, req.store_name,
+        lat=req.lat, lng=req.lng,
+        language=req.language,
+    )
     if isinstance(detail, dict):
         details = detail.get("details") or {}
         schedule = details.get("schedule") if isinstance(details, dict) else None
