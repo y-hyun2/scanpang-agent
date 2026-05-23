@@ -23,7 +23,7 @@ from schemas.user import (
     InquirySubmitRequest, InquirySubmitResponse,
 )
 from tools.open_hours_parser import is_open_now_combined as _is_open_now_combined
-from tools.translation import translate_fields, apply_lang
+from tools.translation import translate_fields
 import json as _json
 import re as _re
 from datetime import datetime, timedelta, timezone

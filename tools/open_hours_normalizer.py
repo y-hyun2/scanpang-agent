@@ -67,10 +67,6 @@ _NORMALIZE_SYSTEM = """\
 """
 
 
-def _empty_weekly() -> dict[str, list]:
-    return {d: [] for d in _DAYS}
-
-
 _TIME_FMT_RE = re.compile(r"^\d{1,2}:\d{2}$")
 
 

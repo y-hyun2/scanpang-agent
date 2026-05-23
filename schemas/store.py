@@ -11,11 +11,3 @@ class StoreRequest(BaseModel):
     lng: float | None = None
 
 
-class StoreDetail(BaseModel):
-    store_name: str
-    place_id: str
-    name_ko: str = ""
-    category: str = ""
-    addr: str = ""
-    phone: str = ""
-    place_url: str = ""
