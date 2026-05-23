@@ -43,7 +43,7 @@ class OrchestratorState(TypedDict):
     language: str
     session_id: str
     session_context: str          # 프롬프트에 삽입할 이전 대화 이력 텍스트
-    selected_agent: Literal["place", "navigation", "nav_guide", "halal", "convenience"]
+    selected_agent: Literal["place", "navigation", "nav_guide", "halal", "convenience", "smalltalk"]
     sub_category: str             # halal/convenience 세부 카테고리 — sub-agent _extract 우회용
     nav_context: dict             # AR 길안내 중 frontend 가 전달하는 현재 상태 (있으면 nav_guide 라우팅 후보)
     sub_agent_response: dict
@@ -73,6 +73,9 @@ _INTENT_SYSTEM = """당신은 AR 관광 앱의 요청 라우터입니다. 사용
 - convenience: 매장(상호명 포함) 및 모든 시설 검색 — 카페, 식당, ATM, 약국, 화장실,
               환전소, 지하철, 주차장, 상점, 할랄 식당, 기도실 등.
               (예: "이 매장 뭐 파는 곳이야?", "스타벅스 영업시간", "할랄 식당", "기도실 어디")
+- smalltalk : 도메인이 모호한 발화 — 단순 인사 / 잡담 / 의미 불명("?", "음...", "안녕",
+              "고마워", "심심해" 등). 어떤 도메인 에이전트도 부르지 않고 짧게 친근한
+              범용 응답.
 
 핵심 구분 규칙:
 - 기도 시간 / 키블라 / 살라트 관련 질문 → "halal"
@@ -83,6 +86,7 @@ _INTENT_SYSTEM = """당신은 AR 관광 앱의 요청 라우터입니다. 사용
   (단, 매장/상점/특정 상호명이 들어가면 "convenience")
 - 새 목적지를 정하는 길 찾기는 "navigation"
 - 이미 진행 중인 길안내에 대한 질문(좌회전 맞아? 다음은? 얼마나 남았어?)은 "nav_guide"
+- 인사/잡담/의미 불명 발화("?", "음...", "안녕", "ㅋㅋ", "고마워")는 "smalltalk"
 
 sub_category 값 (selected_agent 별):
 - halal       : "prayer_time" | "qibla"
@@ -90,7 +94,7 @@ sub_category 값 (selected_agent 별):
                 "bank" | "atm" | "shopping" | "parking" | "subway" | "tourist" |
                 "accommodation" | "cultural" | "exchange" | "restroom" | "locker" |
                 "halal_restaurant" | "prayer_room"
-- place / navigation : "" (빈 문자열)
+- place / navigation / nav_guide / smalltalk : "" (빈 문자열)
 
 resolved_message 규칙:
 - 지시어("거기", "그곳", "저기", "여기", "방금 말한 곳", "그 건물" 등)가 있고 이전 대화에서 가리키는 장소가 명확하면 그 장소 이름으로 치환.
@@ -156,6 +160,17 @@ _FEW_SHOTS = [
     {"role": "assistant", "content": '{"selected_agent": "convenience", "resolved_message": "화장실 어디야?", "sub_category": "restroom"}'},
     {"role": "user",      "content": '메시지: "지하철역 알려줘"'},
     {"role": "assistant", "content": '{"selected_agent": "convenience", "resolved_message": "지하철역 알려줘", "sub_category": "subway"}'},
+    # smalltalk — 도메인 모호 발화: 도메인 에이전트 거치지 않고 범용 응답
+    {"role": "user",      "content": '메시지: "?"'},
+    {"role": "assistant", "content": '{"selected_agent": "smalltalk", "resolved_message": "?", "sub_category": ""}'},
+    {"role": "user",      "content": '메시지: "음..."'},
+    {"role": "assistant", "content": '{"selected_agent": "smalltalk", "resolved_message": "음...", "sub_category": ""}'},
+    {"role": "user",      "content": '메시지: "안녕"'},
+    {"role": "assistant", "content": '{"selected_agent": "smalltalk", "resolved_message": "안녕", "sub_category": ""}'},
+    {"role": "user",      "content": '메시지: "고마워!"'},
+    {"role": "assistant", "content": '{"selected_agent": "smalltalk", "resolved_message": "고마워!", "sub_category": ""}'},
+    {"role": "user",      "content": '메시지: "ㅋㅋ"'},
+    {"role": "assistant", "content": '{"selected_agent": "smalltalk", "resolved_message": "ㅋㅋ", "sub_category": ""}'},
 ]
 
 _llm = ChatOpenAI(model="gpt-4o", temperature=0, response_format={"type": "json_object"})
@@ -163,14 +178,17 @@ _llm = ChatOpenAI(model="gpt-4o", temperature=0, response_format={"type": "json_
 
 # ── 독립 분류 함수 (테스트 가능) ─────────────────────────────────────────────
 
+_VALID_AGENTS = ("place", "navigation", "nav_guide", "halal", "convenience", "smalltalk")
+
+
 async def classify_intent(
     message: str,
     session_context: str = "",
-) -> tuple[Literal["place", "navigation", "nav_guide", "halal", "convenience"], str, str]:
+) -> tuple[Literal["place", "navigation", "nav_guide", "halal", "convenience", "smalltalk"], str, str]:
     """
     사용자 메시지 → (에이전트, resolved_message, sub_category) 튜플.
-    sub_category 는 halal/convenience 일 때만 값 있음, place/navigation 은 빈 문자열.
-    실패 시 (convenience, message, "") 반환.
+    sub_category 는 halal/convenience 일 때만 값 있음, 나머지는 빈 문자열.
+    실패 시 (smalltalk, message, "") 반환 — 검색 도구 호출 없이 범용 응답.
     """
     user_content = f'메시지: "{message}"'
     if session_context:
@@ -184,14 +202,14 @@ async def classify_intent(
     try:
         response = await _llm.ainvoke(messages)
         data = json.loads(response.content)
-        agent = data.get("selected_agent", "convenience")
-        if agent not in ("place", "navigation", "nav_guide", "halal", "convenience"):
-            agent = "convenience"
+        agent = data.get("selected_agent", "smalltalk")
+        if agent not in _VALID_AGENTS:
+            agent = "smalltalk"
         resolved = (data.get("resolved_message") or message).strip() or message
         sub_category = (data.get("sub_category") or "").strip()
         return agent, resolved, sub_category
     except Exception:
-        return "convenience", message, ""
+        return "smalltalk", message, ""
 
 
 # ── LangGraph 노드 ────────────────────────────────────────────────────────
@@ -279,6 +297,38 @@ async def _call_convenience_node(state: OrchestratorState) -> dict:
     return {"sub_agent_response": result if isinstance(result, dict) else result.model_dump()}
 
 
+_SMALLTALK_SYSTEM = (
+    "You are a friendly AR travel assistant for Seoul. The user said something vague, "
+    "ambiguous, or off-topic (a greeting, filler, single punctuation, etc.). "
+    "Respond in 1-2 short, warm sentences suitable for text-to-speech in the same "
+    "language as the user. Do NOT invent facts about places. If the user seems lost, "
+    "briefly suggest they can ask about nearby cafes, restrooms, landmarks, or directions."
+)
+
+
+async def _call_smalltalk_node(state: OrchestratorState) -> dict:
+    # 도메인 에이전트 호출 없이 범용 응답만 생성. 비용 최소화 위해 max_tokens 짧게.
+    from openai import AsyncOpenAI
+    client = AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY", ""))
+    lang_label = {
+        "ko": "Korean", "en": "English", "ar": "Arabic", "ja": "Japanese", "zh": "Chinese",
+    }.get(state.get("language", "ko"), "Korean")
+    try:
+        resp = await client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[
+                {"role": "system", "content": _SMALLTALK_SYSTEM + f" Respond in {lang_label}."},
+                {"role": "user",   "content": state["user_message"]},
+            ],
+            max_tokens=120,
+            temperature=0.7,
+        )
+        speech = resp.choices[0].message.content.strip()
+    except Exception:
+        speech = "무엇을 도와드릴까요? 주변 카페·화장실·관광지나 길안내를 물어봐 주세요."
+    return {"sub_agent_response": {"speech": speech, "raw": {}}}
+
+
 def _response_synthesizer_node(state: OrchestratorState) -> dict:
     """sub_agent_response에서 speech를 추출해 final_speech에 기록."""
     raw = state.get("sub_agent_response", {})
@@ -301,6 +351,7 @@ def _build_graph() -> StateGraph:
     g.add_node("call_nav_guide",    _call_nav_guide_node)
     g.add_node("call_halal",        _call_halal_node)
     g.add_node("call_convenience",  _call_convenience_node)
+    g.add_node("call_smalltalk",    _call_smalltalk_node)
     g.add_node("response_synthesizer", _response_synthesizer_node)
 
     g.add_edge(START, "intent_classifier")
@@ -313,6 +364,7 @@ def _build_graph() -> StateGraph:
             "nav_guide":    "call_nav_guide",
             "halal":        "call_halal",
             "convenience":  "call_convenience",
+            "smalltalk":    "call_smalltalk",
         },
     )
     g.add_edge("call_place",       "response_synthesizer")
@@ -320,6 +372,7 @@ def _build_graph() -> StateGraph:
     g.add_edge("call_nav_guide",   "response_synthesizer")
     g.add_edge("call_halal",       "response_synthesizer")
     g.add_edge("call_convenience", "response_synthesizer")
+    g.add_edge("call_smalltalk",   "response_synthesizer")
     g.add_edge("response_synthesizer", END)
 
     return g.compile()
@@ -373,7 +426,7 @@ async def run_orchestrator(
         "language":        language,
         "session_id":      sid,
         "session_context": session_context,
-        "selected_agent":  "convenience",
+        "selected_agent":  "smalltalk",
         "resolved_message": message,
         "sub_category":    "",
         "nav_context":     nav_context or {},

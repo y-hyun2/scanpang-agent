@@ -1,14 +1,13 @@
 from typing import Optional
 
 from fastapi import FastAPI, HTTPException
-from sse_starlette.sse import EventSourceResponse
 from pydantic import BaseModel
 from schemas.navigation import NavRequest, RouteRequest
 from agents.navigation_agent import run_route_search, run_route_agent
 from schemas.place import PlaceRequest
 from agents.place_insight_agent import run_place_insight_agent
 from schemas.store import StoreRequest
-from tools.store_tools import get_store_detail, stream_store_detail
+from tools.store_tools import get_store_detail
 from schemas.convenience import ConvenienceRequest
 from agents.search_agent import run_search_agent
 from schemas.halal import HalalRequest
@@ -22,6 +21,7 @@ from schemas.place_detail import PlaceDetailRequest, PlaceDetailResponse
 from schemas.user import (
     UserPreferencesUpsertRequest, UserPreferencesResponse,
     SavedPlacesUpdateRequest, SearchHistoryUpdateRequest,
+    RecentlyViewedUpdateRequest,
     InquirySubmitRequest, InquirySubmitResponse,
 )
 from tools.open_hours_parser import is_open_now_combined as _is_open_now_combined
@@ -123,34 +123,6 @@ async def place_store(req: StoreRequest):
     return detail
 
 
-@app.post("/place/store/stream")
-async def place_store_stream(req: StoreRequest):
-    """
-    매장 상세 정보 — SSE 스트리밍.
-    progress 이벤트로 진행률(0~1) 전송, 마지막에 result 이벤트로 전체 데이터 전송.
-    """
-    async def event_generator():
-        async for event in stream_store_detail(req.place_id, req.store_name):
-            if "result" in event:
-                detail = event["result"]
-                if isinstance(detail, dict):
-                    details = detail.get("details") or {}
-                    schedule = details.get("schedule") if isinstance(details, dict) else None
-                    detail["is_open_now"] = _is_open_now_combined(
-                        detail.get("open_hours") or "", schedule,
-                    )
-                yield {
-                    "event": "result",
-                    "data": _json.dumps(detail, ensure_ascii=False, default=str),
-                }
-            else:
-                yield {
-                    "event": "progress",
-                    "data": _json.dumps(event, ensure_ascii=False),
-                }
-
-    return EventSourceResponse(event_generator())
-
 
 @app.post("/user/preferences", response_model=UserPreferencesResponse)
 async def user_preferences_upsert(req: UserPreferencesUpsertRequest):
@@ -165,8 +137,8 @@ async def user_preferences_upsert(req: UserPreferencesUpsertRequest):
             """
             INSERT INTO user_preferences
                 (user_id, display_name, language, value_added, saved_places,
-                 search_history, created_at, updated_at)
-            VALUES ($1, $2, $3, $4, '[]'::jsonb, '[]'::jsonb, NOW(), NOW())
+                 search_history, recently_viewed_places, created_at, updated_at)
+            VALUES ($1, $2, $3, $4, '[]'::jsonb, '[]'::jsonb, '[]'::jsonb, NOW(), NOW())
             ON CONFLICT (user_id) DO UPDATE SET
                 display_name = COALESCE(EXCLUDED.display_name, user_preferences.display_name),
                 language     = COALESCE(EXCLUDED.language,     user_preferences.language),
@@ -174,7 +146,8 @@ async def user_preferences_upsert(req: UserPreferencesUpsertRequest):
                 updated_at   = NOW()
             RETURNING user_id, display_name, language, value_added,
                       saved_places::text AS saved_places,
-                      search_history::text AS search_history
+                      search_history::text AS search_history,
+                      recently_viewed_places::text AS recently_viewed_places
             """,
             req.user_id, req.display_name, req.language, req.value_added,
         )
@@ -185,6 +158,7 @@ async def user_preferences_upsert(req: UserPreferencesUpsertRequest):
         value_added=row["value_added"],
         saved_places=_json.loads(row["saved_places"] or "[]"),
         search_history=_json.loads(row["search_history"] or "[]"),
+        recently_viewed_places=_json.loads(row["recently_viewed_places"] or "[]"),
     )
 
 
@@ -197,7 +171,8 @@ async def user_preferences_get(user_id: str):
             """
             SELECT user_id, display_name, language, value_added,
                    saved_places::text AS saved_places,
-                   search_history::text AS search_history
+                   search_history::text AS search_history,
+                   recently_viewed_places::text AS recently_viewed_places
             FROM user_preferences WHERE user_id = $1
             """,
             user_id,
@@ -211,6 +186,7 @@ async def user_preferences_get(user_id: str):
         value_added=row["value_added"],
         saved_places=_json.loads(row["saved_places"] or "[]"),
         search_history=_json.loads(row["search_history"] or "[]"),
+        recently_viewed_places=_json.loads(row["recently_viewed_places"] or "[]"),
     )
 
 
@@ -246,6 +222,25 @@ async def user_search_history_update(user_id: str, req: SearchHistoryUpdateReque
             ON CONFLICT (user_id) DO UPDATE SET
                 search_history = EXCLUDED.search_history,
                 updated_at     = NOW()
+            """,
+            user_id, req.items,
+        )
+    return {"user_id": user_id, "count": len(req.items)}
+
+
+@app.put("/user/preferences/{user_id}/recently-viewed")
+async def user_recently_viewed_update(user_id: str, req: RecentlyViewedUpdateRequest):
+    """RecentlyViewedStore 변경 시 호출. '최근 본 장소' list 전체 교체.
+    saved_places 와 동일 — jsonb codec 이 list 직렬화 담당, json.dumps 금지(더블 인코딩)."""
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        await conn.execute(
+            """
+            INSERT INTO user_preferences (user_id, recently_viewed_places, created_at, updated_at)
+            VALUES ($1, $2, NOW(), NOW())
+            ON CONFLICT (user_id) DO UPDATE SET
+                recently_viewed_places = EXCLUDED.recently_viewed_places,
+                updated_at             = NOW()
             """,
             user_id, req.items,
         )
@@ -478,14 +473,26 @@ async def place_search(req: SearchRequest):
                    END AS dist_m
             FROM store_details
             WHERE store_name ILIKE $1
+               OR similarity(
+                    regexp_replace(store_name, '\s+', '', 'g'),
+                    regexp_replace($6, '\s+', '', 'g')
+                  ) >= 0.3
                OR ($3 != 'other' AND category_key = $3)
-            ORDER BY dist_m NULLS LAST, last_updated DESC NULLS LAST
+            ORDER BY
+              CASE WHEN store_name ILIKE $1 THEN 0 ELSE 1 END,
+              similarity(
+                regexp_replace(store_name, '\s+', '', 'g'),
+                regexp_replace($6, '\s+', '', 'g')
+              ) DESC,
+              dist_m NULLS LAST,
+              last_updated DESC NULLS LAST
             LIMIT $2
             """,
             f"%{q}%",
             req.limit,
             category_key,
             user_lng, user_lat,
+            q,
         )
 
     results: list[SearchResultItem] = []

@@ -123,6 +123,10 @@ import com.scanpang.app.components.ar.arExploreCategoryChipSpecs
 import com.scanpang.app.components.ar.ArCategoryIconBadge
 import com.scanpang.app.components.ar.ArPoiCard
 import com.scanpang.app.data.AppSettingsPreferences
+import com.scanpang.app.data.OnboardingPreferences
+import com.scanpang.app.data.RecentlyViewedEntry
+import com.scanpang.app.data.RecentlyViewedStore
+import com.scanpang.app.data.SavedPlaceNavTarget
 import com.scanpang.app.data.SearchHistoryPreferences
 import com.scanpang.app.data.TtsState
 import com.scanpang.app.i18n.AppStrings
@@ -201,7 +205,8 @@ fun ArExploreScreen(
     val placeResult by viewModel.placeResult.collectAsState()
     // 마커 탭 시 /place/store 응답 — ArFloorStoreGuideOverlay 메타 라인의 category·영업중 표시 원천
     val storeResult by viewModel.storeResult.collectAsState()
-    val storeProgress by viewModel.storeProgress.collectAsState()
+    val storeLoadingAt by viewModel.storeLoadingAt.collectAsState()
+    val buildingLoadingAt by viewModel.buildingLoadingAt.collectAsState()
     val context = LocalContext.current
 
     val appContext = context.applicationContext
@@ -258,7 +263,12 @@ fun ArExploreScreen(
     var speechHelperRef by remember { mutableStateOf<ArSpeechRecognizerHelper?>(null) }
     var pendingMicAfterPermission by remember { mutableStateOf(false) }
 
-    val agentService = remember { ScanPangAgentService() }
+    val agentService = remember(appContext) {
+        // 영어 모드면 backend 응답도 영어로 받기 — onboarding 에서 고른 언어 그대로 전달.
+        // updateLanguage 안 호출하면 기본값 "ko" 라 UI 는 영어인데 AI 응답만 한국어로 와서 mixed 상태.
+        val langCode = OnboardingPreferences(appContext).getLanguageCode() ?: "ko"
+        ScanPangAgentService(language = langCode)
+    }
     val ttsController = remember(appContext) {
         ArExploreTtsController(appContext) { playing -> ttsPlayingState.value = playing }
     }
@@ -997,16 +1007,12 @@ fun ArExploreScreen(
             )
 
             // ── 하단 채팅 섹션 ──
-            // 키보드가 올라와 있으면 imePadding() 이 이미 키보드 위로 위치를 맞춰주므로
-            // 탭 바 여유분 padding 은 추가하지 않는다.
             val imeVisible = WindowInsets.ime.getBottom(LocalDensity.current) > 0
             Column(
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
                     .fillMaxWidth()
-                    .navigationBarsPadding()
-                    .imePadding()
-                    .padding(bottom = if (imeVisible) 0.dp else ScanPangDimens.mainTabContentBottomInset - 16.dp),
+                    .then(if (imeVisible) Modifier.imePadding().offset(y = 180.dp) else Modifier.navigationBarsPadding().padding(bottom = ScanPangDimens.mainTabContentBottomInset - 16.dp)),
             ) {
                 ArExploreInteractiveChatSection(
                     messages = chatMessages,
@@ -1191,6 +1197,7 @@ fun ArExploreScreen(
                     },
                     modifier = Modifier.fillMaxSize(),
                     arOverlay = selectedPoiOverlay ?: placeResult?.ar_overlay,
+                    buildingLoadingStartedAt = buildingLoadingAt,
                 )
             }
 
@@ -1199,8 +1206,28 @@ fun ArExploreScreen(
                 // 건물 ufid 를 place_id 로 전달 — store_details cache key 일관성.
                 // selectedPoiOverlay 가 우선(층별탭 시나리오), 없으면 placeResult.
                 val placeUfid = (selectedPoiOverlay?.ufid ?: placeResult?.ar_overlay?.ufid).orEmpty()
-                LaunchedEffect(store) { viewModel.streamStore(placeId = placeUfid, storeName = store) }
+                LaunchedEffect(store) { viewModel.queryStore(placeId = placeUfid, storeName = store) }
                 val s = storeResult?.takeIf { it.store_name == store }
+
+                // ── "최근 본 장소" 기록 (PlaceDetail 안 거치고 AR 오버레이에서만 보는 케이스 대응) ──
+                // PlaceDetailCommon 의 자동 record() 와 동일 규약:
+                //   id = '{place_id}__{store_name}' (또는 백엔드 StoreResponse.id)
+                //   storeResult 도착 후 풀필드(category, lat, lng)로 기록 — 옛 깨진 row 안 만듦.
+                val recentlyViewedStore = remember(context) { RecentlyViewedStore(context) }
+                if (s != null && placeUfid.isNotEmpty()) {
+                    LaunchedEffect(s.id) {
+                        recentlyViewedStore.record(
+                            RecentlyViewedEntry(
+                                id = s.id.ifEmpty { "${placeUfid}__${store}" },
+                                name = s.name_ko.ifEmpty { store },
+                                category = s.category,
+                                target = SavedPlaceNavTarget.fromCategoryKey(s.category_key.orEmpty()),
+                                lat = s.lat ?: 0.0,
+                                lng = s.lng ?: 0.0,
+                            ),
+                        )
+                    }
+                }
                 ArFloorStoreGuideOverlay(
                     storeName = store,
                     onDismiss = {
@@ -1220,7 +1247,7 @@ fun ArExploreScreen(
                     category = s?.category.orEmpty(),
                     isOpenNow = s?.is_open_now,
                     storeResult = s,
-                    storeProgress = storeProgress,
+                    storeLoadingStartedAt = storeLoadingAt,
                 )
             }
 

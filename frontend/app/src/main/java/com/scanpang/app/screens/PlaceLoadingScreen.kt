@@ -22,7 +22,11 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
@@ -30,16 +34,30 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.unit.dp
 import com.scanpang.app.ui.theme.ScanPangColors
 import com.scanpang.app.ui.theme.ScanPangType
+import kotlinx.coroutines.delay
+import kotlin.math.exp
 
 /**
- * [progress] 가 제공되면 SSE 실시간 진행률 표시 (0f~1f).
- * null 이면 bouncing dots fallback.
+ * [loadingStartedAt] 이 제공되면 경과 시간 기반 progress bar 표시.
+ * 요청 시작 시각(millis) → 1 - e^(-t/2500) * 90% 곡선으로 증가.
+ * null 이면 기존 bouncing dots fallback.
  */
 @Composable
 fun PlaceLoadingScreen(
     modifier: Modifier = Modifier,
-    progress: Float? = null,
+    loadingStartedAt: Long? = null,
 ) {
+    var progress by remember { mutableFloatStateOf(0f) }
+
+    LaunchedEffect(loadingStartedAt) {
+        if (loadingStartedAt == null) return@LaunchedEffect
+        while (true) {
+            val elapsed = System.currentTimeMillis() - loadingStartedAt
+            progress = (1.0 - exp(-elapsed.toDouble() / 2500.0)).toFloat() * 0.9f
+            delay(50L)
+        }
+    }
+
     Box(
         modifier = modifier
             .fillMaxSize()
@@ -50,7 +68,7 @@ fun PlaceLoadingScreen(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center,
         ) {
-            if (progress != null) {
+            if (loadingStartedAt != null) {
                 Text(
                     text = "${(progress * 100).toInt()}%",
                     style = ScanPangType.body15Medium,

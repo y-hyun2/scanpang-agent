@@ -55,6 +55,10 @@ import com.scanpang.app.ui.theme.ScanPangDimens
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import com.scanpang.app.data.AppSettingsPreferences
+import com.scanpang.app.data.OnboardingPreferences
+import com.scanpang.app.data.RecentlyViewedEntry
+import com.scanpang.app.data.RecentlyViewedStore
+import com.scanpang.app.data.SavedPlaceNavTarget
 import com.scanpang.app.data.TtsState
 import com.scanpang.app.i18n.LocalStrings
 
@@ -78,7 +82,11 @@ fun ArNavigationMapScreen(
     val appContext = LocalContext.current
     val appSettingsPrefs = remember { AppSettingsPreferences(appContext) }
     val scope = rememberCoroutineScope()
-    val agentService = remember { ScanPangAgentService() }
+    val agentService = remember(appContext) {
+        // 영어 모드면 backend 응답도 영어로 받기. ArExploreScreen 과 동일 패턴.
+        val langCode = OnboardingPreferences(appContext).getLanguageCode() ?: "ko"
+        ScanPangAgentService(language = langCode)
+    }
     val ttsController = remember(appContext) { ArExploreTtsController(appContext) {} }
     var chatMessages by remember {
         mutableStateOf(listOf(ArAgentChatMessage(text = s.navInitialMessage, isUser = false)))
@@ -384,6 +392,25 @@ fun ArNavigationMapScreen(
             val placeUfid = placeResult?.ar_overlay?.ufid.orEmpty()
             LaunchedEffect(store) { viewModel.queryStore(placeId = placeUfid, storeName = store) }
             val s = storeResult?.takeIf { it.store_name == store }
+
+            // ── "최근 본 장소" 기록 (AR 네비 중 핀 탭→오버레이 케이스) ──
+            // PlaceDetailCommon 자동 record() 와 동일 규약. storeResult 도착 후 풀필드로.
+            val recentlyViewedStore = remember(appContext) { RecentlyViewedStore(appContext) }
+            if (s != null && placeUfid.isNotEmpty()) {
+                LaunchedEffect(s.id) {
+                    recentlyViewedStore.record(
+                        RecentlyViewedEntry(
+                            id = s.id.ifEmpty { "${placeUfid}__${store}" },
+                            name = s.name_ko.ifEmpty { store },
+                            category = s.category,
+                            target = SavedPlaceNavTarget.fromCategoryKey(s.category_key.orEmpty()),
+                            lat = s.lat ?: 0.0,
+                            lng = s.lng ?: 0.0,
+                        ),
+                    )
+                }
+            }
+
             ArFloorStoreGuideOverlay(
                 storeName = store,
                 onDismiss = { selectedStore = null },

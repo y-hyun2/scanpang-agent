@@ -74,6 +74,14 @@ interface ScanPangApi {
         @Body request: SearchHistoryUpdateRequest,
     ): Map<String, Any>
 
+    // recently_viewed_places 전체 replace. PlaceDetail / AR 매장 오버레이 진입 시
+    // RecentlyViewedStore 가 record() 후 debounced 로 호출.
+    @retrofit2.http.PUT("user/preferences/{user_id}/recently-viewed")
+    suspend fun updateRecentlyViewed(
+        @retrofit2.http.Path("user_id") userId: String,
+        @Body request: RecentlyViewedUpdateRequest,
+    ): Map<String, Any>
+
     // 1:1 문의 — ContactScreen 의 제출 버튼이 호출.
     @POST("user/inquiry")
     suspend fun submitInquiry(@Body request: InquirySubmitRequest): InquirySubmitResponse
@@ -100,6 +108,10 @@ data class SearchHistoryUpdateRequest(
     val items: List<String> = emptyList(),
 )
 
+data class RecentlyViewedUpdateRequest(
+    val items: List<Map<String, Any>> = emptyList(),
+)
+
 data class UserPreferencesUpsertRequest(
     val user_id: String,
     val display_name: String? = null,
@@ -114,6 +126,7 @@ data class UserPreferencesResponse(
     val value_added: String? = null,
     val saved_places: List<Any> = emptyList(),
     val search_history: List<Any> = emptyList(),
+    val recently_viewed_places: List<Any> = emptyList(),
 )
 
 // ── Navigation DTOs ──

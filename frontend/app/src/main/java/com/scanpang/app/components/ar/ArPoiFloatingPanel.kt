@@ -119,6 +119,7 @@ fun ArPoiFloatingDetailOverlay(
     modifier: Modifier = Modifier,
     onSave: () -> Unit = {},
     arOverlay: ArOverlay? = null,
+    buildingLoadingStartedAt: Long? = null,
 ) {
     val s = LocalStrings.current
     var expandedFloors by remember { mutableStateOf(setOf("B1")) }
@@ -198,6 +199,7 @@ fun ArPoiFloatingDetailOverlay(
                 if (arOverlay == null) {
                     com.scanpang.app.screens.PlaceLoadingScreen(
                         modifier = Modifier.weight(1f).fillMaxWidth(),
+                        loadingStartedAt = buildingLoadingStartedAt,
                     )
                     return@Surface
                 }
@@ -700,7 +702,7 @@ fun ArFloorStoreGuideOverlay(
     isOpenNow: Boolean? = null,
     storeResult: com.scanpang.app.data.remote.StoreResponse? = null,
     distanceLabel: String = "",
-    storeProgress: Float? = null,
+    storeLoadingStartedAt: Long? = null,
 ) {
     val s = LocalStrings.current
     val categoryKey = storeResult?.category_key ?: ""
@@ -769,7 +771,7 @@ fun ArFloorStoreGuideOverlay(
                 if (storeResult == null) {
                     com.scanpang.app.screens.PlaceLoadingScreen(
                         modifier = Modifier.fillMaxSize(),
-                        progress = storeProgress,
+                        loadingStartedAt = storeLoadingStartedAt,
                     )
                     return@Surface
                 }
