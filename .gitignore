@@ -17,3 +17,6 @@ logs/
 
 # Claude Code 내부 상태 파일
 .claude/
+
+# 프론트엔드는 별도 레포로 분리됨: rainbowcompany/scanpang-client-android-hufs
+frontend/
