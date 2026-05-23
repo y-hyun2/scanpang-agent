@@ -60,6 +60,7 @@ import com.scanpang.app.data.RecentlyViewedEntry
 import com.scanpang.app.data.RecentlyViewedStore
 import com.scanpang.app.data.SavedPlaceNavTarget
 import com.scanpang.app.data.TtsState
+import com.scanpang.app.i18n.LocalStrings
 
 private const val NAV_TAB_MAP = "map"
 private const val NAV_TAB_AI = "ai"
@@ -77,6 +78,7 @@ fun ArNavigationMapScreen(
     destinationLat: Double? = null,
     destinationLng: Double? = null,
 ) {
+    val s = LocalStrings.current
     val appContext = LocalContext.current
     val appSettingsPrefs = remember { AppSettingsPreferences(appContext) }
     val scope = rememberCoroutineScope()
@@ -87,7 +89,7 @@ fun ArNavigationMapScreen(
     }
     val ttsController = remember(appContext) { ArExploreTtsController(appContext) {} }
     var chatMessages by remember {
-        mutableStateOf(listOf(ArAgentChatMessage(text = "길찾기 중 궁금한 점을 물어보세요!", isUser = false)))
+        mutableStateOf(listOf(ArAgentChatMessage(text = s.navInitialMessage, isUser = false)))
     }
     // 응답 도착 전 보내기 연타로 같은 query 가 backend 에 N번 전송되던 문제 차단.
     // ArExploreScreen 과 동일 패턴.
@@ -111,7 +113,7 @@ fun ArNavigationMapScreen(
     val firstTurn = turnPoints.firstOrNull()
     val secondTurn = turnPoints.getOrNull(1)
     val displayDestinationName = arCommand?.destination?.name
-        ?: destinationName.ifEmpty { "목적지" }
+        ?: destinationName.ifEmpty { s.navDestination }
 
     // 표시용 값: 라우팅 중이면 navUiState, 아니면 폴백
     val isRouting = navUiState.phase == ArNavUiState.Phase.ROUTING || navUiState.phase == ArNavUiState.Phase.ARRIVED
@@ -121,8 +123,8 @@ fun ArNavigationMapScreen(
         isRouting && navUiState.currentSpeech.isNotBlank() -> navUiState.currentSpeech
         // 폴백: 단순 "좌회전 152m" 형식
         isRouting -> "${navUiState.direction} ${navUiState.currentDistanceM}m"
-        else -> firstTurn?.let { it.speech.ifEmpty { it.description.ifEmpty { "직진" } } }
-            ?: navUiState.statusMessage.ifEmpty { "위치 잡는 중..." }
+        else -> firstTurn?.let { it.speech.ifEmpty { it.description.ifEmpty { s.navGoStraight } } }
+            ?: navUiState.statusMessage.ifEmpty { s.navLocating }
     }
     val currentDistance = if (isRouting) "${navUiState.currentDistanceM}m"
         else firstTurn?.let { "${it.segment_distance_m}m" } ?: "—"
@@ -231,7 +233,7 @@ fun ArNavigationMapScreen(
                 // 도착 시: 파란 "X 안내 중" → 초록 "X 도착" (Figma 디자인)
                 ArNavDestinationPill(
                     text = displayDestinationName,
-                    suffix = if (navUiState.isArrived) "도착" else "안내 중",
+                    suffix = if (navUiState.isArrived) s.navArrivedBadge else s.navGuiding,
                     containerColor = if (navUiState.isArrived)
                         ScanPangColors.Success
                     else
@@ -304,7 +306,7 @@ fun ArNavigationMapScreen(
                         },
                         isSending = isChatSending,
                         messages = chatMessages,
-                        placeholder = "무엇이든 물어보세요",
+                        placeholder = s.navChatPlaceholder,
                     )
                 },
             )
