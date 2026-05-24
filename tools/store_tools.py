@@ -274,7 +274,7 @@ async def get_store_detail(
                 base_name = matched_name
         except ImportError:
             pass
-    display_name = _enrich_store_name(base_name, addr)
+    display_name = base_name
 
     # outdoor: store_details INSERT 우회.
     if is_outdoor:
