@@ -44,16 +44,13 @@ CATEGORY_CODES: dict[str, str] = {
     "bank":              "BK9",
     "hospital":          "HP8",
     "pharmacy":          "PM9",
-    "tourist":           "AT4",
-    "cultural":          "CT1",
-    "accommodation":     "AD5",
     "shopping":          "MT1",  # 대형마트 — 일반 쇼핑은 Kakao 카테고리 없어 마트로 대체
     "subway":            "SW8",
 }
 
 DEFAULT_CATEGORIES = [
     "cafe", "restaurant", "convenience_store",
-    "tourist", "cultural", "bank",
+    "bank",
 ]
 
 

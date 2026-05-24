@@ -18,9 +18,7 @@ place_info 의 기존 값과 병합 후 store_details 에 UPSERT.
 """
 
 import asyncio
-import json
 import os
-from datetime import datetime, timezone
 
 from dotenv import load_dotenv
 
@@ -90,53 +88,11 @@ async def main() -> None:
             "parking_info":  parking_info,
         }
 
-        async with pool.acquire() as conn:
-            await conn.execute(
-                """
-                INSERT INTO store_details
-                    (id, place_id, store_name, category, category_key,
-                     addr, phone, lat, lng, place_url,
-                     details, open_hours, closed_days, homepage, image_urls,
-                     floor, source, last_updated)
-                VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,
-                        $11::jsonb,$12,$13,$14,$15::jsonb,$16,$17,$18)
-                ON CONFLICT (id) DO UPDATE SET
-                    store_name    = EXCLUDED.store_name,
-                    category      = EXCLUDED.category,
-                    addr          = EXCLUDED.addr,
-                    phone         = EXCLUDED.phone,
-                    details       = EXCLUDED.details,
-                    open_hours    = EXCLUDED.open_hours,
-                    closed_days   = EXCLUDED.closed_days,
-                    homepage      = EXCLUDED.homepage,
-                    image_urls    = EXCLUDED.image_urls,
-                    source        = EXCLUDED.source,
-                    last_updated  = EXCLUDED.last_updated
-                """,
-                f"tourist__{ufid}",
-                ufid,
-                name_ko,
-                row["category"] or "관광지",
-                "tourist",
-                row["addr"] or "",
-                row["phone"] or "",
-                row["lat"],
-                row["lng"],
-                "",
-                json.dumps(details, ensure_ascii=False),
-                open_hours,
-                closed_days,
-                homepage,
-                json.dumps(image_urls, ensure_ascii=False),
-                None,
-                "tour_api",
-                datetime.now(timezone.utc),
-            )
-
-        print(f"완료 (입장료={admission_fee!r})")
+        # tourist 카테고리는 tourist_places 별도 테이블로 관리 — store_details INSERT 하지 않음.
+        print(f"스킵 (tourist_places 테이블로 관리)")
         success += 1
 
-    print(f"\n총 {success}/{len(rows)}개 store_details 적재 완료")
+    print(f"\n총 {success}/{len(rows)}개 처리 완료 (store_details 미적재)")
 
 
 if __name__ == "__main__":

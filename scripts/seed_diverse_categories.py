@@ -35,13 +35,7 @@ PLACE_ID       = "__outdoor__"   # outdoor 모드 sentinel
 DIVERSE_STORES: dict[str, list] = {
     "cafe":              ["스타벅스 포포인츠 명동점", "블루보틀 명동점"],
     "restaurant":        ["멜팅소울 롯데백화점 본점", "명동교자 본점"],
-    "tourist":           [
-        ("N서울타워", 37.5512, 126.9882),   # 남산
-        "명동성당",
-    ],
-    "cultural":          ["롯데시네마 에비뉴엘 명동", "명동예술극장"],
     "shopping":          ["올리브영 명동중앙점", "롯데백화점 본점"],
-    "accommodation":     ["롯데호텔 서울", "웨스틴 조선호텔 서울"],
     "convenience_store": ["CU 명동중앙점", "GS25 명동역점"],
     "pharmacy":          ["명동 온누리약국", "다보아약국 명동"],
     "hospital":          ["을지병원 명동", "고려대학교 의료원"],
