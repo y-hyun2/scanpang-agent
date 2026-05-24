@@ -44,6 +44,13 @@ load_dotenv()
 H3_CLUSTER_RES = 7
 CONTENT_TYPE   = 32   # 숙박
 
+# 호텔 내부 부대시설(레스토랑·라운지 등) 이름에 들어가는 키워드.
+# 이름에 이런 단어가 있으면 숙박 시설이 아닌 내부 시설로 보고 제외.
+_HOTEL_INTERNAL_KEYWORDS = frozenset({
+    "레스토랑", "라운지", "뷔페", "다이닝", "비스트로", "bistro",
+    "restaurant", "lounge", "buffet", "dining",
+})
+
 # ── 테이블 ──────────────────────────────────────────────────────────────────
 DROP_TABLE_SQL   = "DROP TABLE IF EXISTS accommodation_places"
 CREATE_TABLE_SQL = """
@@ -140,7 +147,7 @@ def sort_clusters(clusters, prefer_lat, prefer_lng):
 
 # ── Naver 조회 ───────────────────────────────────────────────────────────────
 async def _fetch_naver(name: str, lat: float, lng: float, addr: str):
-    """Naver에서 image_urls·conveniences·open_hours·phone·addr·homepage·matched_name 조회."""
+    """Naver에서 image_urls·conveniences·open_hours·phone·addr·homepage·matched_name·category 조회."""
     try:
         result = await naver_place.fetch(
             store_name=name, lat=lat, lng=lng,
@@ -159,10 +166,11 @@ async def _fetch_naver(name: str, lat: float, lng: float, addr: str):
             result.get("homepage") or "",
             matched,
             result.get("addr") or "",
+            result.get("category") or "",
         )
     except Exception as e:
         print(f"    [naver] 실패: {e}")
-        return [], [], "", "", "", "", ""
+        return [], [], "", "", "", "", "", ""
 
 
 # ── 메인 시드 ────────────────────────────────────────────────────────────────
@@ -227,7 +235,7 @@ async def run(
 
             # Naver 우선 조회
             naver_urls, conveniences, open_hours, naver_phone, \
-            naver_homepage, naver_name, naver_addr = \
+            naver_homepage, naver_name, naver_addr, naver_category = \
                 await _fetch_naver(name, s_lat, s_lng, addr)
 
             # 이미지: Naver 우선, Tour API firstimage 보충
@@ -237,6 +245,17 @@ async def run(
 
             # 각 필드: Naver 우선 → Tour API 폴백
             name     = naver_name or name
+
+            # 호텔 내부 부대시설 제외
+            # ① 이름에 레스토랑·라운지·뷔페·다이닝 등이 있으면 숙박이 아님
+            # ② Naver 카테고리가 음식점/카페로 분류되면 제외
+            name_lower = name.lower()
+            naver_cat_lower = naver_category.lower()
+            is_internal = any(kw in name_lower for kw in _HOTEL_INTERNAL_KEYWORDS) or \
+                          any(kw in naver_cat_lower for kw in ("음식점", "카페", "레스토랑"))
+            if is_internal:
+                print(f"  [{i:2d}] {name} — 호텔 내부 시설 제외 (naver_category={naver_category!r})")
+                continue
             addr     = naver_addr or addr
             phone    = (naver_phone or phone
                         or intro.get("infocenterlodging") or "")
