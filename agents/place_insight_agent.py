@@ -125,10 +125,16 @@ def generate_follow_ups(user_message: str, place_data: dict) -> list[str]:
 
 # ── Main agent ────────────────────────────────────────────────────────────────
 
-async def run_place_insight_agent(req: PlaceRequest) -> dict:
+async def run_place_insight_agent(req: PlaceRequest, progress_cb=None) -> dict:
+    async def _progress(pct: int, msg: str):
+        if progress_cb:
+            await progress_cb(pct, msg)
+
     # 1) 바라보는 건물 식별 — frontend 가 건물 핀 탭 시 ufid 전달. ufid 없으면
     # 식별 불가 (raycast 경로는 제거됨, frontend 는 항상 ufid 를 보내야 한다).
+    await _progress(5, "건물 식별 중...")
     vworld_meta = await fetch_building_by_ufid(req.ufid) if req.ufid else None
+    await _progress(25, "건물 정보 조회 중...")
 
     place_data          = {}
     bld_name_from_vworld = ""
@@ -143,6 +149,7 @@ async def run_place_insight_agent(req: PlaceRequest) -> dict:
         # 2) Supabase place_info 직접 조회 (ufid PK)
         if ufid:
             place_data = await _fetch_place_info(ufid)
+        await _progress(45, "데이터 처리 중...")
 
         # 3) cache miss → 백그라운드 파이프라인 트리거
         if not place_data and ufid:
@@ -193,6 +200,7 @@ async def run_place_insight_agent(req: PlaceRequest) -> dict:
     last_updated_val = place_data.get("last_updated")
     last_updated_str = last_updated_val.isoformat() if isinstance(last_updated_val, datetime) else last_updated_val
 
+    await _progress(65, "AR 오버레이 구성 중...")
     ar_overlay = {
         "name":              place_data.get("name_ko", ""),
         "category":          place_data.get("category", ""),
@@ -233,7 +241,9 @@ User's question: {req.user_message}
 Language: {req.language}
 """.strip()
 
+    await _progress(80, "도슨트 생성 중...")
     speech     = await llm_generate_docent(context, req.language)
+    await _progress(95, "완료 처리 중...")
     follow_ups = generate_follow_ups(req.user_message, {
         "floor_info":    floor_info,
         "halal_info":    halal_info,

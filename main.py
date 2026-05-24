@@ -1,6 +1,8 @@
 from typing import Optional
 
 from fastapi import FastAPI, HTTPException
+from fastapi.encoders import jsonable_encoder
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from schemas.navigation import NavRequest, RouteRequest
 from agents.navigation_agent import run_route_search, run_route_agent
@@ -174,12 +176,60 @@ async def navigation_route(req: RouteRequest):
     return await run_route_agent(req)
 
 
+def _sse_chunk(event: str, data) -> str:
+    """SSE 이벤트 한 청크를 텍스트로 직렬화한다."""
+    if not isinstance(data, str):
+        # jsonable_encoder: datetime/UUID/Decimal 등 비직렬화 타입을 JSON 호환으로 변환
+        data_str = _json.dumps(jsonable_encoder(data), ensure_ascii=False)
+    else:
+        data_str = data
+    return f"event: {event}\ndata: {data_str}\n\n"
+
+
 @app.post("/place/query")
 async def place_query(req: PlaceRequest):
     """
     ARCore가 인식한 건물 place_id → AR 오버레이 데이터 + TTS 도슨트 해설 반환
     """
     return await run_place_insight_agent(req)
+
+
+@app.post("/place/query/stream")
+async def place_query_stream(req: PlaceRequest):
+    """
+    /place/query 의 SSE 스트리밍 버전.
+    progress 이벤트로 실제 처리 단계별 진행률을 push 하고, 완료 시 complete 이벤트로 결과 전달.
+    """
+    async def generate():
+        try:
+            import asyncio
+            queue: asyncio.Queue = asyncio.Queue()
+
+            async def cb(pct: int, msg: str):
+                await queue.put((pct, msg))
+
+            async def run():
+                try:
+                    result = await run_place_insight_agent(req, progress_cb=cb)
+                    return result
+                finally:
+                    await queue.put(None)  # 예외 발생 시에도 sentinel 보장
+
+            task = asyncio.ensure_future(run())
+
+            while True:
+                item = await queue.get()
+                if item is None:
+                    break
+                pct, msg = item
+                yield _sse_chunk("progress", {"progress": pct, "message": msg})
+
+            result = await task
+            yield _sse_chunk("complete", {"result": result})
+        except Exception as e:
+            yield _sse_chunk("error", str(e))
+
+    return StreamingResponse(generate(), media_type="text/event-stream")
 
 
 @app.post("/place/store")
@@ -199,6 +249,54 @@ async def place_store(req: StoreRequest):
             detail.get("open_hours") or "", schedule,
         )
     return detail
+
+
+@app.post("/place/store/stream")
+async def place_store_stream(req: StoreRequest):
+    """
+    /place/store 의 SSE 스트리밍 버전.
+    """
+    async def generate():
+        try:
+            import asyncio
+            queue: asyncio.Queue = asyncio.Queue()
+
+            async def cb(pct: int, msg: str):
+                await queue.put((pct, msg))
+
+            async def run():
+                try:
+                    detail = await get_store_detail(
+                        req.place_id, req.store_name,
+                        lat=req.lat, lng=req.lng,
+                        language=req.language,
+                        progress_cb=cb,
+                    )
+                    if isinstance(detail, dict):
+                        details = detail.get("details") or {}
+                        schedule = details.get("schedule") if isinstance(details, dict) else None
+                        detail["is_open_now"] = _is_open_now_combined(
+                            detail.get("open_hours") or "", schedule,
+                        )
+                    return detail
+                finally:
+                    await queue.put(None)  # 예외 발생 시에도 sentinel 보장
+
+            task = asyncio.ensure_future(run())
+
+            while True:
+                item = await queue.get()
+                if item is None:
+                    break
+                pct, msg = item
+                yield _sse_chunk("progress", {"progress": pct, "message": msg})
+
+            result = await task
+            yield _sse_chunk("complete", {"result": result})
+        except Exception as e:
+            yield _sse_chunk("error", str(e))
+
+    return StreamingResponse(generate(), media_type="text/event-stream")
 
 
 
@@ -1474,3 +1572,26 @@ async def place_detail(req: PlaceDetailRequest):
         source=row["source"],
         last_updated=last_updated_iso,
     )
+
+
+@app.post("/place/detail/stream")
+async def place_detail_stream(req: PlaceDetailRequest):
+    """
+    /place/detail 의 SSE 스트리밍 버전.
+    """
+    async def generate():
+        try:
+            async def run():
+                yield _sse_chunk("progress", {"progress": 10, "message": "데이터 조회 중..."})
+                result: PlaceDetailResponse = await place_detail(req)
+                yield _sse_chunk("progress", {"progress": 90, "message": "완료 처리 중..."})
+                yield _sse_chunk("complete", {"result": result.model_dump()})
+
+            async for chunk in run():
+                yield chunk
+        except HTTPException as e:
+            yield _sse_chunk("error", f"HTTP_{e.status_code}: {e.detail}")
+        except Exception as e:
+            yield _sse_chunk("error", str(e))
+
+    return StreamingResponse(generate(), media_type="text/event-stream")

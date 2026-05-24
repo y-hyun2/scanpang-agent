@@ -94,6 +94,7 @@ async def get_store_detail(
     lat: float | None = None,
     lng: float | None = None,
     language: str = "ko",
+    progress_cb=None,
 ) -> dict:
     """
     Args:
@@ -107,6 +108,10 @@ async def get_store_detail(
     Returns:
         store_details row dict. 모든 fetcher 실패 시 최소 정보만.
     """
+    async def _progress(pct: int, msg: str):
+        if progress_cb:
+            await progress_cb(pct, msg)
+
     cache_id = f"{place_id}__{store_name}"
     pool     = await get_pool()
 
@@ -120,6 +125,7 @@ async def get_store_detail(
     pre_category = classify_category(category_name="", store_name=store_name)
     is_outdoor = pre_category in _OUTDOOR
 
+    await _progress(10, "캐시 조회 중...")
     # ── ① 캐시 조회 — outdoor 가 아닐 때만 ──────────────────────────────────
     # floor_info_seed row 의 addr 는 building 주소 — 나중 fetcher 결과가 이와
     # 시·구 단위로 다르면(예: '경기 용인시 처인구' vs '경기 고양시 덕양구')
@@ -168,6 +174,7 @@ async def get_store_detail(
         if row and row["source"] == "floor_info_seed":
             expected_addr_seed = row["addr"] or ""
 
+    await _progress(30, "좌표 확인 중...")
     # ── ② 좌표 결정 ─────────────────────────────────────────────────────────
     # lat/lng가 인자로 들어오면 그대로 사용 (마커/GPS 진입).
     # 아니면 place_info에서 건물 좌표 조회 (시나리오 a).
@@ -191,6 +198,7 @@ async def get_store_detail(
     else:
         lat, lng = float(lat), float(lng)
 
+    await _progress(50, "Kakao 매장 정보 조회 중...")
     # ── ③ Kakao Local 1차 — category_name 확보용 (분류 입력) ─────────────────
     kakao = await check_kakao_open_status(store_name, lat, lng) or {}
     category_name = kakao.get("category", "") or ""
@@ -200,6 +208,7 @@ async def get_store_detail(
     category_key  = classify_category(category_full, store_name)
     print(f"[store_tools] {store_name!r} → category_name={category_name!r}, category_key={category_key!r}")
 
+    await _progress(70, "상세 데이터 수집 중...")
     # ── ④ 카테고리별 fetcher 디스패치 ───────────────────────────────────────
     fetched = await fetch_by_category(
         category_key   = category_key,
@@ -323,6 +332,7 @@ async def get_store_detail(
         if en_fields:
             translations[language] = en_fields
 
+    await _progress(88, "저장 중...")
     # ── ⑥ store_details UPSERT — 건물 내 매장만 ─────────────────────────────
     # 가드: fetcher 가 의미있는 결과(source + 최소 1개 필드) 가져왔을 때만 캐싱.
     # 그렇지 않으면 빈 row 가 store_details 에 영구 박혀서 이후 호출이 캐시 히트로
