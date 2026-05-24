@@ -139,6 +139,28 @@ def _parse_range(s: str) -> Optional[tuple[time, time]]:
     )
 
 
+_CLOSE_ONLY_RE = re.compile(r"(\d{1,2})\s*시\s*(?:에?\s*영업\s*종료|까지)")
+_OPEN_ONLY_RE  = re.compile(r"(\d{1,2})\s*시\s*(?:시작|부터|에\s*시작)")
+
+
+def _check_single_time(s: str, now_t: time) -> Optional[bool]:
+    """범위 없이 종료 또는 시작 시각만 있는 경우 부분 판정.
+
+    종료 시각 이후 → False, 시작 시각 이전 → False, 그 외 → None(불확실).
+    """
+    m = _CLOSE_ONLY_RE.search(s)
+    if m:
+        close_t = _hm_to_time(int(m.group(1)), 0)
+        return False if now_t >= close_t else None
+
+    m = _OPEN_ONLY_RE.search(s)
+    if m:
+        open_t = _hm_to_time(int(m.group(1)), 0)
+        return False if now_t < open_t else None
+
+    return None
+
+
 def _is_in_range(now: time, start: time, end: time) -> bool:
     """now 가 [start, end] 안에 있는지 — 23:00-02:00 같은 자정 넘김도 처리."""
     if start <= end:
@@ -196,8 +218,8 @@ def is_open_now(open_hours: str, now: Optional[datetime] = None) -> Optional[boo
         rng = _parse_range(today_line)
         if rng:
             return _is_in_range(now_t, rng[0], rng[1])
-        # 오늘 줄은 있지만 시간 못 뽑으면 — 판정 불가
-        return None
+        # 단일 종료/시작 시각 시도 후 판정 불가
+        return _check_single_time(today_line, now_t)
 
     # 3) 단순 단일 라인 ("매일 09:00-22:00" 같은 경우)
     if any(kw in text for kw in _CLOSED_KEYWORDS):
@@ -208,7 +230,8 @@ def is_open_now(open_hours: str, now: Optional[datetime] = None) -> Optional[boo
     if rng:
         return _is_in_range(now_t, rng[0], rng[1])
 
-    return None
+    # 4) 단일 종료/시작 시각 패턴 ("N시에 영업종료", "N시까지", "N시 시작" 등)
+    return _check_single_time(text, now_t)
 
 
 # ── 자가 테스트 (python tools/open_hours_parser.py) ──
@@ -226,6 +249,10 @@ if __name__ == "__main__":
         ("월 09:00-22:00\n금 휴무",        False),
         ("정기휴무",                      False),
         ("월요일 휴무",                   False),  # v1: 다른 요일 휴무라도 영업종료로 보수 판정
+        ("13시에 영업종료",               False),  # now 14:30 >= 13:00 → 종료
+        ("18시에 영업종료",               None),   # now 14:30 < 18:00 → 불확실 (시작 시각 모름)
+        ("9시 시작",                      None),   # now 14:30 >= 9:00 → 불확실 (종료 시각 모름)
+        ("15시 시작",                     False),  # now 14:30 < 15:00 → 아직 시작 전
     ]
     for s, want in cases:
         got = is_open_now(s, now=now)

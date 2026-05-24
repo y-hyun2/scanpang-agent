@@ -49,6 +49,17 @@ def _strip_html(text: str) -> str:
     return "\n".join(lines).strip()
 
 
+def _haversine_m(user_lat: float, user_lng: float, place_lat: float, place_lng: float) -> float:
+    import math as _math
+    R = 6371000.0
+    lat1 = _math.radians(user_lat)
+    lat2 = _math.radians(place_lat)
+    dlat = lat2 - lat1
+    dlng = _math.radians(place_lng - user_lng)
+    a = _math.sin(dlat / 2) ** 2 + _math.cos(lat1) * _math.cos(lat2) * _math.sin(dlng / 2) ** 2
+    return round(2 * R * _math.asin(_math.sqrt(a)), 1)
+
+
 async def _ensure_translations(
     pool,
     table: str,
@@ -1051,7 +1062,7 @@ async def _tourist_search(req: SearchRequest, lat: float, lng: float, language: 
     return SearchResponse(query=req.query, count=len(results), results=results)
 
 
-async def _accommodation_detail(acc_id: str, language: str = "ko") -> PlaceDetailResponse:
+async def _accommodation_detail(acc_id: str, language: str = "ko", user_lat: float | None = None, user_lng: float | None = None) -> PlaceDetailResponse:
     """accommodation_places 테이블 1건 → PlaceDetailResponse."""
     pool = await get_pool()
     async with pool.acquire() as conn:
@@ -1094,12 +1105,14 @@ async def _accommodation_detail(acc_id: str, language: str = "ko") -> PlaceDetai
         )
     else:
         _t = {}
+    dist_a = _haversine_m(user_lat, user_lng, _lat_a, _lng_a) if (user_lat and user_lng and _lat_a and _lng_a) else None
     return PlaceDetailResponse(
         id=row["id"],
         store_name=_t.get("name") or row["name_ko"] or "",
         place_id=row["content_id"] or None,
         lat=_lat_a,
         lng=_lng_a,
+        distance_m=dist_a,
         category=row["category"] or "숙박",
         category_key="accommodation",
         addr=_t.get("addr") or row["addr"] or "",
@@ -1125,7 +1138,7 @@ async def _accommodation_detail(acc_id: str, language: str = "ko") -> PlaceDetai
     )
 
 
-async def _tourist_detail(tourist_id: str, language: str = "ko") -> PlaceDetailResponse:
+async def _tourist_detail(tourist_id: str, language: str = "ko", user_lat: float | None = None, user_lng: float | None = None) -> PlaceDetailResponse:
     """tourist_places 테이블 1건 → PlaceDetailResponse."""
     from tools.category_classifier import classify_category
     pool = await get_pool()
@@ -1192,12 +1205,14 @@ async def _tourist_detail(tourist_id: str, language: str = "ko") -> PlaceDetailR
         )
     else:
         _t = {}
+    dist_t = _haversine_m(user_lat, user_lng, _lat_t, _lng_t) if (user_lat and user_lng and _lat_t and _lng_t) else None
     return PlaceDetailResponse(
         id=row["id"],
         store_name=_t.get("name") or row["name_ko"] or "",
         place_id=row["content_id"] or None,
         lat=_lat_t,
         lng=_lng_t,
+        distance_m=dist_t,
         category=row["category"] or "관광지",
         category_key=key,
         addr=_t.get("addr") or row["addr"] or "",
@@ -1240,9 +1255,9 @@ async def place_detail(req: PlaceDetailRequest):
     if req.id.startswith("prayer__"):
         return await _prayer_detail(req.id[len("prayer__"):], language=req.language)
     if req.id.startswith("accommodation__"):
-        return await _accommodation_detail(req.id, language=req.language)
+        return await _accommodation_detail(req.id, language=req.language, user_lat=req.user_lat, user_lng=req.user_lng)
     if req.id.startswith("tourist__"):
-        return await _tourist_detail(req.id, language=req.language)
+        return await _tourist_detail(req.id, language=req.language, user_lat=req.user_lat, user_lng=req.user_lng)
 
     pool = await get_pool()
     async with pool.acquire() as conn:
@@ -1328,14 +1343,7 @@ async def place_detail(req: PlaceDetailRequest):
     distance_m: float | None = None
     if (req.user_lat is not None and req.user_lng is not None
             and row["lat"] is not None and row["lng"] is not None):
-        import math as _math
-        R = 6371000.0  # 지구 반지름(m)
-        lat1 = _math.radians(req.user_lat)
-        lat2 = _math.radians(float(row["lat"]))
-        dlat = lat2 - lat1
-        dlng = _math.radians(float(row["lng"]) - req.user_lng)
-        a = _math.sin(dlat/2)**2 + _math.cos(lat1) * _math.cos(lat2) * _math.sin(dlng/2)**2
-        distance_m = round(2 * R * _math.asin(_math.sqrt(a)), 1)
+        distance_m = _haversine_m(req.user_lat, req.user_lng, float(row["lat"]), float(row["lng"]))
 
     raw_trans = row["translations"]
     if isinstance(raw_trans, str):
