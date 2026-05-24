@@ -133,7 +133,11 @@ async def get_store_detail(
         # floor_info_seed 는 검색 카드용 lightweight row — open_hours/details/
         # image_urls 비어있음. 사용자가 카드 탭한 지금이 풀필드 fetch 타이밍이라
         # cache miss 로 취급해 아래 fetcher 디스패치 단계로 흘려보낸다.
-        if row and row["source"] != "floor_info_seed":
+        # 빈 source row(=과거 fetcher 가 결과 못 가져와 캐싱된 더미)도 같은 이유로 재시도.
+        is_empty_cache = bool(row) and not (row["source"] or "").strip()
+        if is_empty_cache:
+            print(f"[store_tools] 빈 cache row 감지 — fetcher 재시도: {cache_id!r}")
+        if row and row["source"] != "floor_info_seed" and not is_empty_cache:
             result = _row_to_dict(row)
             # 캐시 히트 + 영어 요청: translations["en"] 없으면 번역 후 DB 업데이트
             if language != "ko":
@@ -320,41 +324,48 @@ async def get_store_detail(
             translations[language] = en_fields
 
     # ── ⑥ store_details UPSERT — 건물 내 매장만 ─────────────────────────────
-    async with pool.acquire() as conn:
-        await conn.execute(
-            """
-            INSERT INTO store_details
-                (id, place_id, store_name, category, category_key,
-                 addr, phone, lat, lng, place_url,
-                 details, open_hours, closed_days, homepage, image_urls,
-                 floor, source, last_updated, translations)
-            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,
-                    $11::jsonb,$12,$13,$14,$15::jsonb,$16,$17,$18,$19::jsonb)
-            ON CONFLICT (id) DO UPDATE SET
-                category      = EXCLUDED.category,
-                category_key  = EXCLUDED.category_key,
-                addr          = EXCLUDED.addr,
-                phone         = EXCLUDED.phone,
-                place_url     = EXCLUDED.place_url,
-                details       = EXCLUDED.details,
-                open_hours    = EXCLUDED.open_hours,
-                closed_days   = EXCLUDED.closed_days,
-                homepage      = EXCLUDED.homepage,
-                image_urls    = EXCLUDED.image_urls,
-                floor         = EXCLUDED.floor,
-                source        = EXCLUDED.source,
-                last_updated  = EXCLUDED.last_updated,
-                translations  = store_details.translations || EXCLUDED.translations
-            """,
-            cache_id, place_id, display_name,
-            category_name, category_key,
-            addr, phone, lat, lng, kakao.get("place_url", ""),
-            details,
-            open_hours, closed_days, homepage,
-            image_urls,
-            floor, source, datetime.now(timezone.utc),
-            translations,
-        )
+    # 가드: fetcher 가 의미있는 결과(source + 최소 1개 필드) 가져왔을 때만 캐싱.
+    # 그렇지 않으면 빈 row 가 store_details 에 영구 박혀서 이후 호출이 캐시 히트로
+    # 빈 결과를 받아 playwright lazy load 가 영원히 안 도는 버그가 발생.
+    has_meaningful_data = bool(source) and bool(open_hours or addr or phone or image_urls or details)
+    if not has_meaningful_data:
+        print(f"[store_tools] fetcher 결과 빈약 — UPSERT 스킵: {cache_id!r} (source={source!r})")
+    else:
+        async with pool.acquire() as conn:
+            await conn.execute(
+                """
+                INSERT INTO store_details
+                    (id, place_id, store_name, category, category_key,
+                     addr, phone, lat, lng, place_url,
+                     details, open_hours, closed_days, homepage, image_urls,
+                     floor, source, last_updated, translations)
+                VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,
+                        $11::jsonb,$12,$13,$14,$15::jsonb,$16,$17,$18,$19::jsonb)
+                ON CONFLICT (id) DO UPDATE SET
+                    category      = EXCLUDED.category,
+                    category_key  = EXCLUDED.category_key,
+                    addr          = EXCLUDED.addr,
+                    phone         = EXCLUDED.phone,
+                    place_url     = EXCLUDED.place_url,
+                    details       = EXCLUDED.details,
+                    open_hours    = EXCLUDED.open_hours,
+                    closed_days   = EXCLUDED.closed_days,
+                    homepage      = EXCLUDED.homepage,
+                    image_urls    = EXCLUDED.image_urls,
+                    floor         = EXCLUDED.floor,
+                    source        = EXCLUDED.source,
+                    last_updated  = EXCLUDED.last_updated,
+                    translations  = store_details.translations || EXCLUDED.translations
+                """,
+                cache_id, place_id, display_name,
+                category_name, category_key,
+                addr, phone, lat, lng, kakao.get("place_url", ""),
+                details,
+                open_hours, closed_days, homepage,
+                image_urls,
+                floor, source, datetime.now(timezone.utc),
+                translations,
+            )
 
     result = {
         "id":           cache_id,

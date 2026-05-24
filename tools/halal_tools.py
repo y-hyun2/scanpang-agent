@@ -2,20 +2,13 @@
 halal_tools.py
 Halal Agent용 도구 함수들.
 - Aladhan API: 기도 시간, 키블라 방향
-- JSON 파일 기반: 할랄 식당, 기도실 검색
+- PostGIS DB: 할랄 식당(halal_restaurants), 기도실(prayer_rooms) 거리 검색
 """
 
 import json
-import os
 from datetime import datetime, timezone, timedelta
 
 import httpx
-
-# ── 경로 ─────────────────────────────────────────────────────────────────────
-
-_DATA_DIR = os.path.join(os.path.dirname(__file__), "..", "rag", "data")
-RESTAURANTS_PATH = os.path.join(_DATA_DIR, "myeongdong_restaurants.json")
-PRAYER_ROOMS_PATH = os.path.join(_DATA_DIR, "prayer_rooms.json")
 
 # ── 기본 반경 ────────────────────────────────────────────────────────────────
 
@@ -102,23 +95,7 @@ async def fetch_qibla_direction(lat: float, lng: float) -> dict:
     }
 
 
-# ── 할랄 식당 검색 (JSON) ────────────────────────────────────────────────────
-
-_restaurants_cache: list = []
-
-
-def _load_restaurants() -> list:
-    global _restaurants_cache
-    if _restaurants_cache:
-        return _restaurants_cache
-    if not os.path.exists(RESTAURANTS_PATH):
-        print(f"[Halal] WARNING: {RESTAURANTS_PATH} 없음")
-        return []
-    with open(RESTAURANTS_PATH, "r", encoding="utf-8") as f:
-        _restaurants_cache = json.load(f)
-    print(f"[Halal] 할랄 식당 {len(_restaurants_cache)}개 로드")
-    return _restaurants_cache
-
+# ── 할랄 식당 검색 (PostGIS) ─────────────────────────────────────────────────
 
 async def halal_restaurant_search(
     lat: float, lng: float, radius: int = 0, halal_type: str = ""
@@ -204,23 +181,7 @@ def _dict_to_today_str(val) -> str:
     return str(today_val) if today_val else ""
 
 
-# ── 기도실 검색 (JSON) ───────────────────────────────────────────────────────
-
-_prayer_rooms_cache: list = []
-
-
-def _load_prayer_rooms() -> list:
-    global _prayer_rooms_cache
-    if _prayer_rooms_cache:
-        return _prayer_rooms_cache
-    if not os.path.exists(PRAYER_ROOMS_PATH):
-        print(f"[Halal] WARNING: {PRAYER_ROOMS_PATH} 없음")
-        return []
-    with open(PRAYER_ROOMS_PATH, "r", encoding="utf-8") as f:
-        _prayer_rooms_cache = json.load(f)
-    print(f"[Halal] 기도실 {len(_prayer_rooms_cache)}개 로드")
-    return _prayer_rooms_cache
-
+# ── 기도실 검색 (PostGIS) ────────────────────────────────────────────────────
 
 async def halal_prayer_room_search(lat: float, lng: float, radius: int = 0) -> list:
     """

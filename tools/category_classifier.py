@@ -112,6 +112,11 @@ _STRONG_NAME_RULES: list[tuple[str, str]] = [
     ("CGV",           "cultural"),
     ("롯데시네마",    "cultural"),
     ("메가박스",      "cultural"),
+    # 의료 — "톤즈의원 명동역" 같이 의원/병원 + 인근역 표기 매장이 subway 로 잘못
+    # 분류되던 버전 대응. _STATION_PATTERN 분기보다 먼저 잡혀야 함.
+    ("의원",          "hospital"),
+    ("병원",          "hospital"),
+    ("약국",          "pharmacy"),
     # 편의점 체인 — Kakao 매칭 실패 시 다른 분류로 빠지면 곤란
     ("CU ",           "convenience_store"),
     ("씨유",          "convenience_store"),  # 한글 — '씨유용인외대' 케이스
@@ -121,8 +126,17 @@ _STRONG_NAME_RULES: list[tuple[str, str]] = [
     ("미니스톱",      "convenience_store"),
 ]
 
-# 매장명이 "역"으로 끝나면 지하철역으로 간주 (예: "을지로입구역", "명동역").
-_STATION_SUFFIX = re.compile(r"역$")
+# 지하철역 매장명 패턴 — "X역" 단독 또는 "X역 N호선" 변형.
+# 예: "명동역", "을지로입구역", "명동역 4호선", "시청역 2호선"
+_STATION_PATTERN = re.compile(r"역(\s+\d+호선)?$")
+
+# false positive 단어 — 마지막이 "X역" 이지만 지하철역이 아님.
+# "X무역"/"X여행"/"X교역" 매장이 모두 subway 로 잘못 분류되던 버그 방지.
+# 주의: "구역" 빼야 함 — "을지로입구역" false negative 방지.
+_NON_STATION_KEYWORDS = re.compile(
+    r"(무역|여행|통역|병역|수역|전역|분역|영역|권역|"
+    r"번역|면역|반역|급역|음역|투역|교역|운영)$"
+)
 
 
 def classify_category(category_name: str, store_name: str = "") -> str:
@@ -147,9 +161,12 @@ def classify_category(category_name: str, store_name: str = "") -> str:
         for keyword, key in _STRONG_NAME_RULES:
             if keyword in store_name:
                 return key
-        # 2차: "...역" suffix (을지로입구역, 명동역, 종로3가역 등)
-        # 단, '여행' 등 단순 단어가 '역'으로 끝나는 경우 방어 — 매장명 길이 ≤ 8자.
-        if len(store_name) <= 10 and _STATION_SUFFIX.search(store_name):
+        # 2차: 지하철역 매장명 패턴 (을지로입구역, 명동역, 명동역 4호선, 시청역 2호선)
+        # 단, '여행/무역/통역/교역' 등 false positive 방어. 매장명에 의원/병원/약국
+        # 키워드는 위 _STRONG_NAME_RULES 가 먼저 잡았으므로 여기 도달 X.
+        if (len(store_name) <= 16
+            and _STATION_PATTERN.search(store_name)
+            and not _NON_STATION_KEYWORDS.search(store_name)):
             return "subway"
 
     # 3차: category_name 기반

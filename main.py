@@ -14,8 +14,6 @@ from schemas.halal import HalalRequest
 from agents.halal_agent import run_halal_agent
 from agents.orchestrator_agent import run_orchestrator
 from core.session_store import get_session_store
-from schemas.restaurant import RestaurantDetailRequest
-from tools.restaurant_tools import get_restaurant_detail
 from schemas.search import SearchRequest, SearchResponse, SearchResultItem, AutocompleteRequest, AutocompleteResponse
 from schemas.place_detail import PlaceDetailRequest, PlaceDetailResponse
 from schemas.user import (
@@ -25,7 +23,7 @@ from schemas.user import (
     InquirySubmitRequest, InquirySubmitResponse,
 )
 from tools.open_hours_parser import is_open_now_combined as _is_open_now_combined
-from tools.translation import translate_fields, apply_lang
+from tools.translation import translate_fields
 import json as _json
 import re as _re
 from datetime import datetime, timedelta, timezone
@@ -189,7 +187,11 @@ async def place_store(req: StoreRequest):
     """
     사용자가 층별 매장 탭 → 매장 상세 정보 반환 (Kakao on-demand + Chroma 캐싱)
     """
-    detail = await get_store_detail(req.place_id, req.store_name, language=req.language)
+    detail = await get_store_detail(
+        req.place_id, req.store_name,
+        lat=req.lat, lng=req.lng,
+        language=req.language,
+    )
     if isinstance(detail, dict):
         details = detail.get("details") or {}
         schedule = details.get("schedule") if isinstance(details, dict) else None
@@ -384,16 +386,6 @@ async def ar_agent_chat(req: AgentChatRequest):
     return result
 
 
-@app.post("/restaurant/detail")
-async def restaurant_detail(req: RestaurantDetailRequest):
-    """
-    식당 이름으로 상세 정보 조회 (일반 식당 + 할랄 식당 통합 검색)
-    """
-    result = get_restaurant_detail(req.name)
-    if result is None:
-        raise HTTPException(status_code=404, detail=f"식당 '{req.name}' 정보를 찾을 수 없습니다.")
-    return result
-
 
 _OUTDOOR_CATEGORIES = {"restroom", "subway", "locker", "prayer_room", "halal_restaurant", "vegan_restaurant", "vegan_cafe", "accommodation", "tourist", "cultural"}
 
@@ -479,6 +471,11 @@ async def _outdoor_search(category_key: str, req: SearchRequest) -> SearchRespon
             return f"vegan__{r['vegan_id']}"
         if category == "prayer_room" and r.get("room_id"):
             return f"prayer__{r['room_id']}"
+        # subway/locker: 매장명 = "역명 호선" 또는 보관함 이름. _subway_detail / _locker_detail 가 query 로 사용.
+        if category == "subway":
+            return f"subway__{r.get('name','')}"
+        if category == "locker":
+            return f"locker__{r.get('name','')}"
         return f"__outdoor__{category}__{r.get('name','')}"
 
     # 화면 표시용 한국어 카테고리 라벨
@@ -561,9 +558,14 @@ async def place_search(req: SearchRequest):
     if not q:
         return SearchResponse(query=req.query, count=0, results=[])
 
-    # 쿼리 → category_key. 한국어 카테고리명("카페"/"화장실") 우선, 그 외엔 매장명 분류 fallback.
+    # 방안 1: 노이즈 단어 제거 — "근처 스타벅스" → "스타벅스", "근처 카페" → "카페"
+    # trgm 유사도 계산과 category 분류 모두 clean_q 기준으로 수행.
+    _NOISE_RE = _re.compile(r'\s*(근처|주변에|주변|가까운|nearby|near)\s*', _re.IGNORECASE)
+    clean_q = _NOISE_RE.sub(' ', q).strip() or q
+
+    # 쿼리 → category_key. 노이즈 제거 후 clean_q 기준으로 분류.
     from tools.category_classifier import classify_query
-    category_key = classify_query(q)
+    category_key = classify_query(clean_q)
     if category_key in _OUTDOOR_CATEGORIES:
         return await _outdoor_search(category_key, req)
 
@@ -572,47 +574,53 @@ async def place_search(req: SearchRequest):
     user_lat = req.lat if req.lat is not None else 37.5636
     user_lng = req.lng if req.lng is not None else 126.9822
     used_fallback = req.lat is None or req.lng is None
-    print(f"[place_search] q={q!r} category_key={category_key!r} "
+    print(f"[place_search] q={q!r} clean_q={clean_q!r} category_key={category_key!r} "
           f"user=({user_lat:.4f},{user_lng:.4f}){' [FALLBACK 명동]' if used_fallback else ''}")
     async with pool.acquire() as conn:
-        # store_details: 매장명 ILIKE OR 분류된 category_key 매칭.
-        # ORDER BY 거리(사용자 좌표 기준) — '식당' 칩이 용인 위치에서 외대 까르보네를
-        # 명동 멜팅소울보다 먼저 보여주는 게 자연스러움. 좌표 없는 row 는 last_updated fallback.
         rows = await conn.fetch(
             """
-            SELECT id, store_name, category, category_key, addr, phone,
-                   place_id, lat, lng, floor, image_urls, open_hours, details,
-                   COALESCE(translations::text, '{}') AS translations,
-                   CASE
-                     WHEN lat IS NOT NULL AND lng IS NOT NULL THEN
-                       ST_Distance(
-                         ST_SetSRID(ST_MakePoint(lng, lat), 4326)::geography,
-                         ST_SetSRID(ST_MakePoint($4::float, $5::float), 4326)::geography
-                       )
-                     ELSE NULL
-                   END AS dist_m
-            FROM store_details
-            WHERE store_name ILIKE $1
-               OR similarity(
-                    regexp_replace(store_name, '\\s+', '', 'g'),
-                    regexp_replace($6, '\\s+', '', 'g')
-                  ) >= 0.3
-               OR ($3 != 'other' AND category_key = $3)
+            SELECT * FROM (
+              SELECT id, store_name, category, category_key, addr, phone,
+                     place_id, lat, lng, floor, image_urls, open_hours, details,
+                     COALESCE(translations::text, '{}') AS translations,
+                     last_updated,
+                     CASE
+                       WHEN lat IS NOT NULL AND lng IS NOT NULL THEN
+                         ST_Distance(
+                           ST_SetSRID(ST_MakePoint(lng, lat), 4326)::geography,
+                           ST_SetSRID(ST_MakePoint($4::float, $5::float), 4326)::geography
+                         )
+                       ELSE NULL
+                     END AS dist_m
+              FROM store_details
+              WHERE store_name ILIKE $1
+                 OR similarity(
+                      regexp_replace(store_name, '\\s+', '', 'g'),
+                      regexp_replace($6, '\\s+', '', 'g')
+                    ) >= 0.3
+                 OR ($3 != 'other' AND category_key = $3)
+            ) sub
             ORDER BY
-              CASE WHEN store_name ILIKE $1 THEN 0 ELSE 1 END,
-              similarity(
-                regexp_replace(store_name, '\\s+', '', 'g'),
-                regexp_replace($6, '\\s+', '', 'g')
-              ) DESC,
-              dist_m NULLS LAST,
-              last_updated DESC NULLS LAST
+              CASE
+                WHEN $3 = 'other' AND store_name ILIKE $1 THEN 0
+                WHEN $3 = 'other' AND similarity(
+                       regexp_replace(store_name, '\\s+', '', 'g'),
+                       regexp_replace($6, '\\s+', '', 'g')
+                     ) >= 0.6 THEN 1
+                WHEN $3 = 'other' AND similarity(
+                       regexp_replace(store_name, '\\s+', '', 'g'),
+                       regexp_replace($6, '\\s+', '', 'g')
+                     ) >= 0.3 THEN 2
+                ELSE 3
+              END,
+              dist_m NULLS LAST
             LIMIT $2
             """,
-            f"%{q}%",
+            f"%{clean_q}%",  # ILIKE도 clean_q 기준
             req.limit,
             category_key,
             user_lng, user_lat,
-            q,
+            clean_q,          # trgm도 clean_q 기준
         )
 
     results: list[SearchResultItem] = []
@@ -1234,6 +1242,94 @@ async def _tourist_detail(tourist_id: str, language: str = "ko", user_lat: float
     )
 
 
+async def _subway_detail(station_query: str, language: str = "ko") -> PlaceDetailResponse:
+    """지하철역 detail — subway_exits 테이블 + seoul_metro fetcher (TAGO 시간표/빠른하차).
+
+    `station_query`: search API 에서 받은 "역명 호선" 텍스트. 예: "명동역 4호선" / "을지로입구역 2호선".
+    seoul_metro.fetch() 가 _parse_query() 로 역명+호선 분리 → subway_exits 조회 + TAGO API 호출.
+    details 키: station_name, line, station_id, exits[], schedule{}, exit_count, fast_alights[]
+    """
+    from tools.details_fetchers import seoul_metro
+    del language  # TODO: TAGO 응답은 한국어 고정. 추후 다국어 시 사용.
+    if not station_query:
+        raise HTTPException(status_code=400, detail="station query 필요")
+    fetched = await seoul_metro.fetch(
+        store_name=station_query, lat=37.5636, lng=126.9822,
+        building_ufid="", category_name="지하철역",
+    )
+    if not fetched or not fetched.get("details", {}).get("station_name"):
+        raise HTTPException(status_code=404, detail=f"지하철역 '{station_query}' 없음")
+    details = fetched.get("details", {}) or {}
+    # 출구 평균 좌표 (대표 좌표 — 카드 거리 계산용)
+    exits = details.get("exits", []) or []
+    lat = lng = None
+    valid_coords = [(e["lat"], e["lng"]) for e in exits if e.get("lat") and e.get("lng")]
+    if valid_coords:
+        lat = sum(c[0] for c in valid_coords) / len(valid_coords)
+        lng = sum(c[1] for c in valid_coords) / len(valid_coords)
+    open_hours = fetched.get("open_hours", "") or ""
+    return PlaceDetailResponse(
+        id=f"subway__{station_query}",
+        store_name=f"{details.get('station_name','')} {details.get('line','')}".strip(),
+        place_id=details.get("station_id") or None,
+        lat=lat, lng=lng,
+        category="지하철역",
+        category_key="subway",
+        addr="",
+        phone=fetched.get("phone", "") or "",
+        floor=None,
+        homepage=None,
+        place_url=None,
+        open_hours=open_hours or None,
+        closed_days=None,
+        is_open_now=_is_open_now_combined(open_hours, None),
+        image_urls=[],
+        details=details,
+        source=fetched.get("source", "tago_subway"),
+        last_updated=None,
+    )
+
+
+async def _locker_detail(query: str, language: str = "ko") -> PlaceDetailResponse:
+    """물품보관함 detail — 서울 OpenAPI 실시간 (seoul_openapi fetcher).
+
+    `query`: search API 에서 받은 매장명 (예: 보관함 위치 명). seoul_openapi.fetch 가 좌표 근처
+    locker 데이터 가져옴. 별도 테이블 없이 매번 외부 API 호출.
+    """
+    from tools.details_fetchers import seoul_openapi
+    del language  # TODO: 서울 OpenAPI 한국어 고정. 추후 다국어 시 사용.
+    if not query:
+        raise HTTPException(status_code=400, detail="locker query 필요")
+    fetched = await seoul_openapi.fetch(
+        store_name=query, lat=37.5636, lng=126.9822,
+        building_ufid="", category_name="물품보관함",
+    )
+    if not fetched:
+        raise HTTPException(status_code=404, detail=f"보관함 '{query}' 없음")
+    details = fetched.get("details", {}) or {}
+    return PlaceDetailResponse(
+        id=f"locker__{query}",
+        store_name=query,
+        place_id=None,
+        lat=details.get("lat"),
+        lng=details.get("lng"),
+        category="물품보관함",
+        category_key="locker",
+        addr=fetched.get("addr", "") or "",
+        phone=fetched.get("phone", "") or "",
+        floor=None,
+        homepage=None,
+        place_url=None,
+        open_hours=fetched.get("open_hours", "") or None,
+        closed_days=None,
+        is_open_now=None,
+        image_urls=[],
+        details=details,
+        source=fetched.get("source", "seoul_openapi"),
+        last_updated=None,
+    )
+
+
 @app.post("/place/detail", response_model=PlaceDetailResponse)
 async def place_detail(req: PlaceDetailRequest):
     """
@@ -1258,6 +1354,10 @@ async def place_detail(req: PlaceDetailRequest):
         return await _accommodation_detail(req.id, language=req.language, user_lat=req.user_lat, user_lng=req.user_lng)
     if req.id.startswith("tourist__"):
         return await _tourist_detail(req.id, language=req.language, user_lat=req.user_lat, user_lng=req.user_lng)
+    if req.id.startswith("subway__"):
+        return await _subway_detail(req.id[len("subway__"):], language=req.language)
+    if req.id.startswith("locker__"):
+        return await _locker_detail(req.id[len("locker__"):], language=req.language)
 
     pool = await get_pool()
     async with pool.acquire() as conn:

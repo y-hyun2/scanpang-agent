@@ -17,7 +17,6 @@ load_dotenv()
 
 KAKAO_REST_API_KEY = os.getenv("KAKAO_REST_API_KEY", "")
 SEOUL_LOCKER_API_KEY = os.getenv("SEOUL_LOCKER_API_KEY", "")
-TMAP_API_KEY = os.getenv("TMAP_API_KEY", "")
 
 PRAYER_ROOMS_PATH = os.path.join(os.path.dirname(__file__), "..", "rag", "data", "prayer_rooms.json")
 
@@ -65,45 +64,6 @@ def get_radius(category: str, custom_radius: int) -> int:
     if cfg:
         return cfg["radius"]
     return DEFAULT_RADIUS.get(category, 500)
-
-
-async def _tmap_open_hours(name: str, lat: float, lng: float) -> str:
-    """TMAP POI 검색으로 운영시간 조회. 없으면 빈 문자열 반환."""
-    if not TMAP_API_KEY:
-        return ""
-    headers = {"appKey": TMAP_API_KEY, "Accept": "application/json"}
-    try:
-        async with httpx.AsyncClient(timeout=5) as client:
-            r = await client.get(
-                "https://apis.openapi.sk.com/tmap/pois",
-                headers=headers,
-                params={
-                    "version": 1,
-                    "searchKeyword": name,
-                    "centerLat": lat,
-                    "centerLon": lng,
-                    "radius": 200,
-                    "count": 3,
-                },
-            )
-            pois = r.json().get("searchPoiInfo", {}).get("pois", {}).get("poi", [])
-            if not pois:
-                return ""
-            poi_id = pois[0].get("id", "")
-            if not poi_id:
-                return ""
-
-            r2 = await client.get(
-                f"https://apis.openapi.sk.com/tmap/pois/{poi_id}",
-                headers=headers,
-                params={"version": 1},
-            )
-            add_info = r2.json().get("poiDetailInfo", {}).get("additionalInfo", "")
-            if add_info and "[영업시간]" in add_info:
-                return add_info.split("[영업시간]")[1].split(";")[0].strip()
-    except Exception:
-        pass
-    return ""
 
 
 async def kakao_category_search(category: str, lat: float, lng: float, radius: int) -> list[dict]:
