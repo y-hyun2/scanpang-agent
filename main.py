@@ -989,7 +989,7 @@ async def _accommodation_search(req: SearchRequest, lat: float, lng: float, lang
     async with pool.acquire() as conn:
         rows = await conn.fetch(
             """
-            SELECT id, name_ko, category, addr, phone, lat, lng,
+            SELECT id, name_ko, category, addr, phone, lat, lng, open_hours,
                    (image_urls->>0) AS image_url,
                    CASE
                      WHEN lat IS NOT NULL AND lng IS NOT NULL THEN
@@ -1017,7 +1017,7 @@ async def _accommodation_search(req: SearchRequest, lat: float, lng: float, lang
             lng=r["lng"],
             image_url=r["image_url"] or None,
             distance_m=round(float(r["dist_m"]), 1) if r["dist_m"] is not None else None,
-            is_open_now=None,
+            is_open_now=_is_open_now_combined(r["open_hours"] or "", None),
         )
         for r in rows
     ]
@@ -1031,7 +1031,7 @@ async def _tourist_search(req: SearchRequest, lat: float, lng: float, language: 
     async with pool.acquire() as conn:
         rows = await conn.fetch(
             """
-            SELECT id, name_ko, category, addr, phone, lat, lng,
+            SELECT id, name_ko, category, addr, phone, lat, lng, open_hours,
                    (image_urls->>0) AS image_url,
                    CASE
                      WHEN lat IS NOT NULL AND lng IS NOT NULL THEN
@@ -1064,7 +1064,7 @@ async def _tourist_search(req: SearchRequest, lat: float, lng: float, language: 
                 lng=r["lng"],
                 image_url=r["image_url"] or None,
                 distance_m=round(float(r["dist_m"]), 1) if r["dist_m"] is not None else None,
-                is_open_now=None,
+                is_open_now=_is_open_now_combined(r["open_hours"] or "", None),
             )
         )
     return SearchResponse(query=req.query, count=len(results), results=results)
