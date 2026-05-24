@@ -242,7 +242,18 @@ Language: {req.language}
 """.strip()
 
     await _progress(80, "도슨트 생성 중...")
-    speech     = await llm_generate_docent(context, req.language)
+    try:
+        speech = await llm_generate_docent(context, req.language)
+    except Exception as e:
+        print(f"[place_insight] docent 생성 실패 (fallback 사용): {e}")
+        fallback = {
+            "ko": f"{place_data.get('name_ko', '이 장소')}입니다.",
+            "en": f"This is {place_data.get('name_ko', 'this place')}.",
+            "ar": f"هذا هو {place_data.get('name_ko', 'هذا المكان')}.",
+            "ja": f"こちらは{place_data.get('name_ko', 'この場所')}です。",
+            "zh": f"这里是{place_data.get('name_ko', '此地点')}。",
+        }
+        speech = fallback.get(req.language, fallback["en"])
     await _progress(95, "완료 처리 중...")
     follow_ups = generate_follow_ups(req.user_message, {
         "floor_info":    floor_info,
