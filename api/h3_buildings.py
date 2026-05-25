@@ -61,6 +61,11 @@ async def get_buildings_chunk(
 
     cells = list(h3.grid_disk(h3_cell, 1))
 
+    # h3_cell 중심 좌표 → ST_DWithin 기준점
+    # 건물 centroid가 아닌 폴리곤(건물 면적) 기준으로 거리 측정하므로
+    # 롯데백화점처럼 centroid가 셀 밖에 있는 큰 건물도 포함된다.
+    cell_lat, cell_lng = h3.cell_to_latlng(h3_cell)
+
     query = """
         SELECT
             ufid,
@@ -72,11 +77,15 @@ async def get_buildings_chunk(
             ST_Y(ST_Centroid(geom)) AS center_lat,
             ST_X(ST_Centroid(geom)) AS center_lng
         FROM buildings
-        WHERE h3_index_10 = ANY($1::varchar[]);
+        WHERE ST_DWithin(
+            geom::geography,
+            ST_Point($2, $1)::geography,
+            300
+        );
     """
     pool = await get_pool()
     async with pool.acquire() as conn:
-        rows = await conn.fetch(query, cells)
+        rows = await conn.fetch(query, cell_lat, cell_lng)
 
     # ── place_info.name_ko 보강: cadastral bld_nm이 NULL인 건물에 한해 ──
     # 좌표 근접(≈50m) 매칭으로 main pool의 place_info에서 진짜 건물명을 가져와 채움.
