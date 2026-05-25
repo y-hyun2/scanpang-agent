@@ -44,11 +44,14 @@ load_dotenv()
 H3_CLUSTER_RES = 7
 CONTENT_TYPE   = 32   # 숙박
 
-# 호텔 내부 부대시설(레스토랑·라운지 등) 이름에 들어가는 키워드.
+# 호텔 내부 부대시설(레스토랑·라운지·바 등) 이름에 들어가는 키워드.
 # 이름에 이런 단어가 있으면 숙박 시설이 아닌 내부 시설로 보고 제외.
 _HOTEL_INTERNAL_KEYWORDS = frozenset({
     "레스토랑", "라운지", "뷔페", "다이닝", "비스트로", "bistro",
     "restaurant", "lounge", "buffet", "dining",
+    "카페",    # 씨카페, 루프탑 카페 등
+    "루프탑",  # 루프탑 바·라운지 등 (숙박 자체가 루프탑인 경우는 없음)
+    "플로팅",  # 플로팅 바·라운지 등 (L7 강남 바이 롯데호텔 플로팅 등)
 })
 
 # ── 테이블 ──────────────────────────────────────────────────────────────────
@@ -251,8 +254,11 @@ async def run(
             # ② Naver 카테고리가 음식점/카페로 분류되면 제외
             name_lower = name.lower()
             naver_cat_lower = naver_category.lower()
-            is_internal = any(kw in name_lower for kw in _HOTEL_INTERNAL_KEYWORDS) or \
-                          any(kw in naver_cat_lower for kw in ("음식점", "카페", "레스토랑"))
+            is_internal = (
+                any(kw in name_lower for kw in _HOTEL_INTERNAL_KEYWORDS)
+                or name_lower.endswith(" 바")   # "루프탑 바" 같은 bar 시설
+                or any(kw in naver_cat_lower for kw in ("음식점", "카페", "레스토랑"))
+            )
             if is_internal:
                 print(f"  [{i:2d}] {name} — 호텔 내부 시설 제외 (naver_category={naver_category!r})")
                 continue
