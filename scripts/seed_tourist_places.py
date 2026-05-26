@@ -160,6 +160,7 @@ async def _fetch_naver(name: str, lat: float, lng: float, addr: str):
             store_name=name, lat=lat, lng=lng,
             building_ufid="", category_name="",
             addr_hint=addr,
+            structured_hours=True,
         )
         details = result.get("details") or {}
         urls    = result.get("image_urls") or []

@@ -905,9 +905,16 @@ async def _halal_detail(restaurant_id: str, language: str = "ko") -> PlaceDetail
     if language != "ko":
         _t = await _ensure_translations(
             pool, "halal_restaurants", "restaurant_id", restaurant_id,
-            {"name": row["name_ko"] or row["name_en"] or "", "addr": row["address"] or "", "open_hours": open_hours_str},
+            {
+                "name":                 row["name_ko"] or row["name_en"] or "",
+                "addr":                 row["address"] or "",
+                "open_hours":           open_hours_str,
+                "short_description_ko": row["short_description_ko"] or "",
+            },
             lat=_lat_h or 0, lng=_lng_h or 0, language=language, existing=_rt,
         )
+        if _t.get("short_description_ko"):
+            details["short_description_ko"] = _t["short_description_ko"]
     else:
         _t = {}
     return PlaceDetailResponse(
@@ -974,7 +981,14 @@ async def _vegan_detail(vegan_id: str, language: str = "ko") -> PlaceDetailRespo
     if language != "ko":
         _t = await _ensure_translations(
             pool, "vegan_restaurants", "id", vegan_id,
-            {"name": row["store_name"] or "", "addr": row["addr"] or "", "open_hours": open_hours, "closed_days": row["closed_days"] or ""},
+            {
+                "name":        row["store_name"] or "",
+                "addr":        row["addr"] or "",
+                "open_hours":  open_hours,
+                "closed_days": row["closed_days"] or "",
+                "vegan_level": d.get("vegan_level", ""),
+                "vegan_menu":  d.get("vegan_menu", ""),
+            },
             lat=_lat_v or 0, lng=_lng_v or 0, language=language, existing=_rt,
         )
     else:
@@ -997,8 +1011,8 @@ async def _vegan_detail(vegan_id: str, language: str = "ko") -> PlaceDetailRespo
         is_open_now=_is_open_now_combined(open_hours, None),
         image_urls=(_j(row["image_urls"]) or []),
         details={
-            "vegan_level": d.get("vegan_level", ""),
-            "vegan_menu":  d.get("vegan_menu", ""),
+            "vegan_level":     _t.get("vegan_level") or d.get("vegan_level", ""),
+            "vegan_menu":      _t.get("vegan_menu") or d.get("vegan_menu", ""),
             "restaurant_type": d.get("restaurant_type", ""),
         },
         source="vegan_restaurants",
@@ -1053,9 +1067,16 @@ async def _prayer_detail(room_id: str, language: str = "ko") -> PlaceDetailRespo
     if language != "ko":
         _t = await _ensure_translations(
             pool, "prayer_rooms", "room_id", room_id,
-            {"name": row["name"] or "", "addr": row["address"] or "", "open_hours": row["open_hours"] or ""},
+            {
+                "name":       row["name"] or "",
+                "addr":       row["address"] or "",
+                "open_hours": row["open_hours"] or "",
+                "notes":      row["notes"] or "",
+            },
             lat=_lat_p or 0, lng=_lng_p or 0, language=language, existing=_rt,
         )
+        if _t.get("notes"):
+            details["notes"] = _t["notes"]
     else:
         _t = {}
     return PlaceDetailResponse(
@@ -1203,10 +1224,20 @@ async def _accommodation_detail(acc_id: str, language: str = "ko", user_lat: flo
         except Exception: _rt = {}
     if not isinstance(_rt, dict):
         _rt = {}
+    _info   = _strip_html(row["infocenterlodging"] or "")
+    _park   = _strip_html(row["parkinglodging"] or "")
+    _resv   = _strip_html(row["reservationlodging"] or "")
     if language != "ko":
         _t = await _ensure_translations(
             pool, "accommodation_places", "id", acc_id,
-            {"name": row["name_ko"] or "", "addr": row["addr"] or "", "open_hours": open_hours_str},
+            {
+                "name":               row["name_ko"] or "",
+                "addr":               row["addr"] or "",
+                "open_hours":         open_hours_str,
+                "infocenterlodging":  _info,
+                "parkinglodging":     _park,
+                "reservationlodging": _resv,
+            },
             lat=_lat_a or 0, lng=_lng_a or 0, language=language, existing=_rt,
         )
     else:
@@ -1233,9 +1264,9 @@ async def _accommodation_detail(acc_id: str, language: str = "ko", user_lat: flo
         details={
             "checkintime":        _strip_html(row["checkintime"] or ""),
             "checkouttime":       _strip_html(row["checkouttime"] or ""),
-            "infocenterlodging":  _strip_html(row["infocenterlodging"] or ""),
-            "parkinglodging":     _strip_html(row["parkinglodging"] or ""),
-            "reservationlodging": _strip_html(row["reservationlodging"] or ""),
+            "infocenterlodging":  _t.get("infocenterlodging") or _info,
+            "parkinglodging":     _t.get("parkinglodging") or _park,
+            "reservationlodging": _t.get("reservationlodging") or _resv,
             "reservationurl":     _extract_url(row["reservationurl"] or ""),
             "conveniences":       convs or [],
         },
@@ -1306,9 +1337,16 @@ async def _tourist_detail(tourist_id: str, language: str = "ko", user_lat: float
     if language != "ko":
         _t = await _ensure_translations(
             pool, "tourist_places", "id", tourist_id,
-            {"name": row["name_ko"] or "", "addr": row["addr"] or "", "open_hours": open_hours_str, "description": overview},
+            {
+                "name":        row["name_ko"] or "",
+                "addr":        row["addr"] or "",
+                "open_hours":  open_hours_str,
+                "description": overview,
+                **{k: v for k, v in type_details.items() if v},
+            },
             lat=_lat_t or 0, lng=_lng_t or 0, language=language, existing=_rt,
         )
+        type_details = {k: _t.get(k) or v for k, v in type_details.items()}
     else:
         _t = {}
     dist_t = _haversine_m(user_lat, user_lng, _lat_t, _lng_t) if (user_lat and user_lng and _lat_t and _lng_t) else None

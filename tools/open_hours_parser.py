@@ -143,6 +143,41 @@ _CLOSE_ONLY_RE = re.compile(r"(\d{1,2})\s*시\s*(?:에?\s*영업\s*종료|까지
 _OPEN_ONLY_RE  = re.compile(r"(\d{1,2})\s*시\s*(?:시작|부터|에\s*시작)")
 
 
+def _parse_month_range(text: str) -> Optional[tuple[int, int]]:
+    """텍스트에서 'N월~M월' 또는 'N~M월' 범위를 추출한다."""
+    m = re.search(r"(\d{1,2})\s*월?\s*[~～]\s*(\d{1,2})\s*월", text)
+    if m:
+        return int(m.group(1)), int(m.group(2))
+    return None
+
+
+def _month_in_range(month: int, start: int, end: int) -> bool:
+    """현재 월이 [start, end] 안에 있는지. 동절기(11~3)처럼 wrap-around 지원."""
+    if start <= end:
+        return start <= month <= end
+    return month >= start or month <= end
+
+
+def _find_weekday_weekend_line(lines: list[str], today_idx: int) -> Optional[str]:
+    """평일/주말 키워드가 포함된 라인 목록에서 오늘에 해당하는 줄을 반환한다."""
+    has_ww = any("평일" in ln or "주말" in ln for ln in lines)
+    if not has_ww:
+        return None
+    is_weekday = today_idx < 5  # 0=월 ~ 4=금
+    if is_weekday:
+        return next((ln for ln in lines if "평일" in ln), None)
+    return next((ln for ln in lines if "주말" in ln), None)
+
+
+def _find_monthly_line(lines: list[str], current_month: int) -> Optional[str]:
+    """[N월~M월] / 하절기(N월~M월) 등 계절·월별 라인에서 현재 월에 맞는 줄을 반환한다."""
+    for ln in lines:
+        rng = _parse_month_range(ln)
+        if rng and _month_in_range(current_month, rng[0], rng[1]):
+            return ln
+    return None
+
+
 def _check_single_time(s: str, now_t: time) -> Optional[bool]:
     """범위 없이 종료 또는 시작 시각만 있는 경우 부분 판정.
 
@@ -199,16 +234,17 @@ def is_open_now(open_hours: str, now: Optional[datetime] = None) -> Optional[boo
     now_t = now.time()
     today_idx = now.weekday()
 
+    _SPLIT_RE = re.compile(r'\n|<br\s*/?>\s*|\s*/\s*')
+
     # 1) 항상 열림 키워드
     if any(kw in text for kw in _ALWAYS_OPEN_KEYWORDS):
-        # 단, 오늘 휴무 명시면 False 우선
-        split_lines = [ln.strip() for ln in re.split(r'\n|\s*/\s*', text) if ln.strip()]
+        split_lines = [ln.strip() for ln in _SPLIT_RE.split(text) if ln.strip()]
         today_line = _find_today_line(split_lines, today_idx)
         if today_line and any(kw in today_line for kw in _CLOSED_KEYWORDS):
             return False
         return True
 
-    lines = [ln.strip() for ln in re.split(r'\n|\s*/\s*', text) if ln.strip()]
+    lines = [ln.strip() for ln in _SPLIT_RE.split(text) if ln.strip()]
 
     # 2) 요일별 라인 형식 — 오늘 줄에서 판정
     today_line = _find_today_line(lines, today_idx) if len(lines) > 1 else None
@@ -218,19 +254,39 @@ def is_open_now(open_hours: str, now: Optional[datetime] = None) -> Optional[boo
         rng = _parse_range(today_line)
         if rng:
             return _is_in_range(now_t, rng[0], rng[1])
-        # 단일 종료/시작 시각 시도 후 판정 불가
         return _check_single_time(today_line, now_t)
 
-    # 3) 단순 단일 라인 ("매일 09:00-22:00" 같은 경우)
+    # 3) 평일/주말 라인 형식
+    if len(lines) > 1:
+        ww_line = _find_weekday_weekend_line(lines, today_idx)
+        if ww_line:
+            if any(kw in ww_line for kw in _CLOSED_KEYWORDS):
+                return False
+            rng = _parse_range(ww_line)
+            if rng:
+                return _is_in_range(now_t, rng[0], rng[1])
+            return _check_single_time(ww_line, now_t)
+
+    # 4) 계절/월별 라인 형식 ([N월~M월], 하절기, 동절기 등)
+    if len(lines) > 1:
+        monthly_line = _find_monthly_line(lines, now.month)
+        if monthly_line:
+            if any(kw in monthly_line for kw in _CLOSED_KEYWORDS):
+                return False
+            rng = _parse_range(monthly_line)
+            if rng:
+                return _is_in_range(now_t, rng[0], rng[1])
+            return _check_single_time(monthly_line, now_t)
+
+    # 5) 단순 단일 라인 ("매일 09:00-22:00" 같은 경우)
     if any(kw in text for kw in _CLOSED_KEYWORDS):
-        # "정기휴무" 단독이면 영업 종료
         if not _RANGE_RE.search(text):
             return False
     rng = _parse_range(text)
     if rng:
         return _is_in_range(now_t, rng[0], rng[1])
 
-    # 4) 단일 종료/시작 시각 패턴 ("N시에 영업종료", "N시까지", "N시 시작" 등)
+    # 6) 단일 종료/시작 시각 패턴 ("N시에 영업종료", "N시까지", "N시 시작" 등)
     return _check_single_time(text, now_t)
 
 
@@ -253,6 +309,16 @@ if __name__ == "__main__":
         ("18시에 영업종료",               None),   # now 14:30 < 18:00 → 불확실 (시작 시각 모름)
         ("9시 시작",                      None),   # now 14:30 >= 9:00 → 불확실 (종료 시각 모름)
         ("15시 시작",                     False),  # now 14:30 < 15:00 → 아직 시작 전
+        # 평일/주말 형식 (금요일 = 평일)
+        ("평일 09:00~21:00 / 주말 09:00~20:00",  True),   # 금=평일, 14:30 in 09-21
+        ("평일 09:00~12:00 / 주말 09:00~20:00",  False),  # 금=평일, 14:30 > 12:00
+        ("평일 09:00~21:00<br>주말 09:00~20:00", True),   # <br> 구분자
+        # 월별 형식 (5월)
+        ("[1월~2월] 09:00~17:00<br>[3월~5월] 09:00~18:00<br>[6월~8월] 09:00~18:30", True),  # 5월→3~5월 구간
+        ("[1월~2월] 09:00~13:00<br>[3월~5월] 09:00~13:00<br>[6월~8월] 09:00~18:30", False), # 5월→14:30>13:00
+        # 하절기/동절기 형식 (5월=하절기)
+        ("하절기(4월~10월) 09:00~21:00 / 동절기(11월~3월) 09:00~20:00", True),  # 5월=하절기
+        ("하절기(4월~10월) 09:00~13:00 / 동절기(11월~3월) 09:00~20:00", False), # 5월=하절기, 14:30>13:00
     ]
     for s, want in cases:
         got = is_open_now(s, now=now)

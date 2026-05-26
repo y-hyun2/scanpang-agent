@@ -15,8 +15,11 @@ import asyncio
 import json
 import re
 import urllib.parse as _urlparse
+from datetime import datetime, timezone, timedelta
 
 import httpx
+
+_KST = timezone(timedelta(hours=9))
 
 _API_URL = "https://map.naver.com/p/api/entry/addressDetailPlace"
 _REVERSE_GEOCODE_URL = "https://map.naver.com/p/api/location/geocode"
@@ -91,6 +94,68 @@ def _parse_floor(*texts: str) -> str:
 def _classify_kind(category: str) -> str:
     """매장(store) / 편의시설(facility) 구분."""
     return "facility" if any(kw in category for kw in _FACILITY_CATEGORIES) else "store"
+
+
+def _section_months(name: str) -> list[int]:
+    """
+    섹션 이름에서 해당 월 목록을 추출한다.
+    '3~5/9~10월' → [3,4,5,9,10] / '6월~8월' → [6,7,8] / '기본' → []
+    """
+    months: list[int] = []
+    for part in re.split(r"[/,]", name):
+        m = re.search(r"(\d{1,2})\s*월?\s*[~～]\s*(\d{1,2})\s*월?", part)
+        if m:
+            start, end = int(m.group(1)), int(m.group(2))
+            months.extend(range(start, end + 1))
+    return months
+
+
+def _format_weekly_hours(nbh_list) -> str:
+    """
+    placeDetail.newBusinessHours 배열 → "월 09:00-18:00 / 화 09:00-22:00 / ..." 문자열.
+
+    계절별 복수 섹션('1~2/11~12월', '3~5/9~10월' …)은 현재 월에 맞는 섹션 선택.
+    월 매칭 없으면 첫 번째 섹션 fallback (자료실/집중학습실처럼 병렬 섹션도 동일).
+    영업일이 하나도 없으면 빈 문자열 반환.
+    """
+    if not nbh_list or not isinstance(nbh_list, list):
+        return ""
+
+    current_month = datetime.now(_KST).month
+
+    section = None
+    for s in nbh_list:
+        months = _section_months(s.get("name", ""))
+        if months and current_month in months:
+            section = s
+            break
+    if section is None:
+        section = nbh_list[0]
+
+    daily = section.get("businessHours") or []
+    parts = []
+    for entry in daily:
+        bh = entry.get("businessHours")
+        if bh and isinstance(bh, dict):
+            start = bh.get("start", "")
+            end = bh.get("end", "")
+            if start and end:
+                parts.append(f"{entry['day']} {start}-{end}")
+    return " / ".join(parts)
+
+
+def _get_detail_open_hours(apollo: dict) -> str:
+    """
+    상세 페이지 Apollo state에서 전체 주간 영업시간 문자열을 추출한다.
+    ROOT_QUERY.placeDetail(...).newBusinessHours → _format_weekly_hours().
+    """
+    root_q = apollo.get("ROOT_QUERY") or {}
+    pd_key = next((k for k in root_q if "placeDetail" in k), None)
+    if not pd_key:
+        return ""
+    pd = _resolve_apollo(apollo, root_q[pd_key])
+    nbh = pd.get("newBusinessHours")
+    return _format_weekly_hours(nbh)
 
 
 def _normalize_item(item: dict) -> dict | None:
@@ -349,6 +414,7 @@ async def fetch_place_detail(
     query: str,
     expected_name: str = "",
     expected_addr: str = "",
+    structured_hours: bool = False,
 ) -> dict:
     """
     Naver Place 상세를 httpx + Apollo state 파싱으로 가져온다.
@@ -362,6 +428,8 @@ async def fetch_place_detail(
         query: 검색어 (장소명 또는 주소)
         expected_name: 이름 매칭 필터 (rapidfuzz partial_ratio >= 60)
         expected_addr: 주소 매칭 필터 (도로명+번호 포함 여부)
+        structured_hours: True이면 상세 페이지 Apollo state에서 전체 주간 스케줄을 추출.
+                          False(기본)이면 목록 아이템의 newBusinessHours.description 사용.
 
     Returns:
         {place_id, name, phone, roadAddress, address, category, conveniences,
@@ -397,16 +465,26 @@ async def fetch_place_detail(
             place_id = matched["id"]
             print(f"[naver_map_scraper] place 발견: id={place_id} ({query!r})")
 
-            # 목록 아이템에서 이미지·영업시간 현황 추출
+            # 목록 아이템에서 이미지 추출
             image_urls = _filter_ldb_images(matched.get("imageUrls") or [])
-            nbh_raw = matched.get("newBusinessHours")
-            nbh = _resolve_apollo(apollo_list, nbh_raw) if nbh_raw else {}
-            open_hours = nbh.get("description", "") if isinstance(nbh, dict) else ""
 
-            # 2. 상세 페이지 Apollo state → conveniences·추가 이미지
+            # 2. 상세 페이지 Apollo state → conveniences·추가 이미지·영업시간
             detail_url = f"https://pcmap.place.naver.com/place/{place_id}/home"
             resp2 = await client.get(detail_url)
             apollo_detail = _parse_apollo_state(resp2.text)
+
+            # 영업시간: structured_hours=True면 상세 페이지의 전체 주간 스케줄 추출
+            # 아니면 목록 아이템의 newBusinessHours.description (현재 상태 텍스트)
+            if structured_hours:
+                open_hours = _get_detail_open_hours(apollo_detail)
+                if not open_hours:
+                    nbh_raw = matched.get("newBusinessHours")
+                    nbh = _resolve_apollo(apollo_list, nbh_raw) if nbh_raw else {}
+                    open_hours = nbh.get("description", "") if isinstance(nbh, dict) else ""
+            else:
+                nbh_raw = matched.get("newBusinessHours")
+                nbh = _resolve_apollo(apollo_list, nbh_raw) if nbh_raw else {}
+                open_hours = nbh.get("description", "") if isinstance(nbh, dict) else ""
 
             base = {}
             for prefix in ("PlaceDetailBase", "AccommodationDetailBase",

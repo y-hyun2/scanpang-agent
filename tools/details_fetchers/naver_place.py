@@ -14,6 +14,7 @@ async def fetch(
     building_ufid: str = "",
     category_name: str = "",
     addr_hint: str = "",
+    structured_hours: bool = False,
 ) -> dict:
     """
     Naver Place에서 매장 상세를 가져와 store_details fetcher 포맷으로 변환.
@@ -31,10 +32,10 @@ async def fetch(
         return {}
 
     query = addr_hint if addr_hint else store_name
-    detail = await fetch_place_detail(query=query, expected_name=store_name)
+    detail = await fetch_place_detail(query=query, expected_name=store_name, structured_hours=structured_hours)
     # addr_hint 검색 실패 시 장소명으로 재시도
     if not detail and addr_hint:
-        detail = await fetch_place_detail(query=store_name, expected_name=store_name)
+        detail = await fetch_place_detail(query=store_name, expected_name=store_name, structured_hours=structured_hours)
     if not detail:
         return {}
 
