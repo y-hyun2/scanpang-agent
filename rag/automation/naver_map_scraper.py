@@ -68,22 +68,23 @@ _FACILITY_CATEGORIES = (
 def _parse_floor(*texts: str) -> str:
     """
     주어진 텍스트들에서 첫 번째 층 표기를 찾아 **정규화된 키**로 반환한다.
-    "3층"/"3F"/"3 층"/"지상3층"은 모두 "3F"로,
-    "지하1층"/"B1"/"B1층"은 모두 "B1"으로 통일한다.
+    `tools.floor_utils.normalize_floor` 와 동일 형식 ("B{n}" / "{n}F" / "RF" / "기타")
+    으로 통일한다. 매칭 실패 시 빈 문자열.
     """
+    from tools.floor_utils import normalize_floor
+
     for t in texts:
         if not t:
             continue
         m = _FLOOR_RE.search(t)
         if m:
             g_basement_kor, g_basement_b, g_aboveF, g_above_kor = m.groups()
-            # 지하 그룹이 잡혔으면 B{n}
             basement = g_basement_kor or g_basement_b
             if basement:
-                return f"B{int(basement)}"
+                return normalize_floor(f"B{int(basement)}")
             above = g_aboveF or g_above_kor
             if above:
-                return f"{int(above)}F"
+                return normalize_floor(f"{int(above)}F")
     return ""
 
 

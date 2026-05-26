@@ -174,25 +174,18 @@ async def fetch_floor_info(building_key: str) -> list:
             print(f"    소상공인 API 오류 ({building_key}): {e}")
             return []
 
+    from tools.floor_utils import normalize_floor, floor_sort_key
+
     items = data.get("body", {}).get("items", [])
     floor_map: dict[str, list] = {}
     for item in items:
-        floor = item.get("flrNo", "").strip() or "기타"
+        # flrNo("1"/"B1"/"지하1층") → 정규화 ("1F"/"B1") + "기타" 통일
+        floor = normalize_floor(item.get("flrNo", ""))
         store_name = item.get("bizesNm", "").strip()
         biz_type = item.get("indsMclsNm", "").strip()
         if store_name:
             label = f"{store_name} ({biz_type})" if biz_type else store_name
             floor_map.setdefault(floor, []).append(label)
-
-    def floor_sort_key(f: str):
-        if f == "기타":
-            return (1, 9999)
-        f_stripped = f.lstrip("B").lstrip("b")
-        try:
-            num = int(f_stripped)
-            return (0, -num) if f.upper().startswith("B") else (0, num)
-        except ValueError:
-            return (1, 0)
 
     sorted_floors = sorted(floor_map.items(), key=lambda x: floor_sort_key(x[0]))
     return [{"floor": f, "stores": s} for f, s in sorted_floors]
