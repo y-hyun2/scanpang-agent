@@ -10,6 +10,7 @@ translate_fields() 가 메인 진입점.
 예: {"name": "Halal Restaurant", "addr": "14 Myeongdong-gil...", "open_hours": "Daily 11:00~22:00"}
 """
 
+import asyncio
 import os
 import httpx
 
@@ -110,31 +111,19 @@ async def translate_fields(
     if lang == "ko":
         return {}
 
-    result: dict[str, str] = {}
-
-    for field, text in fields.items():
+    async def _translate_field(field: str, text: str) -> tuple[str, str | None]:
         if not text or not text.strip():
-            continue
-
-        translated: str | None = None
-
+            return field, None
         if field == "name":
-            translated = await _google_place_name(text, lat, lng)
-            if not translated:
-                translated = await _google_translate(text)
-
+            translated = await _google_place_name(text, lat, lng) or await _google_translate(text)
         elif field == "addr":
-            translated = await _google_geocode_addr(lat, lng)
-            if not translated:
-                translated = await _google_translate(text)
-
+            translated = await _google_geocode_addr(lat, lng) or await _google_translate(text)
         else:
             translated = await _google_translate(text)
+        return field, translated
 
-        if translated:
-            result[field] = translated
-
-    return result
+    pairs = await asyncio.gather(*[_translate_field(f, t) for f, t in fields.items()])
+    return {f: t for f, t in pairs if t}
 
 
 def apply_lang(
