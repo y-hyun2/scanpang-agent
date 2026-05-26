@@ -3,7 +3,7 @@ tools/translation.py
 장소 데이터 필드별 영문화 — 두 단계 전략.
 
 1차: Google Places (name) / Google Geocoding (addr) — 공식 영문명/로마자 주소
-2차: Naver Papago NMT — 1차 실패 or API 키 없을 때 fallback
+2차: Google Cloud Translation API — 1차 실패 or 그 외 필드 fallback
 
 translate_fields() 가 메인 진입점.
 반환값은 translations JSONB에 바로 저장 가능한 dict.
@@ -14,13 +14,11 @@ import os
 import httpx
 
 GOOGLE_MAPS_API_KEY = os.getenv("GOOGLE_MAPS_API_KEY", "")
-NAVER_CLIENT_ID     = os.getenv("NAVER_CLIENT_ID", "")
-NAVER_CLIENT_SECRET = os.getenv("NAVER_CLIENT_SECRET", "")
 
 _HTTP_TIMEOUT = 5.0
 
 
-# ── Google APIs ──────────────────────────────────────────────────────────────
+# ── Google Places ─────────────────────────────────────────────────────────────
 
 async def _google_place_name(store_name: str, lat: float, lng: float) -> str | None:
     """Google Places Find Place → 반경 100m 내 매칭 → 영문 이름."""
@@ -47,6 +45,8 @@ async def _google_place_name(store_name: str, lat: float, lng: float) -> str | N
     return None
 
 
+# ── Google Geocoding ──────────────────────────────────────────────────────────
+
 async def _google_geocode_addr(lat: float, lng: float) -> str | None:
     """Google Geocoding API → 좌표 기반 영문(로마자) 주소."""
     if not GOOGLE_MAPS_API_KEY:
@@ -69,26 +69,20 @@ async def _google_geocode_addr(lat: float, lng: float) -> str | None:
     return None
 
 
-# ── Papago ───────────────────────────────────────────────────────────────────
+# ── Google Cloud Translation ──────────────────────────────────────────────────
 
-async def _papago(text: str) -> str | None:
-    """Naver Papago NMT ko → en. 빈 텍스트·키 없으면 None."""
-    if not NAVER_CLIENT_ID or not NAVER_CLIENT_SECRET:
-        return None
-    if not text or not text.strip():
+async def _google_translate(text: str) -> str | None:
+    """Google Cloud Translation Basic API ko → en."""
+    if not GOOGLE_MAPS_API_KEY or not text or not text.strip():
         return None
     try:
         async with httpx.AsyncClient(timeout=_HTTP_TIMEOUT) as client:
             r = await client.post(
-                "https://naveropenapi.apigw.ntruss.com/nmt/v1/translation",
-                headers={
-                    "X-NCP-APIGW-API-KEY-ID": NAVER_CLIENT_ID,
-                    "X-NCP-APIGW-API-KEY":    NAVER_CLIENT_SECRET,
-                    "Content-Type":           "application/json",
-                },
-                json={"source": "ko", "target": "en", "text": text},
+                "https://translation.googleapis.com/language/translate/v2",
+                params={"key": GOOGLE_MAPS_API_KEY},
+                json={"q": text, "source": "ko", "target": "en", "format": "text"},
             )
-        return r.json()["message"]["result"]["translatedText"]
+        return r.json()["data"]["translations"][0]["translatedText"]
     except Exception:
         pass
     return None
@@ -106,9 +100,9 @@ async def translate_fields(
     {field_name: 한국어_텍스트} → {field_name: 번역된_텍스트}
 
     필드별 전략:
-    - "name"  : Google Places → Papago
-    - "addr"  : Google Geocoding → Papago
-    - 나머지   : Papago (open_hours, closed_days, description 등)
+    - "name"  : Google Places → Google Translate
+    - "addr"  : Google Geocoding → Google Translate
+    - 나머지   : Google Translate (open_hours, closed_days, description 등)
 
     번역 실패 or 빈 값인 필드는 결과에 포함되지 않음.
     호출자는 결과를 translations[lang]에 병합해 저장.
@@ -127,15 +121,15 @@ async def translate_fields(
         if field == "name":
             translated = await _google_place_name(text, lat, lng)
             if not translated:
-                translated = await _papago(text)
+                translated = await _google_translate(text)
 
         elif field == "addr":
             translated = await _google_geocode_addr(lat, lng)
             if not translated:
-                translated = await _papago(text)
+                translated = await _google_translate(text)
 
         else:
-            translated = await _papago(text)
+            translated = await _google_translate(text)
 
         if translated:
             result[field] = translated
