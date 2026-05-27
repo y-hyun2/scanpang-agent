@@ -27,3 +27,9 @@ ALTER TABLE tourist_places
 
 ALTER TABLE public_restrooms
     ADD COLUMN IF NOT EXISTS translations JSONB DEFAULT '{}'::jsonb;
+
+ALTER TABLE place_info
+    ADD COLUMN IF NOT EXISTS translations JSONB DEFAULT '{}'::jsonb;
+
+ALTER TABLE subway_exits
+    ADD COLUMN IF NOT EXISTS translations JSONB DEFAULT '{}'::jsonb;
