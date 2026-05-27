@@ -1,17 +1,14 @@
 """
 seed_from_buildings.py
-buildings DB에 데이터가 있는 지역의 store_details를 자동으로 시드한다.
+buildings DB의 모든 건물에 대해 store_details를 자동으로 시드한다.
 
-H3 res-7로 건물 클러스터를 구성한 뒤 Kakao 카테고리 검색(페이지네이션, 최대 45개/카테고리)으로
-주변 매장을 수집한다.
-
-id 규칙:
-  - Kakao 좌표가 buildings.geom 폴리곤 안에 있으면 → {ufid}__{store_name}
-  - 어떤 건물 폴리곤에도 속하지 않으면     → __outdoor__{store_name}
+각 건물의 center_lat/center_lng 기준 소반경(기본 150m) Kakao 카테고리 검색으로
+해당 건물 근처 매장을 수집한다. 매장은 ST_DWithin 50m로 건물 폴리곤에 매칭하며,
+어느 건물에도 속하지 않는 매장은 __outdoor__ 처리(건너뜀)한다.
 
 사용:
     python scripts/seed_from_buildings.py
-    python scripts/seed_from_buildings.py --per-category 45 --radius 1500
+    python scripts/seed_from_buildings.py --per-category 15 --radius 200
     python scripts/seed_from_buildings.py --skip-existing
     python scripts/seed_from_buildings.py --categories cafe convenience_store pharmacy
 """
@@ -26,7 +23,6 @@ import time
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-import h3
 import httpx
 from dotenv import load_dotenv
 
@@ -35,8 +31,6 @@ from tools.store_tools import get_store_detail
 
 load_dotenv()
 KAKAO_REST_API_KEY = os.getenv("KAKAO_REST_API_KEY", "")
-
-H3_CLUSTER_RES = 7  # ~5km² 단위 클러스터 (명동/역삼/외대 각 1~2셀)
 
 CATEGORY_CODES: dict[str, str] = {
     "cafe":              "CE7",
@@ -135,42 +129,32 @@ async def _find_building_for_store(
                 return None
 
 
-# ── buildings 로드 & 클러스터링 ───────────────────────────────────────────────
+# ── buildings 로드 ────────────────────────────────────────────────────────────
 
-async def load_building_clusters() -> list[tuple[str, float, float, int]]:
-    """buildings DB에서 H3 res-7 클러스터별 (cell, lat, lng, 건물수)를 반환."""
+async def load_buildings() -> list[tuple[str, str, float, float]]:
+    """buildings DB에서 (ufid, bld_nm, center_lat, center_lng) 목록 반환."""
     pool = await get_pool()
     async with pool.acquire() as conn:
         rows = await conn.fetch(
-            "SELECT center_lat, center_lng FROM buildings "
-            "WHERE center_lat IS NOT NULL AND center_lng IS NOT NULL"
+            "SELECT ufid, bld_nm, center_lat, center_lng FROM buildings "
+            "WHERE ufid IS NOT NULL AND center_lat IS NOT NULL AND center_lng IS NOT NULL"
         )
-
-    cluster_map: dict[str, int] = {}
-    for row in rows:
-        cell = h3.latlng_to_cell(row["center_lat"], row["center_lng"], H3_CLUSTER_RES)
-        cluster_map[cell] = cluster_map.get(cell, 0) + 1
-
-    clusters = []
-    for cell, cnt in cluster_map.items():
-        center = h3.cell_to_latlng(cell)
-        clusters.append((cell, center[0], center[1], cnt))
-    return clusters
+    return [(r["ufid"], r["bld_nm"] or "", r["center_lat"], r["center_lng"]) for r in rows]
 
 
-def sort_clusters(
-    clusters: list[tuple[str, float, float, int]],
+def sort_buildings(
+    buildings: list[tuple[str, str, float, float]],
     prefer_lat: float | None,
     prefer_lng: float | None,
-) -> list[tuple[str, float, float, int]]:
+) -> list[tuple[str, str, float, float]]:
     if prefer_lat is not None and prefer_lng is not None:
-        def _dist(c):
-            dlat = math.radians(c[1] - prefer_lat)
-            dlng = math.radians(c[2] - prefer_lng)
-            a = math.sin(dlat/2)**2 + math.cos(math.radians(prefer_lat)) * math.cos(math.radians(c[1])) * math.sin(dlng/2)**2
+        def _dist(b):
+            dlat = math.radians(b[2] - prefer_lat)
+            dlng = math.radians(b[3] - prefer_lng)
+            a = math.sin(dlat/2)**2 + math.cos(math.radians(prefer_lat)) * math.cos(math.radians(b[2])) * math.sin(dlng/2)**2
             return math.asin(math.sqrt(a))
-        return sorted(clusters, key=_dist)
-    return sorted(clusters, key=lambda x: -x[3])
+        return sorted(buildings, key=_dist)
+    return buildings
 
 
 # ── 메인 ──────────────────────────────────────────────────────────────────────
@@ -188,18 +172,14 @@ async def run(
         print("KAKAO_REST_API_KEY 가 .env 에 없음 — 중단")
         return
 
-    clusters = sort_clusters(await load_building_clusters(), prefer_lat, prefer_lng)
-    if not clusters:
+    buildings = sort_buildings(await load_buildings(), prefer_lat, prefer_lng)
+    if not buildings:
         print("buildings DB에 데이터 없음 — 중단")
         return
 
-    bld_cnt_total = sum(c[3] for c in clusters)
-    print(f"클러스터 {len(clusters)}개 (건물 {bld_cnt_total}개, H3 res-{H3_CLUSTER_RES}):")
-    for cell, lat, lng, cnt in clusters:
-        print(f"  {cell}  lat={lat:.4f} lng={lng:.4f}  건물={cnt}개")
+    print(f"처리 대상 건물 {len(buildings)}개 (반경 {radius}m, 카테고리당 최대 {per_category}개)")
 
     pool = await get_pool()
-    bld_pool = pool  # buildings 도 동일한 DB 사용 — 변수명 호환용
 
     async with pool.acquire() as conn:
         existing: set[str] = (
@@ -209,23 +189,23 @@ async def run(
 
     total_results: list[dict] = []
     t_start = time.time()
+    first_store = True
 
     async with httpx.AsyncClient() as client:
-        for c_idx, (cell, lat, lng, bld_cnt) in enumerate(clusters, 1):
+        for b_idx, (ufid, bld_nm, lat, lng) in enumerate(buildings, 1):
             print(f"\n{'='*60}")
-            print(f"[{c_idx}/{len(clusters)}] 클러스터 {cell}  건물={bld_cnt}개")
+            print(f"[{b_idx}/{len(buildings)}] {ufid}  {bld_nm}  lat={lat:.5f} lng={lng:.5f}")
 
             for cat in categories:
                 code = CATEGORY_CODES.get(cat)
                 if not code:
                     continue
 
-                print(f"\n  [{cat}]")
                 docs = await _kakao_category_search(client, code, lat, lng, radius, per_category)
                 if not docs:
-                    print("    결과 없음")
                     continue
 
+                print(f"  [{cat}] {len(docs)}개")
                 for i, d in enumerate(docs, 1):
                     name = (d.get("place_name") or "").strip()
                     s_lat = float(d.get("y") or 0)
@@ -233,49 +213,48 @@ async def run(
                     if not name or s_lat == 0 or s_lng == 0:
                         continue
 
-                    ufid = await _find_building_for_store(bld_pool, s_lat, s_lng)
-                    if not ufid:
+                    matched_ufid = await _find_building_for_store(pool, s_lat, s_lng)
+                    if not matched_ufid:
                         print(f"    [{i:2d}] {name} - 건물 미매칭 skip")
                         continue
-                    place_id = ufid
-                    store_id = f"{place_id}__{name}"
 
+                    store_id = f"{matched_ufid}__{name}"
                     if store_id in existing:
-                        print(f"    [{i:2d}] {name} — skip")
+                        print(f"    [{i:2d}] {name} — skip (기존)")
                         continue
 
-                    if i > 1:
+                    if not first_store:
                         await asyncio.sleep(sleep_sec)
+                    first_store = False
 
                     try:
-                        row = await get_store_detail(place_id, name, lat=s_lat, lng=s_lng)
+                        row = await get_store_detail(matched_ufid, name, lat=s_lat, lng=s_lng)
                         existing.add(store_id)
                         total_results.append({
-                            "cluster": cell,
+                            "building_ufid": ufid,
+                            "matched_ufid": matched_ufid,
                             "store_name": name,
                             "category": cat,
-                            "place_id": place_id,
+                            "place_id": matched_ufid,
                             "category_key": row.get("category_key"),
                             "source": row.get("source") or "(empty)",
                         })
                         print(
                             f"    [{i:2d}] {name}"
-                            f"  place={'건물내' if ufid else 'outdoor'}"
+                            f"  matched={matched_ufid}"
                             f"  key={row.get('category_key')}"
                         )
                     except Exception as e:
                         print(f"    [{i:2d}] {name} ✗ {type(e).__name__}: {e}")
                         total_results.append({
-                            "cluster": cell, "store_name": name,
+                            "building_ufid": ufid, "store_name": name,
                             "category": cat, "error": str(e),
                         })
 
     total_t = time.time() - t_start
     ok = [r for r in total_results if "error" not in r]
-    indoor = sum(1 for r in ok if r.get("place_id") != "__outdoor__")
     print(f"\n{'='*60}")
-    print(f"완료: 성공={len(ok)}개 (건물내={indoor} outdoor={len(ok)-indoor})  "
-          f"실패={len(total_results)-len(ok)}개  소요={total_t:.0f}초")
+    print(f"완료: 성공={len(ok)}개  실패={len(total_results)-len(ok)}개  소요={total_t:.0f}초")
 
     by_key: dict[str, int] = {}
     for r in ok:
@@ -289,9 +268,8 @@ async def run(
     log_path = f"logs/seed_from_buildings_{int(t_start)}.json"
     with open(log_path, "w", encoding="utf-8") as f:
         json.dump(
-            {"clusters": len(clusters), "buildings": bld_cnt_total,
-             "per_category": per_category, "radius": radius,
-             "results": total_results},
+            {"buildings": len(buildings), "per_category": per_category,
+             "radius": radius, "results": total_results},
             f, ensure_ascii=False, indent=2,
         )
     print(f"\n결과 로그: {log_path}")
@@ -299,15 +277,15 @@ async def run(
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="buildings DB 커버리지 기반 store_details 자동 시드"
+        description="buildings DB 전체 건물에 대해 store_details 자동 시드"
     )
     parser.add_argument(
-        "--per-category", type=int, default=30,
-        help="클러스터당 카테고리별 최대 매장 수 (기본 30, 최대 45)",
+        "--per-category", type=int, default=15,
+        help="건물당 카테고리별 최대 매장 수 (기본 15, 최대 45)",
     )
     parser.add_argument(
-        "--radius", type=int, default=2000,
-        help="Kakao 검색 반경 m (기본 2000)",
+        "--radius", type=int, default=150,
+        help="Kakao 검색 반경 m (기본 150 — 건물 단위 소반경)",
     )
     parser.add_argument(
         "--categories", nargs="+", default=DEFAULT_CATEGORIES,
@@ -323,11 +301,11 @@ def main() -> None:
     )
     parser.add_argument(
         "--prefer-lat", type=float, default=None,
-        help="이 좌표에 가까운 클러스터부터 처리 (예: 37.3387)",
+        help="이 좌표에 가까운 건물부터 처리 (예: 37.3387)",
     )
     parser.add_argument(
         "--prefer-lng", type=float, default=None,
-        help="이 좌표에 가까운 클러스터부터 처리 (예: 127.2674)",
+        help="이 좌표에 가까운 건물부터 처리 (예: 127.2674)",
     )
     args = parser.parse_args()
 

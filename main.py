@@ -75,17 +75,21 @@ async def _ensure_translations(
     if language == "ko":
         return {}
     trans = existing or {}
-    if trans.get(language):
-        return trans[language]
-    en_fields = await translate_fields(fields, lat=lat, lng=lng, lang=language)
-    if en_fields:
-        trans[language] = en_fields
+    cached = trans.get(language, {})
+    # 이미 번역된 필드는 제외하고 빠진 것만 번역
+    missing = {k: v for k, v in fields.items() if k not in cached and v and str(v).strip()}
+    if not missing:
+        return cached
+    new_fields = await translate_fields(missing, lat=lat, lng=lng, lang=language)
+    if new_fields:
+        merged = {**cached, **new_fields}
         async with pool.acquire() as conn:
             await conn.execute(
                 f"UPDATE {table} SET translations = COALESCE(translations, '{{}}'::jsonb) || $1::jsonb WHERE {pk_col} = $2",
-                {language: en_fields}, pk_val,
+                {language: merged}, pk_val,
             )
-    return en_fields
+        return merged
+    return cached
 
 
 def _parse_jsonb_list(val) -> list:
