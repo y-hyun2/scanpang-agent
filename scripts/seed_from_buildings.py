@@ -235,7 +235,7 @@ async def run(
 
                     ufid = await _find_building_for_store(bld_pool, s_lat, s_lng)
                     if not ufid:
-                        print(f"    [{i:2d}] {name} — 건물 미매칭 skip")
+                        print(f"    [{i:2d}] {name} - 건물 미매칭 skip")
                         continue
                     place_id = ufid
                     store_id = f"{place_id}__{name}"
