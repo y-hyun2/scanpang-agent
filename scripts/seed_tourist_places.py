@@ -188,12 +188,14 @@ async def run(
     radius: int,
     sleep_sec: float,
     skip_existing: bool,
+    reset: bool = False,
     prefer_lat: float | None = None,
     prefer_lng: float | None = None,
 ) -> None:
     pool = await get_pool()
     async with pool.acquire() as conn:
-        await conn.execute(DROP_TABLE_SQL)
+        if reset:
+            await conn.execute(DROP_TABLE_SQL)
         await conn.execute(CREATE_TABLE_SQL)
         existing: set[str] = (
             {r["id"] for r in await conn.fetch("SELECT id FROM tourist_places")}
@@ -369,6 +371,8 @@ def main() -> None:
     parser.add_argument("--radius",        type=int,   default=2000)
     parser.add_argument("--sleep",         type=float, default=1.5)
     parser.add_argument("--skip-existing", action="store_true")
+    parser.add_argument("--reset",         action="store_true",
+                        help="테이블 DROP 후 재생성 (전체 재적재 시 사용)")
     parser.add_argument("--prefer-lat",    type=float, default=None)
     parser.add_argument("--prefer-lng",    type=float, default=None)
     parser.add_argument("--update-images", action="store_true",
@@ -387,6 +391,7 @@ def main() -> None:
             radius=args.radius,
             sleep_sec=args.sleep,
             skip_existing=args.skip_existing,
+            reset=args.reset,
             prefer_lat=args.prefer_lat,
             prefer_lng=args.prefer_lng,
         ))
