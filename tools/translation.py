@@ -12,17 +12,25 @@ translate_fields() 가 메인 진입점.
 
 import asyncio
 import os
+import re
 import httpx
 
 GOOGLE_MAPS_API_KEY = os.getenv("GOOGLE_MAPS_API_KEY", "")
 
 _HTTP_TIMEOUT = 5.0
 
+_RE_KOREAN = re.compile(r"[가-힣㄰-㆏ᄀ-ᇿ]")
+
+
+def _has_korean(text: str) -> bool:
+    return bool(_RE_KOREAN.search(text))
+
 
 # ── Google Places ─────────────────────────────────────────────────────────────
 
 async def _google_place_name(store_name: str, lat: float, lng: float) -> str | None:
-    """Google Places Find Place → 반경 100m 내 매칭 → 영문 이름."""
+    """Google Places Find Place → 반경 100m 내 매칭 → 영문 이름.
+    반환값에 한국어가 포함되면 None 처리해 Translation API로 fallback."""
     if not GOOGLE_MAPS_API_KEY:
         return None
     try:
@@ -40,7 +48,10 @@ async def _google_place_name(store_name: str, lat: float, lng: float) -> str | N
             )
         candidates = r.json().get("candidates", [])
         if candidates:
-            return candidates[0].get("name")
+            name = candidates[0].get("name")
+            # 한국어 문자가 섞인 결과는 Translation API로 재시도
+            if name and not _has_korean(name):
+                return name
     except Exception:
         pass
     return None

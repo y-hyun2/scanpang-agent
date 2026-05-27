@@ -26,6 +26,7 @@ from schemas.user import (
 )
 from tools.open_hours_parser import is_open_now_combined as _is_open_now_combined
 from tools.translation import translate_fields
+import asyncio
 import json as _json
 import re as _re
 from datetime import datetime, timedelta, timezone
@@ -82,7 +83,7 @@ async def _ensure_translations(
         async with pool.acquire() as conn:
             await conn.execute(
                 f"UPDATE {table} SET translations = COALESCE(translations, '{{}}'::jsonb) || $1::jsonb WHERE {pk_col} = $2",
-                _json.dumps({language: en_fields}), pk_val,
+                {language: en_fields}, pk_val,
             )
     return en_fields
 
@@ -488,9 +489,12 @@ async def ar_agent_chat(req: AgentChatRequest):
 _OUTDOOR_CATEGORIES = {"restroom", "subway", "locker", "prayer_room", "halal_restaurant", "vegan_restaurant", "vegan_cafe", "accommodation", "tourist", "cultural"}
 
 
-def _vegan_category_label(vegan_level: str, category_key: str) -> str:
-    """'채식전문 · 음식점' 또는 '채식가능 · 카페' 형식의 카테고리 레이블 반환."""
-    type_label = "카페" if category_key == "vegan_cafe" else "음식점"
+def _vegan_category_label(vegan_level: str, category_key: str, language: str = "ko") -> str:
+    """'채식전문 · 음식점' 또는 'Vegan · Cafe' 형식의 카테고리 레이블 반환."""
+    if language == "en":
+        type_label = "Cafe" if category_key == "vegan_cafe" else "Restaurant"
+    else:
+        type_label = "카페" if category_key == "vegan_cafe" else "음식점"
     return f"{vegan_level} · {type_label}" if vegan_level else type_label
 
 
@@ -520,7 +524,7 @@ async def _outdoor_search(category_key: str, req: SearchRequest) -> SearchRespon
         raw = await halal_restaurant_search(lat, lng, radius=0)
         rows = [
             {
-                "name":         r.get("name_ko") or r.get("name_en") or "",
+                "name":         (r.get("name_en") or r.get("name_ko") or "") if req.language == "en" else (r.get("name_ko") or r.get("name_en") or ""),
                 "address":      r.get("address", ""),
                 "phone":        r.get("phone", ""),
                 "lat":          r.get("lat"),
@@ -576,18 +580,24 @@ async def _outdoor_search(category_key: str, req: SearchRequest) -> SearchRespon
             return f"locker__{r.get('name','')}"
         return f"__outdoor__{category}__{r.get('name','')}"
 
-    # 화면 표시용 한국어 카테고리 라벨
-    LABEL = {
+    # 화면 표시용 카테고리 라벨
+    _LABEL_KO = {
         "restroom": "화장실", "subway": "지하철역", "locker": "물품보관함",
         "prayer_room": "기도실", "halal_restaurant": "할랄 식당",
         "vegan_restaurant": "비건 식당", "vegan_cafe": "비건 카페",
     }
+    _LABEL_EN = {
+        "restroom": "Restroom", "subway": "Subway Station", "locker": "Luggage Locker",
+        "prayer_room": "Prayer Room", "halal_restaurant": "Halal Restaurant",
+        "vegan_restaurant": "Vegan Restaurant", "vegan_cafe": "Vegan Cafe",
+    }
+    LABEL = _LABEL_EN if req.language == "en" else _LABEL_KO
 
     results = [
         SearchResultItem(
             id=_outdoor_id(category_key, r),
             store_name=r.get("name", ""),
-            category=(_vegan_category_label(r.get("vegan_level", ""), category_key)
+            category=(_vegan_category_label(r.get("vegan_level", ""), category_key, req.language)
                       if category_key in ("vegan_restaurant", "vegan_cafe")
                       else LABEL.get(category_key, category_key)),
             category_key=category_key,
@@ -751,11 +761,23 @@ async def place_search(req: SearchRequest):
         if not isinstance(_rt, dict):
             _rt = {}
         _tl = _rt.get(req.language, {})
+        # 캐시 없으면 백그라운드 번역 트리거 (현재 요청은 한국어로 즉시 반환, 다음 요청부터 영어)
+        if req.language != "ko" and not _tl and r["lat"] is not None and r["lng"] is not None:
+            asyncio.ensure_future(_ensure_translations(
+                pool, "store_details", "id", r["id"],
+                {
+                    "name":     r["store_name"] or "",
+                    "addr":     r["addr"] or "",
+                    "category": r["category"] or "",
+                },
+                lat=float(r["lat"]), lng=float(r["lng"]),
+                language=req.language, existing=_rt,
+            ))
         results.append(
             SearchResultItem(
                 id=r["id"],
                 store_name=_tl.get("name") or r["store_name"],
-                category=r["category"],
+                category=_tl.get("category") or r["category"],
                 category_key=r["category_key"],
                 addr=_tl.get("addr") or r["addr"],
                 phone=r["phone"],
@@ -923,7 +945,7 @@ async def _halal_detail(restaurant_id: str, language: str = "ko") -> PlaceDetail
         place_id=None,
         lat=_lat_h,
         lng=_lng_h,
-        category="할랄 식당",
+        category="Halal Restaurant" if language == "en" else "할랄 식당",
         category_key="halal_restaurant",
         addr=_t.get("addr") or row["address"] or "",
         phone=row["phone"] or "",
@@ -968,7 +990,7 @@ async def _vegan_detail(vegan_id: str, language: str = "ko") -> PlaceDetailRespo
     src_category_key = row["category_key"] or "restaurant"
     resp_category_key = "vegan_cafe" if src_category_key == "cafe" else "vegan_restaurant"
     vegan_level = d.get("vegan_level", "")
-    resp_category = _vegan_category_label(vegan_level, resp_category_key)
+    resp_category = _vegan_category_label(vegan_level, resp_category_key, language)
     open_hours = row["open_hours"] or ""
     _lat_v = float(row["lat"]) if row["lat"] is not None else None
     _lng_v = float(row["lng"]) if row["lng"] is not None else None
@@ -1085,7 +1107,7 @@ async def _prayer_detail(room_id: str, language: str = "ko") -> PlaceDetailRespo
         place_id=None,
         lat=_lat_p,
         lng=_lng_p,
-        category="기도실",
+        category="Prayer Room" if language == "en" else "기도실",
         category_key="prayer_room",
         addr=_t.get("addr") or row["address"] or "",
         phone=row["phone"] or "",
@@ -1110,6 +1132,7 @@ async def _accommodation_search(req: SearchRequest, lat: float, lng: float, lang
             """
             SELECT id, name_ko, category, addr, phone, lat, lng, open_hours,
                    (image_urls->>0) AS image_url,
+                   COALESCE(translations::text, '{}') AS translations,
                    CASE
                      WHEN lat IS NOT NULL AND lng IS NOT NULL THEN
                        ST_Distance(
@@ -1127,10 +1150,10 @@ async def _accommodation_search(req: SearchRequest, lat: float, lng: float, lang
     results = [
         SearchResultItem(
             id=r["id"],
-            store_name=r["name_ko"] or "",
-            category=r["category"] or "숙박",
+            store_name=(_json.loads(r["translations"]).get(language, {}).get("name") or r["name_ko"] or ""),
+            category=r["category"] or ("Accommodation" if language == "en" else "숙박"),
             category_key="accommodation",
-            addr=r["addr"] or "",
+            addr=(_json.loads(r["translations"]).get(language, {}).get("addr") or r["addr"] or ""),
             phone=r["phone"] or "",
             lat=r["lat"],
             lng=r["lng"],
@@ -1152,6 +1175,7 @@ async def _tourist_search(req: SearchRequest, lat: float, lng: float, language: 
             """
             SELECT id, name_ko, category, addr, phone, lat, lng, open_hours,
                    (image_urls->>0) AS image_url,
+                   COALESCE(translations::text, '{}') AS translations,
                    CASE
                      WHEN lat IS NOT NULL AND lng IS NOT NULL THEN
                        ST_Distance(
@@ -1171,13 +1195,14 @@ async def _tourist_search(req: SearchRequest, lat: float, lng: float, language: 
         key = classify_category(r["category"] or "", r["name_ko"] or "")
         if key not in ("tourist", "cultural"):
             key = "tourist"
+        _tl = _json.loads(r["translations"]).get(language, {})
         results.append(
             SearchResultItem(
                 id=r["id"],
-                store_name=r["name_ko"] or "",
-                category=r["category"] or "관광지",
+                store_name=_tl.get("name") or r["name_ko"] or "",
+                category=r["category"] or ("Tourist Spot" if language == "en" else "관광지"),
                 category_key=key,
-                addr=r["addr"] or "",
+                addr=_tl.get("addr") or r["addr"] or "",
                 phone=r["phone"] or "",
                 lat=r["lat"],
                 lng=r["lng"],
@@ -1250,7 +1275,7 @@ async def _accommodation_detail(acc_id: str, language: str = "ko", user_lat: flo
         lat=_lat_a,
         lng=_lng_a,
         distance_m=dist_a,
-        category=row["category"] or "숙박",
+        category=row["category"] or ("Accommodation" if language == "en" else "숙박"),
         category_key="accommodation",
         addr=_t.get("addr") or row["addr"] or "",
         phone=row["phone"] or "",
@@ -1357,7 +1382,7 @@ async def _tourist_detail(tourist_id: str, language: str = "ko", user_lat: float
         lat=_lat_t,
         lng=_lng_t,
         distance_m=dist_t,
-        category=row["category"] or "관광지",
+        category=row["category"] or ("Tourist Spot" if language == "en" else "관광지"),
         category_key=key,
         addr=_t.get("addr") or row["addr"] or "",
         phone=row["phone"] or "",
@@ -1588,6 +1613,20 @@ async def place_detail(req: PlaceDetailRequest):
     if not isinstance(raw_trans, dict):
         raw_trans = {}
     t = raw_trans.get(req.language, {})
+    # 번역 캐시 없으면 트리거 — 어느 경로로 진입해도 최초 1회만 실행
+    if req.language != "ko" and not t and row["lat"] is not None and row["lng"] is not None:
+        t = await _ensure_translations(
+            pool, "store_details", "id", row["id"],
+            {
+                "name":        row["store_name"] or "",
+                "addr":        row["addr"] or "",
+                "open_hours":  row["open_hours"] or "",
+                "closed_days": row["closed_days"] or "",
+                "category":    row["category"] or "",
+            },
+            lat=float(row["lat"]), lng=float(row["lng"]),
+            language=req.language, existing=raw_trans,
+        )
     return PlaceDetailResponse(
         id=row["id"],
         store_name=t.get("name") or row["store_name"],
@@ -1595,7 +1634,7 @@ async def place_detail(req: PlaceDetailRequest):
         lat=row["lat"],
         lng=row["lng"],
         distance_m=distance_m,
-        category=row["category"],
+        category=t.get("category") or row["category"],
         category_key=row["category_key"],
         addr=t.get("addr") or row["addr"],
         phone=row["phone"],

@@ -3,6 +3,7 @@ uvicorn[standard]
 openai
 python-dotenv
 httpx
+requests
 langchain-openai
 langgraph>=0.2.0
 pydantic
@@ -10,6 +11,7 @@ shapely
 redis>=5.0.0
 rapidfuzz
 asyncpg>=0.29.0
+psycopg2-binary
 playwright
 h3>=4.1
 cachetools>=5.5
