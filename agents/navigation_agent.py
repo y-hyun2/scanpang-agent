@@ -48,17 +48,19 @@ POI list:
 
 # ── Step 2: 경로 턴포인트별 TTS 안내 문구 생성 ────────────────────────────────
 SPEECH_PROMPT = """Generate short TTS navigation instructions for each turn point.
-Language: {language} — ko=Korean, en=English, ar=Arabic. Respond in that language.
+IMPORTANT: You MUST respond entirely in the language specified below. Do not mix languages.
+Output language: {language} (ko=Korean, en=English, ar=Arabic)
+
 Respond with a JSON array of strings — one string per turn point, in order. No explanation, no markdown.
 
 Rules:
 - SP (start point): departure announcement including total distance and time
 - GP (guidance point): 1-sentence turn instruction
-  - Use nearPoiName as landmark if available → "GS25 명동점에서 우회전하세요."
-  - Else use intersectionName → "명동사거리에서 좌회전하세요."
-  - Else use description only → "우회전 후 직진하세요."
-  - facilityType 125=육교, 126=지하보도, 127=계단 → 반드시 언급
-- EP (end point): arrival announcement
+  - Use nearPoiName as landmark if available (translate direction words to output language)
+  - Else use intersectionName
+  - Else use description only
+  - facilityType 125=overpass, 126=underpass, 127=stairs — must mention in output language
+- EP (end point): arrival announcement in output language
 
 Turn points:
 {turn_points_json}
