@@ -10,10 +10,8 @@ halal_agent.py
 호출자는 반드시 req.category 를 지정해야 한다. 빈 경우 prayer_time 으로 폴백.
 """
 
-import os
 from datetime import datetime, timezone, timedelta
 
-from openai import AsyncOpenAI
 from dotenv import load_dotenv
 
 from schemas.halal import (
@@ -25,17 +23,15 @@ from tools.halal_tools import (
     halal_restaurant_search, halal_prayer_room_search,
     DEFAULT_RADIUS,
 )
+from tools.llm_client import call_llm
 
 load_dotenv()
-
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
-openai_client = AsyncOpenAI(api_key=OPENAI_API_KEY)
 
 
 # ── LLM: 음성 생성 ──────────────────────────────────────────────────────────
 
 async def _generate_speech(
-    data: dict, category: str, language: str
+    data: dict, category: str, language: str, user_id: str = "",
 ) -> str:
     """카테고리별 데이터를 기반으로 자연어 음성 생성."""
     lang_map = {"ko": "Korean", "en": "English", "ar": "Arabic", "ja": "Japanese", "zh": "Chinese"}
@@ -106,7 +102,9 @@ Always respond in {lang_label}.
 Be warm, helpful, and respectful of Islamic practices."""
 
     try:
-        resp = await openai_client.chat.completions.create(
+        return await call_llm(
+            user_id=user_id,
+            purpose="halal_speech",
             model="gpt-4o",
             messages=[
                 {"role": "system", "content": system},
@@ -114,7 +112,6 @@ Be warm, helpful, and respectful of Islamic practices."""
             ],
             max_tokens=300,
         )
-        return resp.choices[0].message.content.strip()
     except Exception as e:
         print(f"[Halal] 음성 생성 오류: {e}")
         return "Sorry, I couldn't generate a response at this time."
@@ -122,7 +119,7 @@ Be warm, helpful, and respectful of Islamic practices."""
 
 # ── Main Agent ───────────────────────────────────────────────────────────────
 
-async def run_halal_agent(req: HalalRequest) -> dict:
+async def run_halal_agent(req: HalalRequest, user_id: str = "") -> dict:
     """Halal Agent 메인 함수."""
 
     # 1) 카테고리 결정 — 호출자(orchestrator / 무슬림 허브 UI)가 명시한 값 사용.
@@ -163,7 +160,7 @@ async def run_halal_agent(req: HalalRequest) -> dict:
 
     # 4) 음성 생성
     speech_data = data if not isinstance(data, list) else data
-    speech = await _generate_speech(speech_data, category, language)
+    speech = await _generate_speech(speech_data, category, language, user_id=user_id)
 
     # 5) 응답 구성
     return HalalResponse(

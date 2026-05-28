@@ -2,17 +2,14 @@
 import os
 from datetime import datetime, timezone
 
-from openai import AsyncOpenAI
 from dotenv import load_dotenv
 
 from core.db import get_pool
 from schemas.place import PlaceRequest
 from tools.building_raycast import fetch_building_by_ufid
+from tools.llm_client import call_llm
 
 load_dotenv()
-
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
-openai_client  = AsyncOpenAI(api_key=OPENAI_API_KEY)
 
 _SCAN_LOG_PATH = "logs/scan_events.jsonl"
 _STALE_DAYS    = 30
@@ -78,7 +75,7 @@ async def _fetch_place_info(ufid: str) -> dict:
 
 # ── LLM: docent 해설 생성 ──────────────────────────────────────────────────────
 
-async def llm_generate_docent(context: str, language: str) -> str:
+async def llm_generate_docent(context: str, language: str, user_id: str = "") -> str:
     lang_map = {"ko": "Korean", "en": "English", "ar": "Arabic", "ja": "Japanese", "zh": "Chinese"}
     response_lang_label = lang_map.get(language, language)
 
@@ -90,7 +87,9 @@ async def llm_generate_docent(context: str, language: str) -> str:
         "Be warm, concise, and helpful for a solo traveler."
     )
 
-    response = await openai_client.chat.completions.create(
+    return await call_llm(
+        user_id=user_id,
+        purpose="docent",
         model="gpt-4o",
         messages=[
             {"role": "system", "content": system_prompt},
@@ -98,7 +97,6 @@ async def llm_generate_docent(context: str, language: str) -> str:
         ],
         max_tokens=300,
     )
-    return response.choices[0].message.content.strip()
 
 
 # ── Follow-up 질문 생성 ────────────────────────────────────────────────────────
@@ -125,7 +123,7 @@ def generate_follow_ups(user_message: str, place_data: dict) -> list[str]:
 
 # ── Main agent ────────────────────────────────────────────────────────────────
 
-async def run_place_insight_agent(req: PlaceRequest, progress_cb=None) -> dict:
+async def run_place_insight_agent(req: PlaceRequest, progress_cb=None, user_id: str = "") -> dict:
     async def _progress(pct: int, msg: str):
         if progress_cb:
             await progress_cb(pct, msg)
@@ -243,7 +241,7 @@ Language: {req.language}
 
     await _progress(80, "도슨트 생성 중...")
     try:
-        speech = await llm_generate_docent(context, req.language)
+        speech = await llm_generate_docent(context, req.language, user_id=user_id)
     except Exception as e:
         print(f"[place_insight] docent 생성 실패 (fallback 사용): {e}")
         fallback = {
@@ -302,6 +300,7 @@ async def run_place_chat_agent(
     lat: float,
     lng: float,
     language: str = "ko",
+    user_id: str = "",
 ) -> dict:
     """관광지/랜드마크/지역 정보 응답 — orchestrator chat 전용 진입점.
 
@@ -315,7 +314,9 @@ async def run_place_chat_agent(
     user_prompt   = f"User location: lat={lat}, lng={lng}\nUser question: {message}"
 
     try:
-        response = await openai_client.chat.completions.create(
+        speech = await call_llm(
+            user_id=user_id,
+            purpose="place_chat",
             model="gpt-4o",
             messages=[
                 {"role": "system", "content": system_prompt},
@@ -323,7 +324,6 @@ async def run_place_chat_agent(
             ],
             max_tokens=300,
         )
-        speech = response.choices[0].message.content.strip()
     except Exception as e:
         print(f"[place_chat] LLM 호출 실패: {e}")
         fallback = {

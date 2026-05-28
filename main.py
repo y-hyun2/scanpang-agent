@@ -17,6 +17,7 @@ from schemas.halal import HalalRequest
 from agents.halal_agent import run_halal_agent
 from agents.orchestrator_agent import run_orchestrator
 from core.session_store import get_session_store
+from core.usage_tracker import get_tracker
 from schemas.search import SearchRequest, SearchResponse, SearchResultItem, AutocompleteRequest, AutocompleteResponse
 from schemas.place_detail import PlaceDetailRequest, PlaceDetailResponse
 from schemas.user import (
@@ -121,6 +122,7 @@ app.include_router(h3_buildings_router)
 @app.on_event("startup")
 async def _startup():
     await get_session_store().connect()
+    await get_tracker().connect()
     await get_pool()
     await start_worker()
 
@@ -171,7 +173,7 @@ async def navigation_search(req: NavRequest, user_id: str = Depends(get_current_
     1단계: 자연어 메시지 → POI 후보 목록 반환
     앱에서 사용자에게 목적지 확인/선택 후 /navigation/route 호출
     """
-    return await run_route_search(req)
+    return await run_route_search(req, user_id=user_id)
 
 
 @app.post("/navigation/route")
@@ -179,7 +181,7 @@ async def navigation_route(req: RouteRequest, user_id: str = Depends(get_current
     """
     2단계: 확정된 목적지 → 보행자 경로 계산 + 턴별 TTS 안내 반환
     """
-    return await run_route_agent(req)
+    return await run_route_agent(req, user_id=user_id)
 
 
 def _sse_chunk(event: str, data) -> str:
@@ -197,7 +199,7 @@ async def place_query(req: PlaceRequest, user_id: str = Depends(get_current_user
     """
     ARCore가 인식한 건물 place_id → AR 오버레이 데이터 + TTS 도슨트 해설 반환
     """
-    return await run_place_insight_agent(req)
+    return await run_place_insight_agent(req, user_id=user_id)
 
 
 @app.post("/place/query/stream")
@@ -216,7 +218,7 @@ async def place_query_stream(req: PlaceRequest, user_id: str = Depends(get_curre
 
             async def run():
                 try:
-                    result = await run_place_insight_agent(req, progress_cb=cb)
+                    result = await run_place_insight_agent(req, progress_cb=cb, user_id=user_id)
                     return result
                 finally:
                     await queue.put(None)  # 예외 발생 시에도 sentinel 보장
@@ -459,7 +461,7 @@ async def convenience_query(req: ConvenienceRequest, user_id: str = Depends(get_
     카테고리 탭 or 텍스트 검색 → 주변 편의시설 목록 반환
     category 있으면 LLM 없이 바로 검색, message만 있으면 LLM으로 카테고리 추출
     """
-    return await run_search_agent(req)
+    return await run_search_agent(req, user_id=user_id)
 
 
 @app.post("/halal/query")
@@ -468,7 +470,7 @@ async def halal_query(req: HalalRequest, user_id: str = Depends(get_current_user
     Halal Agent: 기도 시간, 키블라 방향, 할랄 식당, 기도실
     category: prayer_time | qibla | restaurant | prayer_room
     """
-    return await run_halal_agent(req)
+    return await run_halal_agent(req, user_id=user_id)
 
 
 @app.post("/ar/agent/chat", response_model=AgentChatResponse)
@@ -486,6 +488,7 @@ async def ar_agent_chat(req: AgentChatRequest, user_id: str = Depends(get_curren
         language=req.language,
         session_id=req.session_id,
         nav_context=req.nav_context.model_dump() if req.nav_context else None,
+        user_id=user_id,
     )
     return result
 
