@@ -186,6 +186,12 @@ async def run(
             {r["id"] for r in await conn.fetch("SELECT id FROM store_details")}
             if skip_existing else set()
         )
+        done_ufids: set[str] = (
+            {r["ufid"] for r in await conn.fetch(
+                "SELECT DISTINCT split_part(id, '__', 1) AS ufid FROM store_details"
+            )}
+            if skip_existing else set()
+        )
 
     total_results: list[dict] = []
     t_start = time.time()
@@ -193,6 +199,9 @@ async def run(
 
     async with httpx.AsyncClient() as client:
         for b_idx, (ufid, bld_nm, lat, lng) in enumerate(buildings, 1):
+            if ufid in done_ufids:
+                print(f"[{b_idx}/{len(buildings)}] {ufid} — skip (기존 건물)")
+                continue
             print(f"\n{'='*60}")
             print(f"[{b_idx}/{len(buildings)}] {ufid}  {bld_nm}  lat={lat:.5f} lng={lng:.5f}")
 
