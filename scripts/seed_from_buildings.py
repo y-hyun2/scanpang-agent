@@ -48,6 +48,10 @@ DEFAULT_CATEGORIES = list(CATEGORY_CODES.keys())
 
 # ── Kakao API ─────────────────────────────────────────────────────────────────
 
+class _KakaoQuotaError(Exception):
+    pass
+
+
 async def _kakao_category_search(
     client: httpx.AsyncClient,
     code: str,
@@ -75,14 +79,20 @@ async def _kakao_category_search(
                 },
                 timeout=10.0,
             )
+            if resp.status_code == 429:
+                raise _KakaoQuotaError("일일 쿼터 초과 (429)")
             resp.raise_for_status()
             data = resp.json()
+            if data.get("errorType") in ("QuotaExceeded", "InsuffcientScope"):
+                raise _KakaoQuotaError(f"일일 쿼터 초과: {data.get('message')}")
             docs = data.get("documents", [])
             if not docs:
                 break
             results.extend(docs)
             if data.get("meta", {}).get("is_end", True):
                 break
+        except _KakaoQuotaError:
+            raise
         except Exception as e:
             print(f"    [kakao] code={code} page={page} 실패: {e}")
             break
@@ -207,12 +217,20 @@ async def run(
             print(f"\n{'='*60}")
             print(f"[{b_idx}/{len(buildings)}] {ufid}  {bld_nm}  lat={lat:.5f} lng={lng:.5f}")
 
+            quota_exceeded = False
             for cat in categories:
+                if quota_exceeded:
+                    break
                 code = CATEGORY_CODES.get(cat)
                 if not code:
                     continue
 
-                docs = await _kakao_category_search(client, code, lat, lng, radius, per_category)
+                try:
+                    docs = await _kakao_category_search(client, code, lat, lng, radius, per_category)
+                except _KakaoQuotaError as e:
+                    print(f"\n[!] Kakao {e} — 중단. 이 건물부터 resume 미기록.")
+                    quota_exceeded = True
+                    break
                 if not docs:
                     continue
 
@@ -262,6 +280,8 @@ async def run(
                             "category": cat, "error": str(e),
                         })
 
+            if quota_exceeded:
+                break
             if skip_existing:
                 with resume_path.open("a", encoding="utf-8") as f:
                     f.write(ufid + "\n")
