@@ -203,6 +203,12 @@ async def run_route_search(req: NavRequest, user_id: str = "") -> dict:
         "candidates": candidates,
         "intent": intent_type,
         "language": language,
+        # 프론트(ArExploreScreen.extractNavDest) 가 raw_data["lat"]/["lng"]/["name"]
+        # 를 1순위로 본다. candidates 안의 pns_lat/pns_lon 은 미스매치라 버튼 렌더링
+        # 실패. 추천 후보 좌표를 top-level 로 같이 노출해 "X(으)로 안내" 버튼이 뜨게.
+        "lat": rec["pns_lat"],
+        "lng": rec["pns_lon"],
+        "name": rec["name"],
     }
 
 

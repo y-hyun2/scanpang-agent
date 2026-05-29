@@ -87,6 +87,15 @@ _INTENT_SYSTEM = """당신은 AR 관광 앱의 요청 라우터입니다. 사용
 - 새 목적지를 정하는 길 찾기는 "navigation"
 - 이미 진행 중인 길안내에 대한 질문(좌회전 맞아? 다음은? 얼마나 남았어?)은 "nav_guide"
 - 인사/잡담/의미 불명 발화("?", "음...", "안녕", "ㅋㅋ", "고마워")는 "smalltalk"
+- 단순 긍정 응답("ㅇㅇ", "응", "네", "예", "yes", "ok", "okay", "그래") 만 단독으로
+  들어온 경우 이전 대화 맥락을 본다:
+  · 직전 assistant 발화가 특정 장소 안내 제안("X 안내할까요?", "이 곳으로
+    안내할까요?", "Y로 가시겠어요?") 이면 → "navigation",
+    resolved_message = 그 장소 이름 + "(으)로 안내해줘" (예: "명동역(으)로 안내해줘")
+  · 직전 assistant 가 다른 종류의 제안/질문이면 → "smalltalk" (확장 가능)
+  · 이전 맥락이 없으면 → "smalltalk"
+- 단순 부정 응답("아니", "아냐", "노", "no") + 직전이 안내 제안이면 → "smalltalk"
+  (안내 취소 의사로 보고 도메인 에이전트 호출 X)
 
 sub_category 값 (selected_agent 별):
 - halal       : "prayer_time" | "qibla"
@@ -171,6 +180,13 @@ _FEW_SHOTS = [
     {"role": "assistant", "content": '{"selected_agent": "smalltalk", "resolved_message": "고마워!", "sub_category": ""}'},
     {"role": "user",      "content": '메시지: "ㅋㅋ"'},
     {"role": "assistant", "content": '{"selected_agent": "smalltalk", "resolved_message": "ㅋㅋ", "sub_category": ""}'},
+    # 안내 제안 후 단순 긍정 응답 — navigation 으로 분기 + 원래 목적지 복원
+    {"role": "user",      "content": '이전 대화:\nuser: 명동역까지 길안내좀\nassistant: \'명동역 4호선\' 찾았어요. 서울 중구 퇴계로 지하 126. 이 곳으로 안내할까요?\n\n메시지: "ㅇㅇ"'},
+    {"role": "assistant", "content": '{"selected_agent": "navigation", "resolved_message": "명동역(으)로 안내해줘", "sub_category": ""}'},
+    {"role": "user",      "content": '이전 대화:\nuser: 스타벅스\nassistant: \'스타벅스 청계크리스탈스퀘어점\'은 여기서 203미터 거리에 있습니다. 이 곳으로 안내할까요?\n\n메시지: "응"'},
+    {"role": "assistant", "content": '{"selected_agent": "navigation", "resolved_message": "스타벅스 청계크리스탈스퀘어점(으)로 안내해줘", "sub_category": ""}'},
+    {"role": "user",      "content": '이전 대화:\nuser: 명동역 길안내\nassistant: 명동역 찾았어요. 이 곳으로 안내할까요?\n\n메시지: "아니"'},
+    {"role": "assistant", "content": '{"selected_agent": "smalltalk", "resolved_message": "아니", "sub_category": ""}'},
 ]
 
 # ── 독립 분류 함수 (테스트 가능) ─────────────────────────────────────────────
