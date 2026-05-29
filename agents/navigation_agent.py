@@ -354,6 +354,16 @@ async def run_nav_guide_agent(
         return {"speech": msg, "raw": ctx}
 
     lang_label = {"ko": "ko", "en": "en", "ar": "ar", "ja": "ja", "zh": "zh"}.get(language, "ko")
+
+    # 프론트가 보낸 remaining_time_min 이 0 인데 remaining_distance_m 가 양수면
+    # int 잘림 또는 미설정으로 본다. 도보 평균 80m/min(=4.8km/h) 기준으로 재계산.
+    # 1분 미만이면 "약 1분" 으로 표시되도록 ceil.
+    remaining_distance_m = int(ctx.get("remaining_distance_m", 0) or 0)
+    remaining_time_min = int(ctx.get("remaining_time_min", 0) or 0)
+    if remaining_distance_m > 0 and remaining_time_min == 0:
+        import math
+        remaining_time_min = max(1, math.ceil(remaining_distance_m / 80))
+
     system = _NAV_GUIDE_SYSTEM.format(
         language          = lang_label,
         is_routing        = ctx.get("is_routing", False),
@@ -363,8 +373,8 @@ async def run_nav_guide_agent(
         current_speech    = ctx.get("current_speech", "") or "(없음)",
         next_direction    = ctx.get("next_direction", "") or "(없음)",
         next_distance_m   = ctx.get("next_distance_m", 0),
-        remaining_distance_m = ctx.get("remaining_distance_m", 0),
-        remaining_time_min   = ctx.get("remaining_time_min", 0),
+        remaining_distance_m = remaining_distance_m,
+        remaining_time_min   = remaining_time_min,
     )
     try:
         speech = await call_llm(
