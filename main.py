@@ -194,6 +194,17 @@ def _sse_chunk(event: str, data) -> str:
     return f"event: {event}\ndata: {data_str}\n\n"
 
 
+# Railway/nginx 같은 reverse-proxy 환경에서 SSE 가 buffer 되어 끊기는 문제 방지.
+# `X-Accel-Buffering: no` 는 nginx 가 응답을 버퍼링하지 않도록 명시 (Railway 의 edge
+# proxy 가 이 헤더 인식). `Cache-Control: no-cache, no-transform` 으로 CDN/프록시의
+# 캐싱·변형도 차단. 로컬 + ngrok 환경에선 영향 없지만 prod 에선 필수.
+_SSE_HEADERS = {
+    "Cache-Control": "no-cache, no-transform",
+    "X-Accel-Buffering": "no",
+    "Connection": "keep-alive",
+}
+
+
 @app.post("/place/query")
 async def place_query(req: PlaceRequest, user_id: str = Depends(get_current_user_id)):
     """
@@ -237,7 +248,7 @@ async def place_query_stream(req: PlaceRequest, user_id: str = Depends(get_curre
         except Exception as e:
             yield _sse_chunk("error", str(e))
 
-    return StreamingResponse(generate(), media_type="text/event-stream")
+    return StreamingResponse(generate(), media_type="text/event-stream", headers=_SSE_HEADERS)
 
 
 @app.post("/place/store")
@@ -304,7 +315,7 @@ async def place_store_stream(req: StoreRequest, user_id: str = Depends(get_curre
         except Exception as e:
             yield _sse_chunk("error", str(e))
 
-    return StreamingResponse(generate(), media_type="text/event-stream")
+    return StreamingResponse(generate(), media_type="text/event-stream", headers=_SSE_HEADERS)
 
 
 
@@ -1679,4 +1690,4 @@ async def place_detail_stream(req: PlaceDetailRequest):
         except Exception as e:
             yield _sse_chunk("error", str(e))
 
-    return StreamingResponse(generate(), media_type="text/event-stream")
+    return StreamingResponse(generate(), media_type="text/event-stream", headers=_SSE_HEADERS)
