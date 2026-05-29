@@ -88,8 +88,7 @@ async def _fetch_nearby_buildings(lat: float, lng: float) -> list[dict]:
                     ST_X(ST_Centroid(b.geom)) AS lng,
                     p.name_ko,
                     p.category,
-                    p.floor_info,
-                    p.halal_info
+                    p.floor_info
                 FROM buildings b
                 LEFT JOIN place_info p ON b.ufid = p.ufid
                 WHERE b.h3_index_10 = ANY($1::varchar[])
@@ -105,7 +104,6 @@ async def _fetch_nearby_buildings(lat: float, lng: float) -> list[dict]:
                 "bld_nm": r["name_ko"] or r["bld_nm"] or "",
                 "category": r["category"] or "",
                 "floor_info": r["floor_info"] or [],
-                "halal_info": r["halal_info"] or "",
                 "lat": float(r["lat"]),
                 "lng": float(r["lng"]),
             }
