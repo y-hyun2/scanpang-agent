@@ -174,6 +174,15 @@ async def get_store_detail(
         if row and row["source"] == "floor_info_seed":
             expected_addr_seed = row["addr"] or ""
 
+        # floor_info_seed가 없는 신규 시드도 place_info 건물 주소로 시·구 검증
+        if not expected_addr_seed and place_id and not place_id.startswith("__"):
+            async with pool.acquire() as conn:
+                pi = await conn.fetchrow(
+                    "SELECT addr FROM place_info WHERE ufid = $1", place_id
+                )
+            if pi and pi["addr"]:
+                expected_addr_seed = pi["addr"]
+
     await _progress(30, "좌표 확인 중...")
     # ── ② 좌표 결정 ─────────────────────────────────────────────────────────
     # lat/lng가 인자로 들어오면 그대로 사용 (마커/GPS 진입).

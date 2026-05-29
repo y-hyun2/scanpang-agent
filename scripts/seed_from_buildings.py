@@ -18,6 +18,7 @@ import asyncio
 import json
 import math
 import os
+import pathlib
 import sys
 import time
 
@@ -47,6 +48,10 @@ DEFAULT_CATEGORIES = list(CATEGORY_CODES.keys())
 
 # ── Kakao API ─────────────────────────────────────────────────────────────────
 
+class _KakaoQuotaError(Exception):
+    pass
+
+
 async def _kakao_category_search(
     client: httpx.AsyncClient,
     code: str,
@@ -74,14 +79,20 @@ async def _kakao_category_search(
                 },
                 timeout=10.0,
             )
+            if resp.status_code == 429:
+                raise _KakaoQuotaError("일일 쿼터 초과 (429)")
             resp.raise_for_status()
             data = resp.json()
+            if data.get("errorType") in ("QuotaExceeded", "InsuffcientScope"):
+                raise _KakaoQuotaError(f"일일 쿼터 초과: {data.get('message')}")
             docs = data.get("documents", [])
             if not docs:
                 break
             results.extend(docs)
             if data.get("meta", {}).get("is_end", True):
                 break
+        except _KakaoQuotaError:
+            raise
         except Exception as e:
             print(f"    [kakao] code={code} page={page} 실패: {e}")
             break
@@ -181,11 +192,19 @@ async def run(
 
     pool = await get_pool()
 
+    os.makedirs("logs", exist_ok=True)
+    resume_path = pathlib.Path("logs/seed_from_buildings_resume.txt")
+
     async with pool.acquire() as conn:
         existing: set[str] = (
             {r["id"] for r in await conn.fetch("SELECT id FROM store_details")}
             if skip_existing else set()
         )
+
+    done_ufids: set[str] = set()
+    if skip_existing and resume_path.exists():
+        done_ufids = set(resume_path.read_text(encoding="utf-8").splitlines())
+        print(f"resume 파일에서 {len(done_ufids)}개 건물 skip 로드")
 
     total_results: list[dict] = []
     t_start = time.time()
@@ -193,15 +212,25 @@ async def run(
 
     async with httpx.AsyncClient() as client:
         for b_idx, (ufid, bld_nm, lat, lng) in enumerate(buildings, 1):
+            if ufid in done_ufids:
+                continue
             print(f"\n{'='*60}")
             print(f"[{b_idx}/{len(buildings)}] {ufid}  {bld_nm}  lat={lat:.5f} lng={lng:.5f}")
 
+            quota_exceeded = False
             for cat in categories:
+                if quota_exceeded:
+                    break
                 code = CATEGORY_CODES.get(cat)
                 if not code:
                     continue
 
-                docs = await _kakao_category_search(client, code, lat, lng, radius, per_category)
+                try:
+                    docs = await _kakao_category_search(client, code, lat, lng, radius, per_category)
+                except _KakaoQuotaError as e:
+                    print(f"\n[!] Kakao {e} — 중단. 이 건물부터 resume 미기록.")
+                    quota_exceeded = True
+                    break
                 if not docs:
                     continue
 
@@ -251,6 +280,13 @@ async def run(
                             "category": cat, "error": str(e),
                         })
 
+            if quota_exceeded:
+                break
+            if skip_existing:
+                with resume_path.open("a", encoding="utf-8") as f:
+                    f.write(ufid + "\n")
+                done_ufids.add(ufid)
+
     total_t = time.time() - t_start
     ok = [r for r in total_results if "error" not in r]
     print(f"\n{'='*60}")
@@ -264,7 +300,6 @@ async def run(
     for k, n in sorted(by_key.items()):
         print(f"  {k:24s}: {n}")
 
-    os.makedirs("logs", exist_ok=True)
     log_path = f"logs/seed_from_buildings_{int(t_start)}.json"
     with open(log_path, "w", encoding="utf-8") as f:
         json.dump(
