@@ -28,6 +28,7 @@ from rag.automation.govt_api import (
     fetch_kakao_info,
     fetch_floor_info,
 )
+from tools.floor_utils import normalize_floor, floor_sort_key
 
 load_dotenv()
 
@@ -68,72 +69,29 @@ async def _fetch_building(ufid: str) -> dict | None:
     return dict(row) if row else None
 
 
-import re as _re
-
-# floor 키 정규화 — "3층"/"3F"/"3 층"/"지상3층" → "3F", "지하1층"/"B1"/"B1층" → "B1"
-_FLOOR_NORM_RE = _re.compile(r"지하\s*(\d+)\s*층?|B\s*(\d+)\s*층?|(\d+)\s*F|(\d+)\s*층|^(\d+)$")
-
-
-def _normalize_floor(raw: str) -> str:
-    """floor 표기 문자열을 통일된 키로 변환. 매칭 안 되면 '미확인'."""
-    if not raw:
-        return "미확인"
-    s = raw.strip()
-    if not s or s == "기타":
-        return "미확인"
-    m = _FLOOR_NORM_RE.search(s)
-    if not m:
-        return "미확인"
-    g_basement_kor, g_basement_b, g_aboveF, g_above_kor, g_plain = m.groups()
-    basement = g_basement_kor or g_basement_b
-    if basement:
-        return f"B{int(basement)}"
-    above = g_aboveF or g_above_kor or g_plain
-    if above:
-        return f"{int(above)}F"
-    return "미확인"
-
-
-def _sort_floor_key(f: str) -> tuple[int, int]:
-    """floor 키 정렬: 지상 오름차순 → 지하 가까운 순 → 미확인."""
-    if f == "미확인":
-        return (2, 0)
-    if f.startswith("B"):
-        try:
-            return (1, int(f[1:]))
-        except ValueError:
-            return (2, 0)
-    if f.endswith("F"):
-        try:
-            return (0, int(f[:-1]))
-        except ValueError:
-            return (2, 0)
-    return (2, 0)
-
-
 def _naver_places_to_floor_info(places: list[dict]) -> list[dict]:
     """
     fetch_naver_address_places 결과를 floor_info 형태로 변환한다.
-    floor 필드가 있는 매장은 해당 층에, 없는 매장은 '미확인'으로 묶는다.
+    floor 필드가 있는 매장은 해당 층에, 없는 매장은 '기타'로 묶는다.
     floor 정보가 하나도 없으면 빈 리스트 반환 (층 구조가 의미없음).
     """
     floor_map: dict[str, list[dict]] = {}
     for p in places:
         name  = p.get("name", "").strip()
         cat   = p.get("category", "")
-        floor = _normalize_floor(p.get("floor", ""))
+        floor = normalize_floor(p.get("floor", ""))
         if not name:
             continue
         floor_map.setdefault(floor, []).append({"name": name, "category": cat})
 
-    # 층 정보가 전혀 없으면 (전부 '미확인') 빈 리스트로 처리
-    has_real_floor = any(k != "미확인" for k in floor_map)
+    # 층 정보가 전혀 없으면 (전부 '기타') 빈 리스트로 처리
+    has_real_floor = any(k != "기타" for k in floor_map)
     if not has_real_floor:
         return []
 
     return [
         {"floor": f, "stores": stores}
-        for f, stores in sorted(floor_map.items(), key=lambda x: _sort_floor_key(x[0]))
+        for f, stores in sorted(floor_map.items(), key=lambda x: floor_sort_key(x[0]))
     ]
 
 
@@ -472,11 +430,11 @@ async def process_one_building(ufid: str) -> dict:
             # LLM이 "3층"/"3F"/"B1" 혼용해 출력 → 통일 키로 정규화 후 동일 층 병합
             merged: dict[str, list[dict]] = {}
             for f in raw_hp:
-                key = _normalize_floor(f.get("floor", ""))
+                key = normalize_floor(f.get("floor", ""))
                 merged.setdefault(key, []).extend(f.get("stores", []))
             homepage_floor_info = [
                 {"floor": k, "stores": s}
-                for k, s in sorted(merged.items(), key=lambda x: _sort_floor_key(x[0]))
+                for k, s in sorted(merged.items(), key=lambda x: floor_sort_key(x[0]))
             ]
         except Exception as e:
             print(f"[pipeline] extract_floor_info_from_homepage 실패: {e}")
@@ -538,10 +496,10 @@ async def process_one_building(ufid: str) -> dict:
             building_key = await fetch_building_key(addr) if addr else None
             if building_key:
                 raw_govt = await fetch_floor_info(building_key)
-                # 정부DB floor("1", "B1", "기타")를 통일 키("1F", "B1", "미확인")로 정규화
+                # 정부DB floor("1", "B1", "기타")를 통일 키("1F", "B1", "기타")로 정규화
                 # → "3F" vs "3" 분리 버킷 방지.
                 govt_stores = [
-                    {"floor": _normalize_floor(f["floor"]), "stores": f.get("stores", [])}
+                    {"floor": normalize_floor(f["floor"]), "stores": f.get("stores", [])}
                     for f in raw_govt
                 ]
                 print(f"[pipeline] 정부DB: {sum(len(f['stores']) for f in govt_stores)}개 매장")

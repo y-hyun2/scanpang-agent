@@ -343,14 +343,21 @@ async def get_store_detail(
 
     await _progress(88, "저장 중...")
     # ── ⑥ store_details UPSERT — 건물 내 매장만 ─────────────────────────────
-    # 가드: fetcher 가 의미있는 결과(source + 최소 1개 필드) 가져왔을 때만 캐싱.
-    # 그렇지 않으면 빈 row 가 store_details 에 영구 박혀서 이후 호출이 캐시 히트로
-    # 빈 결과를 받아 playwright lazy load 가 영원히 안 도는 버그가 발생.
-    # 관광·숙박 카테고리는 tourist_places, accommodation_places 별도 테이블로 관리.
-    _SKIP_CATEGORIES = {"관광,명소", "관광지", "문화시설", "숙박", "호텔", "국가유산"}
+    # 가드 1: fetcher 가 의미있는 결과(source + 최소 1개 필드) 가져왔을 때만 캐싱.
+    #         그렇지 않으면 빈 row 가 store_details 에 영구 박혀서 이후 호출이
+    #         캐시 히트로 빈 결과를 받아 playwright lazy load 가 영원히 안 도는 버그.
+    # 가드 2: place_id 가 비어있으면 캐싱 X. cache_id 가 '__{store_name}' 형태가 돼서
+    #         이미 같은 매장이 정상 place_id 로 캐싱돼 있어도 별도 row 로 INSERT 되어
+    #         search API 결과에 같은 매장이 두 번 나오는 버그가 발생함 (예: 'CU 외대글로벌점'
+    #         이 명동 폴백 좌표로 두 번째 row 가 적재된 2026-05-24 케이스).
+    # 가드 3: tourist/cultural/accommodation 은 tourist_places, accommodation_places
+    #         별도 테이블로 관리.
+    _SKIP_DB_KEYS = {"tourist", "cultural", "accommodation"}
     has_meaningful_data = bool(source) and bool(open_hours or addr or phone or image_urls or details)
-    if category_name in _SKIP_CATEGORIES:
-        print(f"[store_tools] {category_name!r} — store_details UPSERT 스킵 (별도 테이블 관리): {cache_id!r}")
+    if category_key in _SKIP_DB_KEYS:
+        print(f"[store_tools] {category_key!r} — store_details UPSERT 스킵 (별도 테이블 관리): {cache_id!r}")
+    elif not place_id:
+        print(f"[store_tools] place_id 빈 값 — UPSERT 스킵: {cache_id!r}")
     elif not has_meaningful_data:
         print(f"[store_tools] fetcher 결과 빈약 — UPSERT 스킵: {cache_id!r} (source={source!r})")
     else:

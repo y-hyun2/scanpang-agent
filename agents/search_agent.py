@@ -10,9 +10,7 @@ search_agent.py
 """
 
 import json
-import os
 
-from openai import AsyncOpenAI
 from dotenv import load_dotenv
 
 from schemas.convenience import ConvenienceRequest, ConvenienceResponse, Facility
@@ -27,11 +25,10 @@ from tools.convenience_tools import (
     seoul_locker_search,
 )
 from tools.halal_tools import halal_restaurant_search
+from tools.llm_client import call_llm
 from tools.open_hours_parser import is_open_now_combined
 
 load_dotenv()
-
-openai_client = AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY", ""))
 
 ALL_CATEGORIES = list(CATEGORY_CONFIG.keys()) + list(DEFAULT_RADIUS.keys()) + ["halal_restaurant"]
 
@@ -62,8 +59,10 @@ Keep it natural and friendly for TTS.
 """
 
 
-async def _extract_category_and_language(message: str) -> tuple[str, str]:
-    resp = await openai_client.chat.completions.create(
+async def _extract_category_and_language(message: str, user_id: str = "") -> tuple[str, str]:
+    content = await call_llm(
+        user_id=user_id,
+        purpose="conv_category",
         model="gpt-4o",
         temperature=0,
         messages=[
@@ -73,7 +72,7 @@ async def _extract_category_and_language(message: str) -> tuple[str, str]:
         max_tokens=60,
         response_format={"type": "json_object"},
     )
-    result = json.loads(resp.choices[0].message.content)
+    result = json.loads(content)
     category = result.get("category", "convenience_store")
     language = result.get("language", "ko")
     if category not in ALL_CATEGORIES:
@@ -81,7 +80,7 @@ async def _extract_category_and_language(message: str) -> tuple[str, str]:
     return category, language
 
 
-async def _generate_speech(facilities: list[dict], category: str, language: str) -> str:
+async def _generate_speech(facilities: list[dict], category: str, language: str, user_id: str = "") -> str:
     if not facilities:
         messages = {
             "ko": f"주변 {category} 시설을 찾을 수 없습니다.",
@@ -103,7 +102,9 @@ async def _generate_speech(facilities: list[dict], category: str, language: str)
         f"Language: {language}\n"
         f"Total found: {len(facilities)} facilities"
     )
-    resp = await openai_client.chat.completions.create(
+    return await call_llm(
+        user_id=user_id,
+        purpose="conv_speech",
         model="gpt-4o",
         temperature=0.3,
         messages=[
@@ -112,10 +113,9 @@ async def _generate_speech(facilities: list[dict], category: str, language: str)
         ],
         max_tokens=150,
     )
-    return resp.choices[0].message.content.strip()
 
 
-async def run_search_agent(req: ConvenienceRequest) -> ConvenienceResponse:
+async def run_search_agent(req: ConvenienceRequest, user_id: str = "") -> ConvenienceResponse:
     # Step 1: category 결정
     category = req.category.strip()
     language = req.language
@@ -124,7 +124,7 @@ async def run_search_agent(req: ConvenienceRequest) -> ConvenienceResponse:
         if not req.message.strip():
             category = "convenience_store"
         else:
-            category, language = await _extract_category_and_language(req.message)
+            category, language = await _extract_category_and_language(req.message, user_id=user_id)
 
     # Step 2: 반경 결정
     radius = get_radius(category, req.radius)
@@ -174,7 +174,7 @@ async def run_search_agent(req: ConvenienceRequest) -> ConvenienceResponse:
     facilities = [Facility(**f) for f in raw_sorted]
 
     # Step 5: speech 생성
-    speech = await _generate_speech(raw_sorted, category, language)
+    speech = await _generate_speech(raw_sorted, category, language, user_id=user_id)
 
     return ConvenienceResponse(
         speech=speech,

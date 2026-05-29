@@ -81,8 +81,9 @@ async def _call_kakao_keyword(keyword: str, lat: Optional[float] = None, lng: Op
 
 def _dedupe_pois(tmap_results: list[dict], kakao_results: list[dict]) -> list[dict]:
     """
-    Kakao 우선 병합 + 좌표 기반 중복 제거 (50m 이내 = 같은 장소).
-    Kakao 이름이 더 보편적이므로 Kakao 결과를 먼저 넣고, TMAP 고유 결과를 뒤에 추가.
+    Kakao 우선 병합 + 좌표 기반 중복 제거 (25m 이내 = 같은 장소).
+    Kakao 이름이 더 보편적이므로 Kakao 결과를 기반으로 하되,
+    25m 이내 TMap 결과가 있으면 TMap ID로 교체해 입구 정밀도를 확보한다.
     """
     from math import radians, sin, cos, sqrt, atan2
 
@@ -96,16 +97,26 @@ def _dedupe_pois(tmap_results: list[dict], kakao_results: list[dict]) -> list[di
         except (ValueError, TypeError):
             return 99999
 
-    # Kakao 먼저
-    merged = list(kakao_results)
+    # Kakao 결과 기반으로 병합. 25m 이내 TMap 매칭이 있으면 TMap ID로 교체.
+    merged = []
+    for kp in kakao_results:
+        tmap_match = next(
+            (tp for tp in tmap_results
+             if _haversine_m(kp.get("pnsLat", 0), kp.get("pnsLon", 0),
+                             tp.get("pnsLat", 0), tp.get("pnsLon", 0)) < 25),
+            None,
+        )
+        # TMap 매칭이 없으면 id를 빈 문자열로 둔다 — Kakao ID를 TMap endPoiId로 보내면
+        # TMap이 자기 DB에서 못 찾아 500 에러 → endPoiId 생략하고 좌표(endX/endY)로만 라우팅.
+        merged.append({**kp, "id": tmap_match["id"] if tmap_match else ""})
 
+    # TMap 고유 결과 추가 (Kakao에 없는 장소)
     for tp in tmap_results:
-        is_duplicate = False
-        for existing in merged:
-            if _haversine_m(tp.get("pnsLat",0), tp.get("pnsLon",0),
-                           existing.get("pnsLat",0), existing.get("pnsLon",0)) < 50:
-                is_duplicate = True
-                break
+        is_duplicate = any(
+            _haversine_m(tp.get("pnsLat", 0), tp.get("pnsLon", 0),
+                         existing.get("pnsLat", 0), existing.get("pnsLon", 0)) < 25
+            for existing in merged
+        )
         if not is_duplicate:
             merged.append(tp)
 

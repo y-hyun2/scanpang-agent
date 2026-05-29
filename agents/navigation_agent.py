@@ -1,15 +1,13 @@
 import json
 import re
 from dotenv import load_dotenv
-from langchain_openai import ChatOpenAI
 import h3
 from core.db import get_pool
 from tools.navigation_tools import search_poi, get_pedestrian_route
+from tools.llm_client import call_llm
 from schemas.navigation import NavRequest, RouteRequest
 
 load_dotenv()
-
-llm = ChatOpenAI(model="gpt-4o", temperature=0)
 
 # ── Step 0: 의도 파악 + 키워드 추출 ───────────────────────────────────────────
 INTENT_PROMPT = """Extract navigation intent from the user's message. Return valid JSON only, no explanation.
@@ -48,17 +46,19 @@ POI list:
 
 # ── Step 2: 경로 턴포인트별 TTS 안내 문구 생성 ────────────────────────────────
 SPEECH_PROMPT = """Generate short TTS navigation instructions for each turn point.
-Language: {language} — ko=Korean, en=English, ar=Arabic. Respond in that language.
+IMPORTANT: You MUST respond entirely in the language specified below. Do not mix languages.
+Output language: {language} (ko=Korean, en=English, ar=Arabic)
+
 Respond with a JSON array of strings — one string per turn point, in order. No explanation, no markdown.
 
 Rules:
 - SP (start point): departure announcement including total distance and time
 - GP (guidance point): 1-sentence turn instruction
-  - Use nearPoiName as landmark if available → "GS25 명동점에서 우회전하세요."
-  - Else use intersectionName → "명동사거리에서 좌회전하세요."
-  - Else use description only → "우회전 후 직진하세요."
-  - facilityType 125=육교, 126=지하보도, 127=계단 → 반드시 언급
-- EP (end point): arrival announcement
+  - Use nearPoiName as landmark if available (translate direction words to output language)
+  - Else use intersectionName
+  - Else use description only
+  - facilityType 125=overpass, 126=underpass, 127=stairs — must mention in output language
+- EP (end point): arrival announcement in output language
 
 Turn points:
 {turn_points_json}
@@ -116,19 +116,25 @@ async def _fetch_nearby_buildings(lat: float, lng: float) -> list[dict]:
         return []
 
 
-async def run_route_search(req: NavRequest) -> dict:
+async def run_route_search(req: NavRequest, user_id: str = "") -> dict:
     """
     경로 안내 1단계: 메시지 파싱 → POI 검색 → 후보 목록 + 추천 반환.
     사용자가 앱에서 확인/선택 후 /navigation/route 호출.
     (이전 이름: run_search_agent — 시설 검색 search_agent 와 구분 위해 개명)
     """
     # Step 0: 키워드 + 의도 + 언어 추출
-    intent_resp = llm.invoke([
-        {"role": "system", "content": INTENT_PROMPT},
-        {"role": "user", "content": req.message},
-    ])
+    intent_content = await call_llm(
+        user_id=user_id,
+        purpose="nav_intent",
+        messages=[
+            {"role": "system", "content": INTENT_PROMPT},
+            {"role": "user", "content": req.message},
+        ],
+        model="gpt-4o",
+        temperature=0,
+    )
     try:
-        raw = re.sub(r"^```(?:json)?\s*|\s*```$", "", intent_resp.content.strip())
+        raw = re.sub(r"^```(?:json)?\s*|\s*```$", "", intent_content)
         intent = json.loads(raw)
     except json.JSONDecodeError:
         intent = {"keyword": req.message, "intent": "specific_place", "language": "ko"}
@@ -151,13 +157,19 @@ async def run_route_search(req: NavRequest) -> dict:
         poi_list_str = "\n".join(
             f"{i}. {p['name']} | {p['address']}" for i, p in enumerate(pois)
         )
-        select_resp = llm.invoke([
-            {"role": "user", "content": SELECT_POI_PROMPT.format(
-                keyword=keyword, lat=req.lat, lng=req.lng, poi_list=poi_list_str,
-            )},
-        ])
+        select_content = await call_llm(
+            user_id=user_id,
+            purpose="nav_poi_select",
+            messages=[
+                {"role": "user", "content": SELECT_POI_PROMPT.format(
+                    keyword=keyword, lat=req.lat, lng=req.lng, poi_list=poi_list_str,
+                )},
+            ],
+            model="gpt-4o",
+            temperature=0,
+        )
         try:
-            recommended_idx = int(select_resp.content.strip())
+            recommended_idx = int(select_content)
             recommended_idx = max(0, min(recommended_idx, len(pois) - 1))
         except ValueError:
             recommended_idx = 0
@@ -196,7 +208,7 @@ async def run_route_search(req: NavRequest) -> dict:
     }
 
 
-async def run_route_agent(req: RouteRequest) -> dict:
+async def run_route_agent(req: RouteRequest, user_id: str = "") -> dict:
     """
     2단계: 사용자가 확정한 POI → 보행자 경로 계산 → 턴별 TTS 포함 응답
     """
@@ -232,17 +244,23 @@ async def run_route_agent(req: RouteRequest) -> dict:
         for i, tp in enumerate(route["turn_points"])
     ]
 
-    speech_resp = llm.invoke([
-        {"role": "user", "content": SPEECH_PROMPT.format(
-            language=req.language,
-            turn_points_json=json.dumps(turn_points_for_llm, ensure_ascii=False, indent=2),
-            destination_name=dest.name,
-            total_distance_m=route["total_distance_m"],
-            total_time_min=route["total_time_min"],
-        )},
-    ])
+    speech_content = await call_llm(
+        user_id=user_id,
+        purpose="nav_speech",
+        messages=[
+            {"role": "user", "content": SPEECH_PROMPT.format(
+                language=req.language,
+                turn_points_json=json.dumps(turn_points_for_llm, ensure_ascii=False, indent=2),
+                destination_name=dest.name,
+                total_distance_m=route["total_distance_m"],
+                total_time_min=route["total_time_min"],
+            )},
+        ],
+        model="gpt-4o",
+        temperature=0,
+    )
     try:
-        raw = re.sub(r"^```(?:json)?\s*|\s*```$", "", speech_resp.content.strip())
+        raw = re.sub(r"^```(?:json)?\s*|\s*```$", "", speech_content)
         speeches = json.loads(raw)
         if not isinstance(speeches, list):
             speeches = [""] * len(route["turn_points"])
@@ -316,6 +334,7 @@ async def run_nav_guide_agent(
     message: str,
     nav_context: dict | None,
     language: str = "ko",
+    user_id: str = "",
 ) -> dict:
     """길안내 중 어시스턴트 — nav_context + 사용자 발화 → 짧은 응답.
     nav_context 없으면 안내 메시지 1줄 반환 (LLM 호출 X)."""
@@ -344,10 +363,16 @@ async def run_nav_guide_agent(
         remaining_time_min   = ctx.get("remaining_time_min", 0),
     )
     try:
-        response = await llm.ainvoke([
-            {"role": "system", "content": system},
-            {"role": "user", "content": message},
-        ])
-        return {"speech": response.content.strip(), "raw": ctx}
+        speech = await call_llm(
+            user_id=user_id,
+            purpose="nav_guide",
+            messages=[
+                {"role": "system", "content": system},
+                {"role": "user", "content": message},
+            ],
+            model="gpt-4o",
+            temperature=0,
+        )
+        return {"speech": speech, "raw": ctx}
     except Exception as e:
         return {"speech": f"답변 생성 중 오류가 발생했어요. 잠시 후 다시 시도해주세요.", "raw": {"error": str(e)}}

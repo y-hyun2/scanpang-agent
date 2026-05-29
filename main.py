@@ -1,6 +1,7 @@
 from typing import Optional
 
-from fastapi import FastAPI, HTTPException
+from fastapi import Depends, FastAPI, HTTPException
+from core.auth import get_current_user_id
 from fastapi.encoders import jsonable_encoder
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
@@ -16,6 +17,7 @@ from schemas.halal import HalalRequest
 from agents.halal_agent import run_halal_agent
 from agents.orchestrator_agent import run_orchestrator
 from core.session_store import get_session_store
+from core.usage_tracker import get_tracker
 from schemas.search import SearchRequest, SearchResponse, SearchResultItem, AutocompleteRequest, AutocompleteResponse
 from schemas.place_detail import PlaceDetailRequest, PlaceDetailResponse
 from schemas.user import (
@@ -120,6 +122,7 @@ app.include_router(h3_buildings_router)
 @app.on_event("startup")
 async def _startup():
     await get_session_store().connect()
+    await get_tracker().connect()
     await get_pool()
     await start_worker()
 
@@ -165,20 +168,20 @@ class AgentChatResponse(BaseModel):
 
 
 @app.post("/navigation/search")
-async def navigation_search(req: NavRequest):
+async def navigation_search(req: NavRequest, user_id: str = Depends(get_current_user_id)):
     """
     1단계: 자연어 메시지 → POI 후보 목록 반환
     앱에서 사용자에게 목적지 확인/선택 후 /navigation/route 호출
     """
-    return await run_route_search(req)
+    return await run_route_search(req, user_id=user_id)
 
 
 @app.post("/navigation/route")
-async def navigation_route(req: RouteRequest):
+async def navigation_route(req: RouteRequest, user_id: str = Depends(get_current_user_id)):
     """
     2단계: 확정된 목적지 → 보행자 경로 계산 + 턴별 TTS 안내 반환
     """
-    return await run_route_agent(req)
+    return await run_route_agent(req, user_id=user_id)
 
 
 def _sse_chunk(event: str, data) -> str:
@@ -191,16 +194,27 @@ def _sse_chunk(event: str, data) -> str:
     return f"event: {event}\ndata: {data_str}\n\n"
 
 
+# Railway/nginx 같은 reverse-proxy 환경에서 SSE 가 buffer 되어 끊기는 문제 방지.
+# `X-Accel-Buffering: no` 는 nginx 가 응답을 버퍼링하지 않도록 명시 (Railway 의 edge
+# proxy 가 이 헤더 인식). `Cache-Control: no-cache, no-transform` 으로 CDN/프록시의
+# 캐싱·변형도 차단. 로컬 + ngrok 환경에선 영향 없지만 prod 에선 필수.
+_SSE_HEADERS = {
+    "Cache-Control": "no-cache, no-transform",
+    "X-Accel-Buffering": "no",
+    "Connection": "keep-alive",
+}
+
+
 @app.post("/place/query")
-async def place_query(req: PlaceRequest):
+async def place_query(req: PlaceRequest, user_id: str = Depends(get_current_user_id)):
     """
     ARCore가 인식한 건물 place_id → AR 오버레이 데이터 + TTS 도슨트 해설 반환
     """
-    return await run_place_insight_agent(req)
+    return await run_place_insight_agent(req, user_id=user_id)
 
 
 @app.post("/place/query/stream")
-async def place_query_stream(req: PlaceRequest):
+async def place_query_stream(req: PlaceRequest, user_id: str = Depends(get_current_user_id)):
     """
     /place/query 의 SSE 스트리밍 버전.
     progress 이벤트로 실제 처리 단계별 진행률을 push 하고, 완료 시 complete 이벤트로 결과 전달.
@@ -215,7 +229,7 @@ async def place_query_stream(req: PlaceRequest):
 
             async def run():
                 try:
-                    result = await run_place_insight_agent(req, progress_cb=cb)
+                    result = await run_place_insight_agent(req, progress_cb=cb, user_id=user_id)
                     return result
                 finally:
                     await queue.put(None)  # 예외 발생 시에도 sentinel 보장
@@ -234,11 +248,11 @@ async def place_query_stream(req: PlaceRequest):
         except Exception as e:
             yield _sse_chunk("error", str(e))
 
-    return StreamingResponse(generate(), media_type="text/event-stream")
+    return StreamingResponse(generate(), media_type="text/event-stream", headers=_SSE_HEADERS)
 
 
 @app.post("/place/store")
-async def place_store(req: StoreRequest):
+async def place_store(req: StoreRequest, user_id: str = Depends(get_current_user_id)):
     """
     사용자가 층별 매장 탭 → 매장 상세 정보 반환 (Kakao on-demand + Chroma 캐싱)
     """
@@ -257,7 +271,7 @@ async def place_store(req: StoreRequest):
 
 
 @app.post("/place/store/stream")
-async def place_store_stream(req: StoreRequest):
+async def place_store_stream(req: StoreRequest, user_id: str = Depends(get_current_user_id)):
     """
     /place/store 의 SSE 스트리밍 버전.
     """
@@ -301,7 +315,7 @@ async def place_store_stream(req: StoreRequest):
         except Exception as e:
             yield _sse_chunk("error", str(e))
 
-    return StreamingResponse(generate(), media_type="text/event-stream")
+    return StreamingResponse(generate(), media_type="text/event-stream", headers=_SSE_HEADERS)
 
 
 
@@ -453,25 +467,25 @@ async def user_inquiry_submit(req: InquirySubmitRequest):
 
 
 @app.post("/convenience/query")
-async def convenience_query(req: ConvenienceRequest):
+async def convenience_query(req: ConvenienceRequest, user_id: str = Depends(get_current_user_id)):
     """
     카테고리 탭 or 텍스트 검색 → 주변 편의시설 목록 반환
     category 있으면 LLM 없이 바로 검색, message만 있으면 LLM으로 카테고리 추출
     """
-    return await run_search_agent(req)
+    return await run_search_agent(req, user_id=user_id)
 
 
 @app.post("/halal/query")
-async def halal_query(req: HalalRequest):
+async def halal_query(req: HalalRequest, user_id: str = Depends(get_current_user_id)):
     """
     Halal Agent: 기도 시간, 키블라 방향, 할랄 식당, 기도실
     category: prayer_time | qibla | restaurant | prayer_room
     """
-    return await run_halal_agent(req)
+    return await run_halal_agent(req, user_id=user_id)
 
 
 @app.post("/ar/agent/chat", response_model=AgentChatResponse)
-async def ar_agent_chat(req: AgentChatRequest):
+async def ar_agent_chat(req: AgentChatRequest, user_id: str = Depends(get_current_user_id)):
     """
     LangGraph Orchestrator: 단일 엔드포인트에서 5개 에이전트를 자동 라우팅.
     intent_classifier(GPT-4o) → place | navigation | nav_guide | halal | convenience → 통합 응답.
@@ -485,6 +499,7 @@ async def ar_agent_chat(req: AgentChatRequest):
         language=req.language,
         session_id=req.session_id,
         nav_context=req.nav_context.model_dump() if req.nav_context else None,
+        user_id=user_id,
     )
     return result
 
@@ -1675,4 +1690,4 @@ async def place_detail_stream(req: PlaceDetailRequest):
         except Exception as e:
             yield _sse_chunk("error", str(e))
 
-    return StreamingResponse(generate(), media_type="text/event-stream")
+    return StreamingResponse(generate(), media_type="text/event-stream", headers=_SSE_HEADERS)

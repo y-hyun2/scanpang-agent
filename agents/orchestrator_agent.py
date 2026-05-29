@@ -11,12 +11,10 @@ LangGraph 기반 멀티-에이전트 오케스트레이터.
 """
 
 import json
-import os
 import uuid
 from typing import Literal, Optional
 
 from dotenv import load_dotenv
-from langchain_openai import ChatOpenAI
 from langgraph.graph import StateGraph, START, END
 from typing_extensions import TypedDict
 
@@ -28,6 +26,7 @@ from core.session_store import get_session_store
 from schemas.convenience import ConvenienceRequest
 from schemas.halal import HalalRequest
 from schemas.navigation import NavRequest
+from tools.llm_client import call_llm
 from schemas.session import ConversationTurn, SessionContext
 
 load_dotenv()
@@ -40,6 +39,7 @@ class OrchestratorState(TypedDict):
     user_lat: float
     user_lng: float
     user_heading: float
+    user_id: str                  # Supabase auth.users.id — LLM 사용량 통계 라벨
     language: str
     session_id: str
     session_context: str          # 프롬프트에 삽입할 이전 대화 이력 텍스트
@@ -173,9 +173,6 @@ _FEW_SHOTS = [
     {"role": "assistant", "content": '{"selected_agent": "smalltalk", "resolved_message": "ㅋㅋ", "sub_category": ""}'},
 ]
 
-_llm = ChatOpenAI(model="gpt-4o", temperature=0, response_format={"type": "json_object"})
-
-
 # ── 독립 분류 함수 (테스트 가능) ─────────────────────────────────────────────
 
 _VALID_AGENTS = ("place", "navigation", "nav_guide", "halal", "convenience", "smalltalk")
@@ -184,6 +181,7 @@ _VALID_AGENTS = ("place", "navigation", "nav_guide", "halal", "convenience", "sm
 async def classify_intent(
     message: str,
     session_context: str = "",
+    user_id: str = "",
 ) -> tuple[Literal["place", "navigation", "nav_guide", "halal", "convenience", "smalltalk"], str, str]:
     """
     사용자 메시지 → (에이전트, resolved_message, sub_category) 튜플.
@@ -200,8 +198,15 @@ async def classify_intent(
         {"role": "user", "content": user_content},
     ]
     try:
-        response = await _llm.ainvoke(messages)
-        data = json.loads(response.content)
+        content = await call_llm(
+            user_id=user_id,
+            purpose="intent_classify",
+            messages=messages,
+            model="gpt-4o",
+            temperature=0,
+            response_format={"type": "json_object"},
+        )
+        data = json.loads(content)
         agent = data.get("selected_agent", "smalltalk")
         if agent not in _VALID_AGENTS:
             agent = "smalltalk"
@@ -218,6 +223,7 @@ async def _intent_classifier_node(state: OrchestratorState) -> dict:
     selected, resolved, sub_category = await classify_intent(
         state["user_message"],
         session_context=state.get("session_context", ""),
+        user_id=state.get("user_id", ""),
     )
     if resolved != state["user_message"]:
         print(f"[orchestrator] 지시어 resolve: {state['user_message']!r} → {resolved!r}")
@@ -244,6 +250,7 @@ async def _call_place_node(state: OrchestratorState) -> dict:
         lat=state["user_lat"],
         lng=state["user_lng"],
         language=state.get("language", "ko"),
+        user_id=state.get("user_id", ""),
     )
     return {"sub_agent_response": result}
 
@@ -254,7 +261,7 @@ async def _call_navigation_node(state: OrchestratorState) -> dict:
         lat=state["user_lat"],
         lng=state["user_lng"],
     )
-    result = await run_route_search(req)
+    result = await run_route_search(req, user_id=state.get("user_id", ""))
     return {"sub_agent_response": result if isinstance(result, dict) else result.model_dump()}
 
 
@@ -267,6 +274,7 @@ async def _call_nav_guide_node(state: OrchestratorState) -> dict:
         message=_sub_message(state),
         nav_context=nav_ctx,
         language=state.get("language", "ko"),
+        user_id=state.get("user_id", ""),
     )
     return {"sub_agent_response": result if isinstance(result, dict) else result.model_dump()}
 
@@ -281,7 +289,7 @@ async def _call_halal_node(state: OrchestratorState) -> dict:
         lng=state["user_lng"],
         language=state.get("language", "ko"),
     )
-    result = await run_halal_agent(req)
+    result = await run_halal_agent(req, user_id=state.get("user_id", ""))
     return {"sub_agent_response": result if isinstance(result, dict) else result.model_dump()}
 
 
@@ -295,7 +303,7 @@ async def _call_convenience_node(state: OrchestratorState) -> dict:
         lng=state["user_lng"],
         language=state.get("language", "ko"),
     )
-    result = await run_search_agent(req)
+    result = await run_search_agent(req, user_id=state.get("user_id", ""))
     return {"sub_agent_response": result if isinstance(result, dict) else result.model_dump()}
 
 
@@ -310,13 +318,13 @@ _SMALLTALK_SYSTEM = (
 
 async def _call_smalltalk_node(state: OrchestratorState) -> dict:
     # 도메인 에이전트 호출 없이 범용 응답만 생성. 비용 최소화 위해 max_tokens 짧게.
-    from openai import AsyncOpenAI
-    client = AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY", ""))
     lang_label = {
         "ko": "Korean", "en": "English", "ar": "Arabic", "ja": "Japanese", "zh": "Chinese",
     }.get(state.get("language", "ko"), "Korean")
     try:
-        resp = await client.chat.completions.create(
+        speech = await call_llm(
+            user_id=state.get("user_id", ""),
+            purpose="smalltalk",
             model="gpt-4o-mini",
             messages=[
                 {"role": "system", "content": _SMALLTALK_SYSTEM + f" Respond in {lang_label}."},
@@ -325,7 +333,6 @@ async def _call_smalltalk_node(state: OrchestratorState) -> dict:
             max_tokens=120,
             temperature=0.7,
         )
-        speech = resp.choices[0].message.content.strip()
     except Exception:
         speech = "무엇을 도와드릴까요? 주변 카페·화장실·관광지나 길안내를 물어봐 주세요."
     return {"sub_agent_response": {"speech": speech, "raw": {}}}
@@ -393,6 +400,7 @@ async def run_orchestrator(
     language: str = "ko",
     session_id: Optional[str] = None,
     nav_context: Optional[dict] = None,
+    user_id: str = "",
 ) -> dict:
     """
     단일 진입점: 메시지를 받아 적절한 에이전트로 라우팅하고 결과를 반환한다.
@@ -425,6 +433,7 @@ async def run_orchestrator(
         "user_lat":        lat,
         "user_lng":        lng,
         "user_heading":    heading,
+        "user_id":         user_id,
         "language":        language,
         "session_id":      sid,
         "session_context": session_context,
