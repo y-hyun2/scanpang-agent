@@ -66,13 +66,20 @@ def is_open_now_struct(schedule: dict, now: Optional[datetime] = None) -> Option
     # 자정 넘김은 전날 구간 종료가 24+ 분이라 검사할 필요 없음.
     # 단, 오늘이 26:00 까지 영업이면 어제 구간이 오늘 새벽까지 이어진다는 의미라
     # 어제 구간도 확인.
+    valid_range_found = False
     for start_s, end_s in today_ranges:
         start = _parse_hhmm(start_s)
         end = _parse_hhmm(end_s)
-        if start is None or end is None:
+        if start is None or end is None or start == end:
+            # start==end 는 LLM 이 종료시각만 알고 시작시각을 모를 때 생성하는 무효 구간
             continue
+        valid_range_found = True
         if start <= now_min < end:
             return True
+
+    # 유효 구간이 하나도 없으면 (모두 start==end) → 텍스트 fallback 에 위임
+    if not valid_range_found:
+        return None
 
     # 어제 자정 넘긴 구간이 오늘 새벽까지 이어지는지 확인 (예: 어제 22:00-26:00)
     yesterday_key = _DAYS_EN[(now.weekday() - 1) % 7]
@@ -139,8 +146,15 @@ def _parse_range(s: str) -> Optional[tuple[time, time]]:
     )
 
 
-_CLOSE_ONLY_RE = re.compile(r"(\d{1,2})\s*시\s*(?:에?\s*영업\s*종료|까지)")
-_OPEN_ONLY_RE  = re.compile(r"(\d{1,2})\s*시\s*(?:시작|부터|에\s*시작)")
+# "22시에 영업 종료" / "22:30에 영업 종료" / "22:30에 운영 종료" / "22시까지" 등
+_CLOSE_ONLY_RE = re.compile(
+    r"(\d{1,2})(?::(\d{2}))?\s*(?:시\s*)?에?\s*(?:영업|운영)\s*종료"
+    r"|(\d{1,2})(?::(\d{2}))?\s*시\s*까지"
+)
+# "9시 시작" / "09:00에 운영 시작" / "9시부터" 등
+_OPEN_ONLY_RE = re.compile(
+    r"(\d{1,2})(?::(\d{2}))?\s*(?:시\s*)?(?:에?\s*(?:영업|운영)\s*시작|부터|시작)"
+)
 
 
 def _parse_month_range(text: str) -> Optional[tuple[int, int]]:
@@ -185,12 +199,17 @@ def _check_single_time(s: str, now_t: time) -> Optional[bool]:
     """
     m = _CLOSE_ONLY_RE.search(s)
     if m:
-        close_t = _hm_to_time(int(m.group(1)), 0)
+        # 그룹: (h1, m1) for "영업/운영 종료" | (h2, m2) for "시까지"
+        h = int(m.group(1) or m.group(3))
+        mn = int(m.group(2) or m.group(4) or 0)
+        close_t = _hm_to_time(h, mn)
         return False if now_t >= close_t else None
 
     m = _OPEN_ONLY_RE.search(s)
     if m:
-        open_t = _hm_to_time(int(m.group(1)), 0)
+        h = int(m.group(1))
+        mn = int(m.group(2) or 0)
+        open_t = _hm_to_time(h, mn)
         return False if now_t < open_t else None
 
     return None
@@ -309,6 +328,11 @@ if __name__ == "__main__":
         ("18시에 영업종료",               None),   # now 14:30 < 18:00 → 불확실 (시작 시각 모름)
         ("9시 시작",                      None),   # now 14:30 >= 9:00 → 불확실 (종료 시각 모름)
         ("15시 시작",                     False),  # now 14:30 < 15:00 → 아직 시작 전
+        # HH:MM 형식 종료/시작
+        ("22:30에 영업 종료",             None),   # 14:30 < 22:30 → 불확실
+        ("13:00에 영업 종료",             False),  # 14:30 >= 13:00 → 종료
+        ("09:00에 운영 시작",             None),   # 14:30 >= 09:00 → 불확실
+        ("15:00에 운영 시작",             False),  # 14:30 < 15:00 → 아직 시작 전
         # 평일/주말 형식 (금요일 = 평일)
         ("평일 09:00~21:00 / 주말 09:00~20:00",  True),   # 금=평일, 14:30 in 09-21
         ("평일 09:00~12:00 / 주말 09:00~20:00",  False),  # 금=평일, 14:30 > 12:00
