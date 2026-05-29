@@ -139,19 +139,25 @@ async def run_search_agent(req: ConvenienceRequest, user_id: str = "") -> Conven
     # Step 1: category + 브랜드 키워드 결정
     # message 안에 특정 상호명(스타벅스/올리브영 등) 이 있으면 brand_keyword 에 담겨오고
     # 호출자 단계에서 keyword_search 로 분기해 브랜드 매칭을 보존한다.
-    # orchestrator 가 category 를 미리 결정해 보낸 경우(req.category 있음) 는 분류 LLM
-    # 호출 스킵 — brand_keyword 도 빈 값으로 둔다.
+    # orchestrator 가 sub_category 를 미리 결정해 category 를 채워 보내도 message 안에
+    # 브랜드명이 있으면 그걸 잃지 않도록 항상 브랜드 추출은 한다 — 한 번의 LLM 호출에서
+    # category + brand_keyword 둘 다 받아오는 구조.
     category = req.category.strip()
     language = req.language
     brand_keyword = ""
 
-    if not category:
-        if not req.message.strip():
+    if not req.message.strip():
+        # 카테고리 탭 UI 같이 메시지 없이 카테고리만 들어온 경우 — 분류 호출 X.
+        if not category:
             category = "convenience_store"
-        else:
-            category, language, brand_keyword = await _extract_category_and_language(
-                req.message, user_id=user_id,
-            )
+    else:
+        # 메시지 있으면 항상 LLM 분류 → category(없을 때만 채택) + brand_keyword.
+        llm_category, llm_language, brand_keyword = await _extract_category_and_language(
+            req.message, user_id=user_id,
+        )
+        if not category:
+            category = llm_category
+            language = llm_language
 
     # Step 2: 반경 결정
     radius = get_radius(category, req.radius)
