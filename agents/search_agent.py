@@ -36,18 +36,22 @@ CATEGORY_EXTRACT_PROMPT = f"""
 You are a facility query parser for a travel AR app.
 Given a user message, return THREE things as JSON:
 
-1) category — one of:
+1) category — coarse Kakao routing category, one of:
    convenience_store, cafe, restaurant, pharmacy, hospital,
    bank, atm, shopping, parking, subway, tourist, accommodation, cultural,
    exchange, restroom, locker, prayer_room, halal_restaurant
 2) language — ko, en, ar, ja, zh
-3) brand_keyword — the SPECIFIC name the user mentioned, if any.
-   - If user mentions a specific brand/shop name (Starbucks, Olive Young, 스타벅스,
-     올리브영, McDonald's, GS25, etc.), put that EXACT name as brand_keyword.
-   - If user mentions a generic category only (카페, 식당, ATM, 화장실, etc.) and
-     NO specific brand, return brand_keyword="".
-   - For "halal restaurant" / "기도실" / "musalla" — these are categories, not
-     brand names. brand_keyword="".
+3) brand_keyword — anything SPECIFIC the user mentioned beyond the coarse category.
+   Includes BOTH:
+   (a) specific brand/shop names — Starbucks, Olive Young, 스타벅스, 올리브영,
+       McDonald's, GS25, 본죽, etc.
+   (b) sub-genre keywords that are MORE specific than the coarse category —
+       중식당, 술집, 맛집, 한식, 일식, 분식, 베이커리, 횟집, 이자카야, 디저트, 펍,
+       라멘, 햄버거, 치킨, etc.
+   When user only mentions the coarse category itself (카페/식당/ATM/화장실),
+   return brand_keyword="".
+   For "halal restaurant" / "기도실" / "musalla" → these have their own dedicated
+   category routing, so brand_keyword="".
 
 Use "halal_restaurant" category for halal/muslim food queries. Use "prayer_room"
 for prayer rooms / musalla / 기도실.
@@ -58,20 +62,36 @@ Return JSON only:
 Examples:
 - "근처에 스타벅스 있나?" → {{"category": "cafe", "language": "ko", "brand_keyword": "스타벅스"}}
 - "주변 카페 추천" → {{"category": "cafe", "language": "ko", "brand_keyword": ""}}
+- "중식당 추천좀" → {{"category": "restaurant", "language": "ko", "brand_keyword": "중식당"}}
+- "근처 술집 뭐 있어?" → {{"category": "restaurant", "language": "ko", "brand_keyword": "술집"}}
+- "근처 맛집 뭐뭐 있어?" → {{"category": "restaurant", "language": "ko", "brand_keyword": "맛집"}}
 - "올리브영 어디" → {{"category": "shopping", "language": "ko", "brand_keyword": "올리브영"}}
 - "Where is the nearest pharmacy?" → {{"category": "pharmacy", "language": "en", "brand_keyword": ""}}
 - "Find Starbucks" → {{"category": "cafe", "language": "en", "brand_keyword": "Starbucks"}}
+- "베이커리 추천" → {{"category": "cafe", "language": "ko", "brand_keyword": "베이커리"}}
 - "할랄 식당" → {{"category": "halal_restaurant", "language": "ko", "brand_keyword": ""}}
 
 If uncertain, default category to "convenience_store", language to "ko", brand_keyword to "".
 """
 
 SPEECH_PROMPT = """
-You are a helpful AR navigation assistant.
-Generate a concise spoken response (2-3 sentences) about the nearest facility.
-Respond in the language specified by the 'language' field.
-Include: facility name, distance, open hours (if available), and any notable info (wheelchair access, locker sizes, etc.).
-Keep it natural and friendly for TTS.
+You are a helpful AR navigation assistant. The user asked about nearby facilities.
+
+Read the user's original question and respond in the matching style:
+
+A) LIST mode — if the user asked "what's there", "recommend some", "뭐 있어",
+   "뭐뭐 있어", "추천", "어떤 X 있어" (plural/exploratory intent):
+   → Briefly list 2-3 options as a numbered list: "1) Name (distance), 2) ..."
+   → Mention open hours next to each if available.
+
+B) NEAREST mode — if the user asked "where is", "어디", "가장 가까운", "근처에
+   X 있나" (singular/locating intent), or referred to a specific brand/place:
+   → Focus on the closest one. Mention name, distance, open hours (if available),
+     and a brief recommendation. Keep it 2-3 sentences.
+
+Always respond in the specified language.
+If open hours are unknown for an item, do NOT make them up — just skip that detail.
+Keep responses natural and friendly for TTS. No markdown formatting.
 """
 
 
@@ -100,27 +120,40 @@ async def _extract_category_and_language(message: str, user_id: str = "") -> tup
     return category, language, brand_keyword
 
 
-async def _generate_speech(facilities: list[dict], category: str, language: str, user_id: str = "") -> str:
+async def _generate_speech(
+    facilities: list[dict],
+    category: str,
+    language: str,
+    user_message: str = "",
+    user_id: str = "",
+) -> str:
     if not facilities:
         messages = {
             "ko": f"주변 {category} 시설을 찾을 수 없습니다.",
             "en": f"No nearby {category} facilities found.",
-            "ar": f"لا توجد施設 قريبة من نوع {category}.",
+            "ar": f"لا توجد منشآت قريبة من نوع {category}.",
             "ja": f"近くに{category}施設が見つかりませんでした。",
             "zh": f"附近没有找到{category}设施。",
         }
         return messages.get(language, messages["en"])
 
-    nearest = facilities[0]
+    # 상위 5개를 LLM 에 통째로 제공 — LIST 모드면 직접 나열, NEAREST 모드면 1번
+    # 만 강조. SPEECH_PROMPT 의 룰에 따라 LLM 이 사용자 질문 의도 분기.
+    items = []
+    for i, f in enumerate(facilities[:5]):
+        line = f"{i+1}. {f['name']} ({f['distance_m']:.0f}m)"
+        if f.get("open_hours"):
+            line += f" — 영업시간: {f['open_hours']}"
+        if f.get("phone"):
+            line += f" — 전화: {f['phone']}"
+        items.append(line)
+    facilities_block = "\n".join(items)
+
     context = (
+        f'User question: "{user_message}"\n'
         f"Category: {category}\n"
-        f"Nearest facility: {nearest['name']}\n"
-        f"Distance: {nearest['distance_m']:.0f}m\n"
-        f"Address: {nearest['address']}\n"
-        f"Open hours: {nearest['open_hours'] or 'unknown'}\n"
-        f"Extra info: {nearest['extra']}\n"
         f"Language: {language}\n"
-        f"Total found: {len(facilities)} facilities"
+        f"Facilities sorted by distance:\n{facilities_block}\n"
     )
     return await call_llm(
         user_id=user_id,
@@ -131,8 +164,71 @@ async def _generate_speech(facilities: list[dict], category: str, language: str,
             {"role": "system", "content": SPEECH_PROMPT},
             {"role": "user", "content": context},
         ],
-        max_tokens=150,
+        max_tokens=220,
     )
+
+
+async def _enrich_facilities_with_db_hours(facilities: list[dict]) -> list[dict]:
+    """
+    store_details DB 에서 매장명/전화 매칭으로 캐시된 open_hours 를 보강.
+
+    Kakao Local API 자체는 open_hours 를 안 줘서 1차 결과는 항상 빈 값.
+    우리가 그동안 (도슨트/매장상세 호출 흐름에서) 적재해둔 store_details 캐시가
+    있으면 그 값을 끌어와 챗봇 응답 품질을 올린다.
+
+    매칭 우선순위:
+    1) 매장명 + 전화번호 동시 일치
+    2) 매장명만 일치 (전화 누락 케이스 대비)
+
+    이미 open_hours 가 채워져 들어온 시설은 건드리지 않는다.
+    """
+    if not facilities:
+        return facilities
+    names = [f["name"] for f in facilities if f.get("name") and not f.get("open_hours")]
+    if not names:
+        return facilities
+    try:
+        from core.db import get_pool
+        pool = await get_pool()
+        async with pool.acquire() as conn:
+            rows = await conn.fetch(
+                """
+                SELECT store_name, phone, open_hours
+                FROM store_details
+                WHERE store_name = ANY($1::text[])
+                  AND COALESCE(open_hours, '') <> ''
+                """,
+                names,
+            )
+    except Exception as e:
+        print(f"[search_agent] DB 영업시간 캐시 조회 실패 (무시): {e}")
+        return facilities
+
+    cache: dict[str, list[dict]] = {}
+    for r in rows:
+        cache.setdefault(r["store_name"], []).append({
+            "phone":      r["phone"] or "",
+            "open_hours": r["open_hours"] or "",
+        })
+
+    hits = 0
+    for f in facilities:
+        if f.get("open_hours"):
+            continue
+        candidates = cache.get(f["name"])
+        if not candidates:
+            continue
+        # 전화 동시 일치 우선
+        match = next(
+            (c for c in candidates if c["phone"] and f.get("phone") and c["phone"] == f["phone"]),
+            candidates[0],
+        )
+        if match["open_hours"]:
+            f["open_hours"] = match["open_hours"]
+            hits += 1
+    if hits:
+        print(f"[search_agent] DB 영업시간 캐시 히트: {hits}/{len(facilities)}")
+    return facilities
 
 
 async def run_search_agent(req: ConvenienceRequest, user_id: str = "") -> ConvenienceResponse:
@@ -206,14 +302,23 @@ async def run_search_agent(req: ConvenienceRequest, user_id: str = "") -> Conven
     else:
         raw = []
 
-    # Step 4: 거리순 정렬 → 상위 5개 + open_hours 기반 is_open_now 계산
+    # Step 4: 거리순 정렬 → 상위 5개
     raw_sorted = sorted(raw, key=lambda x: x["distance_m"])[:5]
+
+    # Step 4.5: Kakao Local API 는 open_hours 를 안 줘서 store_details DB 캐시에서 보강
+    raw_sorted = await _enrich_facilities_with_db_hours(raw_sorted)
+
+    # Step 4.6: open_hours 기반 is_open_now 계산 (보강 후의 값으로)
     for f in raw_sorted:
         f["is_open_now"] = is_open_now_combined(f.get("open_hours") or "", None)
     facilities = [Facility(**f) for f in raw_sorted]
 
-    # Step 5: speech 생성
-    speech = await _generate_speech(raw_sorted, category, language, user_id=user_id)
+    # Step 5: speech 생성 — 사용자 질문을 같이 넘겨 LIST/NEAREST 모드 자동 선택
+    speech = await _generate_speech(
+        raw_sorted, category, language,
+        user_message=req.message,
+        user_id=user_id,
+    )
 
     return ConvenienceResponse(
         speech=speech,
