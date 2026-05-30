@@ -26,6 +26,36 @@ DEFAULT_RADIUS = {
 _prayer_time_cache: dict = {}
 
 
+# ── 다음 기도 계산 (캐시 없이 호출 시각 기준) ──────────────────────────────────
+
+def _compute_next_prayer(times: dict) -> dict:
+    """캐시된 기도 시간 dict에서 현재 KST 기준 다음 기도 이름·시간을 계산."""
+    prayer_map = [
+        ("Fajr",    times.get("fajr", "")),
+        ("Dhuhr",   times.get("dhuhr", "")),
+        ("Asr",     times.get("asr", "")),
+        ("Maghrib", times.get("maghrib", "")),
+        ("Isha",    times.get("isha", "")),
+    ]
+    kst = timezone(timedelta(hours=9))
+    now = datetime.now(kst)
+    for name, t in prayer_map:
+        if not t:
+            continue
+        try:
+            prayer_dt = now.replace(
+                hour=int(t.split(":")[0]),
+                minute=int(t.split(":")[1]),
+                second=0,
+                microsecond=0,
+            )
+            if prayer_dt > now:
+                return {"next_prayer": name, "next_prayer_time": t}
+        except (ValueError, IndexError):
+            continue
+    return {"next_prayer": "", "next_prayer_time": ""}
+
+
 # ── Aladhan API: 기도 시간 ───────────────────────────────────────────────────
 
 async def fetch_prayer_times(lat: float, lng: float, date: str = "") -> dict:
@@ -40,7 +70,7 @@ async def fetch_prayer_times(lat: float, lng: float, date: str = "") -> dict:
 
     cache_key = f"{date}_{lat:.2f}_{lng:.2f}"
     if cache_key in _prayer_time_cache:
-        return _prayer_time_cache[cache_key]
+        return {**_prayer_time_cache[cache_key], **_compute_next_prayer(_prayer_time_cache[cache_key])}
 
     url = f"http://api.aladhan.com/v1/timings/{date}"
     params = {"latitude": lat, "longitude": lng, "method": 3}
@@ -58,48 +88,19 @@ async def fetch_prayer_times(lat: float, lng: float, date: str = "") -> dict:
     hijri = data.get("date", {}).get("hijri", {})
     gregorian = data.get("date", {}).get("gregorian", {})
 
-    prayer_map = [
-        ("Fajr",    timings.get("Fajr", "")),
-        ("Dhuhr",   timings.get("Dhuhr", "")),
-        ("Asr",     timings.get("Asr", "")),
-        ("Maghrib", timings.get("Maghrib", "")),
-        ("Isha",    timings.get("Isha", "")),
-    ]
-
-    kst = timezone(timedelta(hours=9))
-    now = datetime.now(kst)
-    next_prayer = ""
-    next_prayer_time = ""
-    for name, t in prayer_map:
-        if not t:
-            continue
-        try:
-            prayer_dt = now.replace(
-                hour=int(t.split(":")[0]),
-                minute=int(t.split(":")[1]),
-                second=0,
-                microsecond=0,
-            )
-            if prayer_dt > now:
-                next_prayer = name
-                next_prayer_time = t
-                break
-        except (ValueError, IndexError):
-            continue
-
-    result = {
-        "fajr": timings.get("Fajr", ""),
-        "dhuhr": timings.get("Dhuhr", ""),
-        "asr": timings.get("Asr", ""),
-        "maghrib": timings.get("Maghrib", ""),
-        "isha": timings.get("Isha", ""),
-        "next_prayer": next_prayer,
-        "next_prayer_time": next_prayer_time,
-        "hijri_date": f"{hijri.get('day', '')} {hijri.get('month', {}).get('en', '')} {hijri.get('year', '')}",
+    # 기도 시간 5개 + 날짜 정보만 캐시 — next_prayer는 호출 시각 기준 매번 계산
+    cached = {
+        "fajr":           timings.get("Fajr", ""),
+        "dhuhr":          timings.get("Dhuhr", ""),
+        "asr":            timings.get("Asr", ""),
+        "maghrib":        timings.get("Maghrib", ""),
+        "isha":           timings.get("Isha", ""),
+        "hijri_date":     f"{hijri.get('day', '')} {hijri.get('month', {}).get('en', '')} {hijri.get('year', '')}",
         "gregorian_date": gregorian.get("date", ""),
     }
-    _prayer_time_cache[cache_key] = result
-    return result
+    _prayer_time_cache[cache_key] = cached
+
+    return {**cached, **_compute_next_prayer(cached)}
 
 
 # ── Aladhan API: 키블라 방향 ─────────────────────────────────────────────────
