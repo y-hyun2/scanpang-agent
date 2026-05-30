@@ -1,13 +1,9 @@
 """
 tools/translation.py
-장소 데이터 필드별 영문화 — 두 단계 전략.
+장소 데이터 필드별 영문화
 
-1차: Google Places (name) / Google Geocoding (addr) — 공식 영문명/로마자 주소
-2차: Google Cloud Translation API — 1차 실패 or 그 외 필드 fallback
-
-translate_fields() 가 메인 진입점.
-반환값은 translations JSONB에 바로 저장 가능한 dict.
-예: {"name": "Halal Restaurant", "addr": "14 Myeongdong-gil...", "open_hours": "Daily 11:00~22:00"}
+- addr  : 주소기반산업지원서비스 영문주소 API → DeepL fallback
+- 나머지 : DeepL API Free (name, category, open_hours 등)
 """
 
 import asyncio
@@ -15,9 +11,10 @@ import os
 import re
 import httpx
 
-GOOGLE_MAPS_API_KEY = os.getenv("GOOGLE_MAPS_API_KEY", "")
+JUSO_ADDR_API_KEY = os.getenv("JUSO_ADDR_API_KEY", "")
+DEEPL_API_KEY     = os.getenv("DEEPL_API_KEY", "")
 
-_HTTP_TIMEOUT = 5.0
+_HTTP_TIMEOUT = 6.0
 
 _RE_KOREAN = re.compile(r"[가-힣㄰-㆏ᄀ-ᇿ]")
 
@@ -26,75 +23,52 @@ def _has_korean(text: str) -> bool:
     return bool(_RE_KOREAN.search(text))
 
 
-# ── Google Places ─────────────────────────────────────────────────────────────
+# ── 주소기반산업지원서비스 영문주소 API ────────────────────────────────────────
 
-async def _google_place_name(store_name: str, lat: float, lng: float) -> str | None:
-    """Google Places Find Place → 반경 100m 내 매칭 → 영문 이름.
-    반환값에 한국어가 포함되면 None 처리해 Translation API로 fallback."""
-    if not GOOGLE_MAPS_API_KEY:
+async def _juso_addr(addr_ko: str) -> str | None:
+    """주소기반산업지원서비스 영문주소 API → 공식 영문 도로명주소."""
+    if not JUSO_ADDR_API_KEY or not addr_ko or not addr_ko.strip():
         return None
     try:
         async with httpx.AsyncClient(timeout=_HTTP_TIMEOUT) as client:
             r = await client.get(
-                "https://maps.googleapis.com/maps/api/place/findplacefromtext/json",
+                "https://business.juso.go.kr/addrlink/addrEngApi.do",
                 params={
-                    "input":        store_name,
-                    "inputtype":    "textquery",
-                    "locationbias": f"circle:100@{lat},{lng}",
-                    "fields":       "name",
-                    "language":     "en",
-                    "key":          GOOGLE_MAPS_API_KEY,
+                    "confmKey":     JUSO_ADDR_API_KEY,
+                    "currentPage":  1,
+                    "countPerPage": 1,
+                    "keyword":      addr_ko,
+                    "resultType":   "json",
                 },
             )
-        candidates = r.json().get("candidates", [])
-        if candidates:
-            name = candidates[0].get("name")
-            # 한국어 문자가 섞인 결과는 Translation API로 재시도
-            if name and not _has_korean(name):
-                return name
+        juso_list = r.json().get("results", {}).get("juso", [])
+        if juso_list:
+            road = juso_list[0].get("roadAddr") or juso_list[0].get("engAddr") or ""
+            if road and not _has_korean(road):
+                return road
     except Exception:
         pass
     return None
 
 
-# ── Google Geocoding ──────────────────────────────────────────────────────────
+# ── DeepL ─────────────────────────────────────────────────────────────────────
 
-async def _google_geocode_addr(lat: float, lng: float) -> str | None:
-    """Google Geocoding API → 좌표 기반 영문(로마자) 주소."""
-    if not GOOGLE_MAPS_API_KEY:
-        return None
-    try:
-        async with httpx.AsyncClient(timeout=_HTTP_TIMEOUT) as client:
-            r = await client.get(
-                "https://maps.googleapis.com/maps/api/geocode/json",
-                params={
-                    "latlng":   f"{lat},{lng}",
-                    "language": "en",
-                    "key":      GOOGLE_MAPS_API_KEY,
-                },
-            )
-        results = r.json().get("results", [])
-        if results:
-            return results[0].get("formatted_address")
-    except Exception:
-        pass
-    return None
-
-
-# ── Google Cloud Translation ──────────────────────────────────────────────────
-
-async def _google_translate(text: str) -> str | None:
-    """Google Cloud Translation Basic API ko → en."""
-    if not GOOGLE_MAPS_API_KEY or not text or not text.strip():
+async def _deepl_translate(text: str) -> str | None:
+    """DeepL API Free ko → en-US."""
+    if not DEEPL_API_KEY or not text or not text.strip():
         return None
     try:
         async with httpx.AsyncClient(timeout=_HTTP_TIMEOUT) as client:
             r = await client.post(
-                "https://translation.googleapis.com/language/translate/v2",
-                params={"key": GOOGLE_MAPS_API_KEY},
-                json={"q": text, "source": "ko", "target": "en", "format": "text"},
+                "https://api-free.deepl.com/v2/translate",
+                headers={"Authorization": f"DeepL-Auth-Key {DEEPL_API_KEY}"},
+                json={
+                    "text":        [text],
+                    "source_lang": "KO",
+                    "target_lang": "EN-US",
+                },
             )
-        return r.json()["data"]["translations"][0]["translatedText"]
+        return r.json()["translations"][0]["text"]
     except Exception:
         pass
     return None
@@ -112,12 +86,10 @@ async def translate_fields(
     {field_name: 한국어_텍스트} → {field_name: 번역된_텍스트}
 
     필드별 전략:
-    - "name"  : Google Places → Google Translate
-    - "addr"  : Google Geocoding → Google Translate
-    - 나머지   : Google Translate (open_hours, closed_days, description 등)
+    - "addr" : 주소기반산업지원서비스 영문주소 API → DeepL fallback
+    - 나머지  : DeepL (name, category, open_hours, closed_days 등)
 
     번역 실패 or 빈 값인 필드는 결과에 포함되지 않음.
-    호출자는 결과를 translations[lang]에 병합해 저장.
     """
     if lang == "ko":
         return {}
@@ -125,12 +97,10 @@ async def translate_fields(
     async def _translate_field(field: str, text: str) -> tuple[str, str | None]:
         if not text or not text.strip():
             return field, None
-        if field == "name":
-            translated = await _google_place_name(text, lat, lng) or await _google_translate(text)
-        elif field == "addr":
-            translated = await _google_geocode_addr(lat, lng) or await _google_translate(text)
+        if field == "addr":
+            translated = await _juso_addr(text) or await _deepl_translate(text)
         else:
-            translated = await _google_translate(text)
+            translated = await _deepl_translate(text)
         return field, translated
 
     pairs = await asyncio.gather(*[_translate_field(f, t) for f, t in fields.items()])

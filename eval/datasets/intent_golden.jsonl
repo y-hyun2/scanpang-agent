@@ -1,0 +1,90 @@
+{"id": "place_001", "message": "명동성당에 대해 설명해줘", "session_context": "", "expected_agent": "place", "expected_sub_category": ""}
+{"id": "place_002", "message": "남산타워 언제 지어졌어?", "session_context": "", "expected_agent": "place", "expected_sub_category": ""}
+{"id": "place_003", "message": "경복궁 역사 알려줘", "session_context": "", "expected_agent": "place", "expected_sub_category": ""}
+{"id": "place_004", "message": "여기 무슨 동네야?", "session_context": "", "expected_agent": "place", "expected_sub_category": ""}
+{"id": "place_005", "message": "명동은 어떤 곳이야?", "session_context": "", "expected_agent": "place", "expected_sub_category": ""}
+{"id": "place_006", "message": "롯데백화점 역사 알려줘", "session_context": "", "expected_agent": "place", "expected_sub_category": ""}
+{"id": "place_007", "message": "창덕궁이 유네스코 세계유산이야?", "session_context": "", "expected_agent": "place", "expected_sub_category": ""}
+{"id": "place_008", "message": "북촌한옥마을 어떤 곳이야?", "session_context": "", "expected_agent": "place", "expected_sub_category": ""}
+{"id": "place_009", "message": "인사동 유명한 이유가 뭐야?", "session_context": "", "expected_agent": "place", "expected_sub_category": ""}
+{"id": "place_010", "message": "이 건물 뭐야?", "session_context": "", "expected_agent": "place", "expected_sub_category": ""}
+{"id": "place_011", "message": "What is Gyeongbokgung Palace?", "session_context": "", "expected_agent": "place", "expected_sub_category": ""}
+{"id": "place_012", "message": "Tell me about Namsan Tower", "session_context": "", "expected_agent": "place", "expected_sub_category": ""}
+{"id": "place_013", "message": "ما هو برج N سيول؟", "session_context": "", "expected_agent": "place", "expected_sub_category": ""}
+{"id": "place_014", "message": "동대문 디자인 플라자가 뭐야?", "session_context": "", "expected_agent": "place", "expected_sub_category": ""}
+{"id": "place_015", "message": "여기 볼거리가 뭐가 있어?", "session_context": "", "expected_agent": "place", "expected_sub_category": ""}
+{"id": "nav_001", "message": "명동역으로 길 안내해줘", "session_context": "", "expected_agent": "navigation", "expected_sub_category": ""}
+{"id": "nav_002", "message": "경복궁까지 어떻게 가?", "session_context": "", "expected_agent": "navigation", "expected_sub_category": ""}
+{"id": "nav_003", "message": "남산타워 가는 길 알려줘", "session_context": "", "expected_agent": "navigation", "expected_sub_category": ""}
+{"id": "nav_004", "message": "홍대입구역까지 안내해줘", "session_context": "", "expected_agent": "navigation", "expected_sub_category": ""}
+{"id": "nav_005", "message": "인사동 어떻게 가?", "session_context": "", "expected_agent": "navigation", "expected_sub_category": ""}
+{"id": "nav_006", "message": "Navigate me to Myeongdong Cathedral", "session_context": "", "expected_agent": "navigation", "expected_sub_category": ""}
+{"id": "nav_007", "message": "동대문까지 길 찾아줘", "session_context": "", "expected_agent": "navigation", "expected_sub_category": ""}
+{"id": "nav_008", "message": "명동 CGV 가고 싶어", "session_context": "", "expected_agent": "navigation", "expected_sub_category": ""}
+{"id": "nav_009", "message": "이태원으로 가는 방법 알려줘", "session_context": "", "expected_agent": "navigation", "expected_sub_category": ""}
+{"id": "nav_010", "message": "롯데월드로 길 안내", "session_context": "", "expected_agent": "navigation", "expected_sub_category": ""}
+{"id": "nav_011", "message": "제일 가까운 지하철역까지 데려다줘", "session_context": "", "expected_agent": "navigation", "expected_sub_category": ""}
+{"id": "nav_012", "message": "출발지에서 명동성당까지 경로 알려줘", "session_context": "", "expected_agent": "navigation", "expected_sub_category": ""}
+{"id": "nav_013", "message": "북촌한옥마을 가고 싶은데 어떻게 가?", "session_context": "", "expected_agent": "navigation", "expected_sub_category": ""}
+{"id": "nav_014", "message": "공항철도 홍대입구역 가는 길", "session_context": "", "expected_agent": "navigation", "expected_sub_category": ""}
+{"id": "nav_015", "message": "한강공원 어떻게 가?", "session_context": "", "expected_agent": "navigation", "expected_sub_category": ""}
+{"id": "navguide_001", "message": "여기서 좌회전 맞아?", "session_context": "", "expected_agent": "nav_guide", "expected_sub_category": ""}
+{"id": "navguide_002", "message": "이 갈림길에서 어디로 가?", "session_context": "", "expected_agent": "nav_guide", "expected_sub_category": ""}
+{"id": "navguide_003", "message": "거의 다 왔어?", "session_context": "", "expected_agent": "nav_guide", "expected_sub_category": ""}
+{"id": "navguide_004", "message": "얼마나 남았어?", "session_context": "", "expected_agent": "nav_guide", "expected_sub_category": ""}
+{"id": "navguide_005", "message": "다음 갈림길은?", "session_context": "", "expected_agent": "nav_guide", "expected_sub_category": ""}
+{"id": "navguide_006", "message": "지금 방향 맞아?", "session_context": "", "expected_agent": "nav_guide", "expected_sub_category": ""}
+{"id": "navguide_007", "message": "몇 미터 남았어?", "session_context": "", "expected_agent": "nav_guide", "expected_sub_category": ""}
+{"id": "navguide_008", "message": "지금 직진이야?", "session_context": "", "expected_agent": "nav_guide", "expected_sub_category": ""}
+{"id": "navguide_009", "message": "How much further?", "session_context": "", "expected_agent": "nav_guide", "expected_sub_category": ""}
+{"id": "navguide_010", "message": "Am I going the right way?", "session_context": "", "expected_agent": "nav_guide", "expected_sub_category": ""}
+{"id": "halal_001", "message": "기도 시간 알려줘", "session_context": "", "expected_agent": "halal", "expected_sub_category": "prayer_time"}
+{"id": "halal_002", "message": "지금 아스르 기도 시간이야?", "session_context": "", "expected_agent": "halal", "expected_sub_category": "prayer_time"}
+{"id": "halal_003", "message": "파즈르 기도가 몇 시야?", "session_context": "", "expected_agent": "halal", "expected_sub_category": "prayer_time"}
+{"id": "halal_004", "message": "살라트 시간 알려줘", "session_context": "", "expected_agent": "halal", "expected_sub_category": "prayer_time"}
+{"id": "halal_005", "message": "What time is Maghrib prayer?", "session_context": "", "expected_agent": "halal", "expected_sub_category": "prayer_time"}
+{"id": "halal_006", "message": "키블라 방향이 어디야?", "session_context": "", "expected_agent": "halal", "expected_sub_category": "qibla"}
+{"id": "halal_007", "message": "메카 방향 알려줘", "session_context": "", "expected_agent": "halal", "expected_sub_category": "qibla"}
+{"id": "halal_008", "message": "قبلة", "session_context": "", "expected_agent": "halal", "expected_sub_category": "qibla"}
+{"id": "halal_009", "message": "Which direction is Qibla?", "session_context": "", "expected_agent": "halal", "expected_sub_category": "qibla"}
+{"id": "halal_010", "message": "지금 기도할 수 있어?", "session_context": "", "expected_agent": "halal", "expected_sub_category": "prayer_time"}
+{"id": "conv_001", "message": "할랄 식당 어디 있어?", "session_context": "", "expected_agent": "convenience", "expected_sub_category": "halal_restaurant"}
+{"id": "conv_002", "message": "무슬림 음식 추천해줘", "session_context": "", "expected_agent": "convenience", "expected_sub_category": "halal_restaurant"}
+{"id": "conv_003", "message": "기도실 어디야?", "session_context": "", "expected_agent": "convenience", "expected_sub_category": "prayer_room"}
+{"id": "conv_004", "message": "무슬라 가까운 데 있나?", "session_context": "", "expected_agent": "convenience", "expected_sub_category": "prayer_room"}
+{"id": "conv_005", "message": "카페 추천해줘", "session_context": "", "expected_agent": "convenience", "expected_sub_category": "cafe"}
+{"id": "conv_006", "message": "스타벅스 영업시간 알려줘", "session_context": "", "expected_agent": "convenience", "expected_sub_category": "cafe"}
+{"id": "conv_007", "message": "약국 찾아줘", "session_context": "", "expected_agent": "convenience", "expected_sub_category": "pharmacy"}
+{"id": "conv_008", "message": "화장실 어디야?", "session_context": "", "expected_agent": "convenience", "expected_sub_category": "restroom"}
+{"id": "conv_009", "message": "근처 ATM 찾아줘", "session_context": "", "expected_agent": "convenience", "expected_sub_category": "atm"}
+{"id": "conv_010", "message": "환전소 어디 있어?", "session_context": "", "expected_agent": "convenience", "expected_sub_category": "exchange"}
+{"id": "conv_011", "message": "편의점 어디야?", "session_context": "", "expected_agent": "convenience", "expected_sub_category": "convenience_store"}
+{"id": "conv_012", "message": "지하철역 알려줘", "session_context": "", "expected_agent": "convenience", "expected_sub_category": "subway"}
+{"id": "conv_013", "message": "주차장 어디야?", "session_context": "", "expected_agent": "convenience", "expected_sub_category": "parking"}
+{"id": "conv_014", "message": "이 매장 뭐 파는 곳이야?", "session_context": "", "expected_agent": "convenience", "expected_sub_category": "shopping"}
+{"id": "conv_015", "message": "올리브영 어디 있어?", "session_context": "", "expected_agent": "convenience", "expected_sub_category": "shopping"}
+{"id": "conv_016", "message": "Where is the nearest toilet?", "session_context": "", "expected_agent": "convenience", "expected_sub_category": "restroom"}
+{"id": "conv_017", "message": "أين أقرب مطعم حلال؟", "session_context": "", "expected_agent": "convenience", "expected_sub_category": "halal_restaurant"}
+{"id": "conv_018", "message": "병원 어디야?", "session_context": "", "expected_agent": "convenience", "expected_sub_category": "hospital"}
+{"id": "conv_019", "message": "짐 보관함 어디 있어?", "session_context": "", "expected_agent": "convenience", "expected_sub_category": "locker"}
+{"id": "conv_020", "message": "은행 찾아줘", "session_context": "", "expected_agent": "convenience", "expected_sub_category": "bank"}
+{"id": "small_001", "message": "?", "session_context": "", "expected_agent": "smalltalk", "expected_sub_category": ""}
+{"id": "small_002", "message": "음...", "session_context": "", "expected_agent": "smalltalk", "expected_sub_category": ""}
+{"id": "small_003", "message": "안녕", "session_context": "", "expected_agent": "smalltalk", "expected_sub_category": ""}
+{"id": "small_004", "message": "고마워!", "session_context": "", "expected_agent": "smalltalk", "expected_sub_category": ""}
+{"id": "small_005", "message": "ㅋㅋ", "session_context": "", "expected_agent": "smalltalk", "expected_sub_category": ""}
+{"id": "small_006", "message": "심심해", "session_context": "", "expected_agent": "smalltalk", "expected_sub_category": ""}
+{"id": "small_007", "message": "hello", "session_context": "", "expected_agent": "smalltalk", "expected_sub_category": ""}
+{"id": "small_008", "message": "잘 부탁해", "session_context": "", "expected_agent": "smalltalk", "expected_sub_category": ""}
+{"id": "small_009", "message": "너 누구야?", "session_context": "", "expected_agent": "smalltalk", "expected_sub_category": ""}
+{"id": "small_010", "message": "대박", "session_context": "", "expected_agent": "smalltalk", "expected_sub_category": ""}
+{"id": "multi_001", "message": "거기 어떻게 가?", "session_context": "user: 눈스퀘어 뭐야?\nassistant: 눈스퀘어는 명동에 있는 쇼핑몰입니다.", "expected_agent": "navigation", "expected_sub_category": "", "expected_resolved": "눈스퀘어 어떻게 가?"}
+{"id": "multi_002", "message": "거기 영업시간 알려줘", "session_context": "user: 스타벅스 명동점 어디 있어?\nassistant: 스타벅스 명동점은 명동 중심가에 위치해 있습니다.", "expected_agent": "convenience", "expected_sub_category": "cafe", "expected_resolved": "스타벅스 명동점 영업시간 알려줘"}
+{"id": "multi_003", "message": "거기 가고 싶어", "session_context": "user: 경복궁이 뭐야?\nassistant: 경복궁은 조선시대 궁궐입니다.", "expected_agent": "navigation", "expected_sub_category": "", "expected_resolved": "경복궁 가고 싶어"}
+{"id": "multi_004", "message": "거기도 할랄 음식 있어?", "session_context": "user: 명동 음식 뭐가 맛있어?\nassistant: 명동에는 다양한 음식점이 있습니다.", "expected_agent": "convenience", "expected_sub_category": "halal_restaurant", "expected_resolved": "명동에도 할랄 음식 있어?"}
+{"id": "multi_005", "message": "그 식당 어디야?", "session_context": "user: 할랄 식당 추천해줘\nassistant: 근처에 이슬람 식당이 200m 거리에 있습니다.", "expected_agent": "convenience", "expected_sub_category": "halal_restaurant", "expected_resolved": "이슬람 식당 어디야?"}
+{"id": "edge_001", "message": "스타벅스 커피 맛있다던데", "session_context": "", "expected_agent": "convenience", "expected_sub_category": "cafe"}
+{"id": "edge_002", "message": "할랄 식당에서 기도할 수 있어?", "session_context": "", "expected_agent": "convenience", "expected_sub_category": "halal_restaurant"}
+{"id": "edge_003", "message": "명동성당 주변 카페 알려줘", "session_context": "", "expected_agent": "convenience", "expected_sub_category": "cafe"}
+{"id": "edge_004", "message": "이쪽으로 가면 돼?", "session_context": "", "expected_agent": "nav_guide", "expected_sub_category": ""}
+{"id": "edge_005", "message": "명동성당 입장료 얼마야?", "session_context": "", "expected_agent": "place", "expected_sub_category": ""}
