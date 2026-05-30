@@ -73,11 +73,15 @@ async def _ensure_translations(
     lng: float,
     language: str,
     existing: dict = None,
+    no_translate: bool = False,
 ) -> dict:
     if language == "ko":
         return {}
     trans = existing or {}
     cached = trans.get(language, {})
+    # no_translate: DeepL 호출 없이 이미 캐시된 번역만 반환 (없으면 빈 dict → 원본 폴백).
+    if no_translate:
+        return cached
     # 이미 번역된 필드는 제외하고 빠진 것만 번역
     missing = {k: v for k, v in fields.items() if k not in cached and v and str(v).strip()}
     if not missing:
@@ -813,7 +817,7 @@ async def place_search(req: SearchRequest):
     return SearchResponse(query=req.query, count=len(results), results=results)
 
 
-async def _restroom_detail(mng_no: str, language: str = "ko") -> PlaceDetailResponse:
+async def _restroom_detail(mng_no: str, language: str = "ko", no_translate: bool = False) -> PlaceDetailResponse:
     """public_restrooms 테이블 1건 → PlaceDetailResponse.
     details 키는 store_details schema 와 동일 — male_toilt_cnt, has_disabled 등."""
     pool = await get_pool()
@@ -863,6 +867,7 @@ async def _restroom_detail(mng_no: str, language: str = "ko") -> PlaceDetailResp
             pool, "public_restrooms", "mng_no", mng_no,
             {"name": row["name"] or "", "addr": row["addr_road"] or row["addr_lot"] or "", "open_hours": open_hours},
             lat=float(row["lat"] or 0), lng=float(row["lng"] or 0), language=language, existing=_rt,
+            no_translate=no_translate,
         )
     else:
         _t = {}
@@ -888,7 +893,7 @@ async def _restroom_detail(mng_no: str, language: str = "ko") -> PlaceDetailResp
     )
 
 
-async def _halal_detail(restaurant_id: str, language: str = "ko") -> PlaceDetailResponse:
+async def _halal_detail(restaurant_id: str, language: str = "ko", no_translate: bool = False) -> PlaceDetailResponse:
     """halal_restaurants 테이블 1건 → PlaceDetailResponse."""
     pool = await get_pool()
     async with pool.acquire() as conn:
@@ -953,6 +958,7 @@ async def _halal_detail(restaurant_id: str, language: str = "ko") -> PlaceDetail
                 "short_description_ko": row["short_description_ko"] or "",
             },
             lat=_lat_h or 0, lng=_lng_h or 0, language=language, existing=_rt,
+            no_translate=no_translate,
         )
         if _t.get("short_description_ko"):
             details["short_description_ko"] = _t["short_description_ko"]
@@ -981,7 +987,7 @@ async def _halal_detail(restaurant_id: str, language: str = "ko") -> PlaceDetail
     )
 
 
-async def _vegan_detail(vegan_id: str, language: str = "ko") -> PlaceDetailResponse:
+async def _vegan_detail(vegan_id: str, language: str = "ko", no_translate: bool = False) -> PlaceDetailResponse:
     """vegan_restaurants 테이블 1건 → PlaceDetailResponse."""
     pool = await get_pool()
     async with pool.acquire() as conn:
@@ -1031,6 +1037,7 @@ async def _vegan_detail(vegan_id: str, language: str = "ko") -> PlaceDetailRespo
                 "vegan_menu":  d.get("vegan_menu", ""),
             },
             lat=_lat_v or 0, lng=_lng_v or 0, language=language, existing=_rt,
+            no_translate=no_translate,
         )
     else:
         _t = {}
@@ -1061,7 +1068,7 @@ async def _vegan_detail(vegan_id: str, language: str = "ko") -> PlaceDetailRespo
     )
 
 
-async def _prayer_detail(room_id: str, language: str = "ko") -> PlaceDetailResponse:
+async def _prayer_detail(room_id: str, language: str = "ko", no_translate: bool = False) -> PlaceDetailResponse:
     """prayer_rooms 테이블 1건 → PlaceDetailResponse."""
     pool = await get_pool()
     async with pool.acquire() as conn:
@@ -1115,6 +1122,7 @@ async def _prayer_detail(room_id: str, language: str = "ko") -> PlaceDetailRespo
                 "notes":      row["notes"] or "",
             },
             lat=_lat_p or 0, lng=_lng_p or 0, language=language, existing=_rt,
+            no_translate=no_translate,
         )
         if _t.get("notes"):
             details["notes"] = _t["notes"]
@@ -1233,7 +1241,7 @@ async def _tourist_search(req: SearchRequest, lat: float, lng: float, language: 
     return SearchResponse(query=req.query, count=len(results), results=results)
 
 
-async def _accommodation_detail(acc_id: str, language: str = "ko", user_lat: float | None = None, user_lng: float | None = None) -> PlaceDetailResponse:
+async def _accommodation_detail(acc_id: str, language: str = "ko", user_lat: float | None = None, user_lng: float | None = None, no_translate: bool = False) -> PlaceDetailResponse:
     """accommodation_places 테이블 1건 → PlaceDetailResponse."""
     pool = await get_pool()
     async with pool.acquire() as conn:
@@ -1283,6 +1291,7 @@ async def _accommodation_detail(acc_id: str, language: str = "ko", user_lat: flo
                 "reservationlodging": _resv,
             },
             lat=_lat_a or 0, lng=_lng_a or 0, language=language, existing=_rt,
+            no_translate=no_translate,
         )
     else:
         _t = {}
@@ -1319,7 +1328,7 @@ async def _accommodation_detail(acc_id: str, language: str = "ko", user_lat: flo
     )
 
 
-async def _tourist_detail(tourist_id: str, language: str = "ko", user_lat: float | None = None, user_lng: float | None = None) -> PlaceDetailResponse:
+async def _tourist_detail(tourist_id: str, language: str = "ko", user_lat: float | None = None, user_lng: float | None = None, no_translate: bool = False) -> PlaceDetailResponse:
     """tourist_places 테이블 1건 → PlaceDetailResponse."""
     from tools.category_classifier import classify_category
     pool = await get_pool()
@@ -1389,6 +1398,7 @@ async def _tourist_detail(tourist_id: str, language: str = "ko", user_lat: float
                 **{k: v for k, v in type_details.items() if v},
             },
             lat=_lat_t or 0, lng=_lng_t or 0, language=language, existing=_rt,
+            no_translate=no_translate,
         )
         type_details = {k: _t.get(k) or v for k, v in type_details.items()}
     else:
@@ -1523,17 +1533,17 @@ async def place_detail(req: PlaceDetailRequest):
     """
     # outdoor 라우팅
     if req.id.startswith("restroom__"):
-        return await _restroom_detail(req.id[len("restroom__"):], language=req.language)
+        return await _restroom_detail(req.id[len("restroom__"):], language=req.language, no_translate=req.no_translate)
     if req.id.startswith("halal__"):
-        return await _halal_detail(req.id[len("halal__"):], language=req.language)
+        return await _halal_detail(req.id[len("halal__"):], language=req.language, no_translate=req.no_translate)
     if req.id.startswith("vegan__"):
-        return await _vegan_detail(req.id[len("vegan__"):], language=req.language)
+        return await _vegan_detail(req.id[len("vegan__"):], language=req.language, no_translate=req.no_translate)
     if req.id.startswith("prayer__"):
-        return await _prayer_detail(req.id[len("prayer__"):], language=req.language)
+        return await _prayer_detail(req.id[len("prayer__"):], language=req.language, no_translate=req.no_translate)
     if req.id.startswith("accommodation__"):
-        return await _accommodation_detail(req.id, language=req.language, user_lat=req.user_lat, user_lng=req.user_lng)
+        return await _accommodation_detail(req.id, language=req.language, user_lat=req.user_lat, user_lng=req.user_lng, no_translate=req.no_translate)
     if req.id.startswith("tourist__"):
-        return await _tourist_detail(req.id, language=req.language, user_lat=req.user_lat, user_lng=req.user_lng)
+        return await _tourist_detail(req.id, language=req.language, user_lat=req.user_lat, user_lng=req.user_lng, no_translate=req.no_translate)
     if req.id.startswith("subway__"):
         return await _subway_detail(req.id[len("subway__"):], language=req.language)
     if req.id.startswith("locker__"):
@@ -1632,8 +1642,10 @@ async def place_detail(req: PlaceDetailRequest):
     if not isinstance(raw_trans, dict):
         raw_trans = {}
     t = raw_trans.get(req.language, {})
-    # 번역 캐시 없으면 트리거 — 어느 경로로 진입해도 최초 1회만 실행
-    if req.language != "ko" and not t and row["lat"] is not None and row["lng"] is not None:
+    # 번역 캐시 없으면 트리거 — 어느 경로로 진입해도 최초 1회만 실행.
+    # no_translate 면 DeepL 호출 스킵: 캐시된 번역만 쓰고 없으면 원본 반환.
+    if req.language != "ko" and not t and not req.no_translate \
+            and row["lat"] is not None and row["lng"] is not None:
         t = await _ensure_translations(
             pool, "store_details", "id", row["id"],
             {
