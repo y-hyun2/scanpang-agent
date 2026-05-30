@@ -18,6 +18,8 @@ class PrayerTimeData(BaseModel):
     asr: str
     maghrib: str
     isha: str
+    next_prayer: str = ""
+    next_prayer_time: str = ""
     hijri_date: str
     gregorian_date: str
 
