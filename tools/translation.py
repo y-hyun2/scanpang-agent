@@ -15,6 +15,7 @@ JUSO_ADDR_API_KEY = os.getenv("JUSO_ADDR_API_KEY", "")
 DEEPL_API_KEY     = os.getenv("DEEPL_API_KEY", "")
 
 _HTTP_TIMEOUT = 6.0
+_DEEPL_SEM    = asyncio.Semaphore(5)   # DeepL 동시 요청 최대 5개
 
 _RE_KOREAN = re.compile(r"[가-힣㄰-㆏ᄀ-ᇿ]")
 
@@ -54,23 +55,30 @@ async def _juso_addr(addr_ko: str) -> str | None:
 # ── DeepL ─────────────────────────────────────────────────────────────────────
 
 async def _deepl_translate(text: str) -> str | None:
-    """DeepL API Free ko → en-US."""
+    """DeepL API Free ko → en-US. 전역 semaphore로 동시 요청 제한, 429 시 retry."""
     if not DEEPL_API_KEY or not text or not text.strip():
         return None
-    try:
-        async with httpx.AsyncClient(timeout=_HTTP_TIMEOUT) as client:
-            r = await client.post(
-                "https://api-free.deepl.com/v2/translate",
-                headers={"Authorization": f"DeepL-Auth-Key {DEEPL_API_KEY}"},
-                json={
-                    "text":        [text],
-                    "source_lang": "KO",
-                    "target_lang": "EN-US",
-                },
-            )
-        return r.json()["translations"][0]["text"]
-    except Exception:
-        pass
+    async with _DEEPL_SEM:
+        for attempt in range(3):
+            try:
+                async with httpx.AsyncClient(timeout=_HTTP_TIMEOUT) as client:
+                    r = await client.post(
+                        "https://api-free.deepl.com/v2/translate",
+                        headers={"Authorization": f"DeepL-Auth-Key {DEEPL_API_KEY}"},
+                        json={
+                            "text":        [text],
+                            "source_lang": "KO",
+                            "target_lang": "EN-US",
+                        },
+                    )
+                if r.status_code == 429:
+                    await asyncio.sleep(2 ** attempt)   # 1s → 2s → 4s
+                    continue
+                if r.status_code != 200:
+                    return None
+                return r.json()["translations"][0]["text"]
+            except Exception:
+                await asyncio.sleep(1)
     return None
 
 
