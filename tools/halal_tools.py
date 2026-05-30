@@ -58,12 +58,43 @@ async def fetch_prayer_times(lat: float, lng: float, date: str = "") -> dict:
     hijri = data.get("date", {}).get("hijri", {})
     gregorian = data.get("date", {}).get("gregorian", {})
 
+    prayer_map = [
+        ("Fajr",    timings.get("Fajr", "")),
+        ("Dhuhr",   timings.get("Dhuhr", "")),
+        ("Asr",     timings.get("Asr", "")),
+        ("Maghrib", timings.get("Maghrib", "")),
+        ("Isha",    timings.get("Isha", "")),
+    ]
+
+    kst = timezone(timedelta(hours=9))
+    now = datetime.now(kst)
+    next_prayer = ""
+    next_prayer_time = ""
+    for name, t in prayer_map:
+        if not t:
+            continue
+        try:
+            prayer_dt = now.replace(
+                hour=int(t.split(":")[0]),
+                minute=int(t.split(":")[1]),
+                second=0,
+                microsecond=0,
+            )
+            if prayer_dt > now:
+                next_prayer = name
+                next_prayer_time = t
+                break
+        except (ValueError, IndexError):
+            continue
+
     result = {
         "fajr": timings.get("Fajr", ""),
         "dhuhr": timings.get("Dhuhr", ""),
         "asr": timings.get("Asr", ""),
         "maghrib": timings.get("Maghrib", ""),
         "isha": timings.get("Isha", ""),
+        "next_prayer": next_prayer,
+        "next_prayer_time": next_prayer_time,
         "hijri_date": f"{hijri.get('day', '')} {hijri.get('month', {}).get('en', '')} {hijri.get('year', '')}",
         "gregorian_date": gregorian.get("date", ""),
     }
