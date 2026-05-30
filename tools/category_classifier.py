@@ -331,6 +331,7 @@ def classify_query(query: str) -> str:
     q = (query or "").strip()
     for kw, key in _QUERY_KEYWORD_TO_CATEGORY:
         # 단어 경계 매칭 — 앞뒤가 공백(또는 문자열 시작/끝)일 때만 매칭.
-        if re.search(r"(?<!\S)" + re.escape(kw) + r"(?!\S)", q):
+        # IGNORECASE: 영어 모드에서 "Cafe", "Tourist Spot" 등 대소문자 혼용 처리.
+        if re.search(r"(?<!\S)" + re.escape(kw) + r"(?!\S)", q, re.IGNORECASE):
             return key
     return "other"
