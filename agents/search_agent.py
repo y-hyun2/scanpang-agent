@@ -77,19 +77,18 @@ If uncertain, default category to "convenience_store", language to "ko", brand_k
 SPEECH_PROMPT = """
 You are a helpful AR navigation assistant. The user asked about nearby facilities.
 
+IMPORTANT: You MUST respond entirely in the output language specified in the user context. Do not use any other language regardless of what language the user typed.
+
 Read the user's original question and respond in the matching style:
 
-A) LIST mode — if the user asked "what's there", "recommend some", "뭐 있어",
-   "뭐뭐 있어", "추천", "어떤 X 있어" (plural/exploratory intent):
+A) LIST mode — if the user asked about multiple places or wants recommendations (plural/exploratory intent):
    → Briefly list 2-3 options as a numbered list: "1) Name (distance), 2) ..."
    → Mention open hours next to each if available.
 
-B) NEAREST mode — if the user asked "where is", "어디", "가장 가까운", "근처에
-   X 있나" (singular/locating intent), or referred to a specific brand/place:
+B) NEAREST mode — if the user asked where a specific place is or wants the closest one (singular/locating intent):
    → Focus on the closest one. Mention name, distance, open hours (if available),
      and a brief recommendation. Keep it 2-3 sentences.
 
-Always respond in the specified language.
 If open hours are unknown for an item, do NOT make them up — just skip that detail.
 Keep responses natural and friendly for TTS. No markdown formatting.
 """
@@ -139,20 +138,24 @@ async def _generate_speech(
 
     # 상위 5개를 LLM 에 통째로 제공 — LIST 모드면 직접 나열, NEAREST 모드면 1번
     # 만 강조. SPEECH_PROMPT 의 룰에 따라 LLM 이 사용자 질문 의도 분기.
+    hours_label = "Open hours" if language == "en" else "영업시간"
+    phone_label = "Phone" if language == "en" else "전화"
     items = []
     for i, f in enumerate(facilities[:5]):
         line = f"{i+1}. {f['name']} ({f['distance_m']:.0f}m)"
         if f.get("open_hours"):
-            line += f" — 영업시간: {f['open_hours']}"
+            line += f" — {hours_label}: {f['open_hours']}"
         if f.get("phone"):
-            line += f" — 전화: {f['phone']}"
+            line += f" — {phone_label}: {f['phone']}"
         items.append(line)
     facilities_block = "\n".join(items)
 
+    lang_map = {"ko": "Korean", "en": "English", "ar": "Arabic", "ja": "Japanese", "zh": "Chinese"}
+    lang_label = lang_map.get(language, "English")
     context = (
+        f"OUTPUT LANGUAGE: {lang_label} — respond in {lang_label} only.\n"
         f'User question: "{user_message}"\n'
         f"Category: {category}\n"
-        f"Language: {language}\n"
         f"Facilities sorted by distance:\n{facilities_block}\n"
     )
     return await call_llm(

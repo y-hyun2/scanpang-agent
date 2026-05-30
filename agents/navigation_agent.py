@@ -114,7 +114,7 @@ async def _fetch_nearby_buildings(lat: float, lng: float) -> list[dict]:
         return []
 
 
-async def run_route_search(req: NavRequest, user_id: str = "") -> dict:
+async def run_route_search(req: NavRequest, user_id: str = "", language_override: str | None = None) -> dict:
     """
     경로 안내 1단계: 메시지 파싱 → POI 검색 → 후보 목록 + 추천 반환.
     사용자가 앱에서 확인/선택 후 /navigation/route 호출.
@@ -139,7 +139,7 @@ async def run_route_search(req: NavRequest, user_id: str = "") -> dict:
 
     keyword = intent.get("keyword", req.message)
     intent_type = intent.get("intent", "specific_place")
-    language = intent.get("language", "ko")
+    language = language_override or intent.get("language", "ko")
 
     # Step 1: POI 검색 (5km → 전국 fallback)
     pois = await search_poi(keyword, req.lat, req.lng)

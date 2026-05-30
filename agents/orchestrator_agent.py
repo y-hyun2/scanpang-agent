@@ -277,7 +277,7 @@ async def _call_navigation_node(state: OrchestratorState) -> dict:
         lat=state["user_lat"],
         lng=state["user_lng"],
     )
-    result = await run_route_search(req, user_id=state.get("user_id", ""))
+    result = await run_route_search(req, user_id=state.get("user_id", ""), language_override=state.get("language"))
     return {"sub_agent_response": result if isinstance(result, dict) else result.model_dump()}
 
 
@@ -326,8 +326,8 @@ async def _call_convenience_node(state: OrchestratorState) -> dict:
 _SMALLTALK_SYSTEM = (
     "You are a friendly AR travel assistant for Seoul. The user said something vague, "
     "ambiguous, or off-topic (a greeting, filler, single punctuation, etc.). "
-    "Respond in 1-2 short, warm sentences suitable for text-to-speech in the same "
-    "language as the user. Do NOT invent facts about places. If the user seems lost, "
+    "Respond in 1-2 short, warm sentences suitable for text-to-speech. "
+    "Do NOT invent facts about places. If the user seems lost, "
     "briefly suggest they can ask about nearby cafes, restrooms, landmarks, or directions."
 )
 
@@ -350,7 +350,7 @@ async def _call_smalltalk_node(state: OrchestratorState) -> dict:
             temperature=0.7,
         )
     except Exception:
-        speech = "무엇을 도와드릴까요? 주변 카페·화장실·관광지나 길안내를 물어봐 주세요."
+        speech = "How can I help? Ask me about nearby cafes, restrooms, landmarks, or directions." if lang_label == "English" else "무엇을 도와드릴까요? 주변 카페·화장실·관광지나 길안내를 물어봐 주세요."
     return {"sub_agent_response": {"speech": speech, "raw": {}}}
 
 
