@@ -23,7 +23,7 @@ import os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from core.db import get_pool
-from tools.translation import translate_fields, _google_translate
+from tools.translation import translate_fields, _deepl_translate
 
 
 # ── 테이블별 설정 ─────────────────────────────────────────────────────────────
@@ -262,12 +262,11 @@ async def _process_subway_exits(limit: int | None, concurrency: int):
             lat        = float(row["lat"])
             lng        = float(row["lng"])
 
-            # 지하철역은 Translation API로만 처리.
-            # Places API는 한국어 역명을 반환하는 케이스가 있어 건너뜀.
+            # 지하철역은 DeepL로만 처리.
             try:
                 name_en, line_en = await asyncio.gather(
-                    _google_translate(station_ko + "역"),
-                    _google_translate(line_ko),
+                    _deepl_translate(station_ko + "역"),
+                    _deepl_translate(line_ko),
                 )
             except Exception as e:
                 print(f"  [오류] subway {station_ko} {line_ko}: {e}")
