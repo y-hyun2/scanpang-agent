@@ -1,5 +1,3 @@
-﻿import json
-import os
 from datetime import datetime, timezone
 
 from dotenv import load_dotenv
@@ -11,23 +9,37 @@ from tools.llm_client import call_llm
 
 load_dotenv()
 
-_SCAN_LOG_PATH = "logs/scan_events.jsonl"
-_STALE_DAYS    = 30
+_STALE_DAYS = 30
 
 
-def _log_scan_event(ufid: str, lat: float, lng: float) -> None:
+async def _record_user_scan(user_id: str, ufid: str) -> None:
+    """
+    사용자가 AR 카메라로 건물을 스캔(=`/place/query` 호출) 한 사실을
+    user_building_scans 테이블에 누적 기록.
+
+    동일 (user_id, ufid) 가 다시 들어오면 scan_count += 1, last_scanned_at 갱신.
+    user_id 가 빈 문자열(인증 안 거친 호출)이면 기록 스킵 — 익명 스캔은 분석 가치 X.
+
+    실패해도 호출자(run_place_insight_agent) 흐름 영향 X: 도슨트 생성이 본질이라
+    스캔 기록 실패가 사용자 경험 막아선 안 됨.
+    """
+    if not user_id or not ufid:
+        return
     try:
-        os.makedirs("logs", exist_ok=True)
-        entry = {
-            "timestamp": datetime.now(timezone.utc).isoformat(),
-            "ufid":      ufid,
-            "lat":       lat,
-            "lng":       lng,
-        }
-        with open(_SCAN_LOG_PATH, "a", encoding="utf-8") as f:
-            f.write(json.dumps(entry, ensure_ascii=False) + "\n")
+        pool = await get_pool()
+        async with pool.acquire() as conn:
+            await conn.execute(
+                """
+                INSERT INTO user_building_scans (user_id, ufid)
+                VALUES ($1, $2)
+                ON CONFLICT (user_id, ufid) DO UPDATE
+                   SET scan_count = user_building_scans.scan_count + 1,
+                       last_scanned_at = now()
+                """,
+                user_id, ufid,
+            )
     except Exception as e:
-        print(f"[place_insight] 스캔 로그 기록 실패: {e}")
+        print(f"[place_insight] 스캔 기록 실패 (무시): {e}")
 
 
 def _compute_distance_m(
@@ -142,7 +154,7 @@ async def run_place_insight_agent(req: PlaceRequest, progress_cb=None, user_id: 
         ufid = vworld_meta.get("ufid", "")
 
         if ufid:
-            _log_scan_event(ufid, req.user_lat, req.user_lng)
+            await _record_user_scan(user_id, ufid)
 
         # 2) Supabase place_info 직접 조회 (ufid PK)
         if ufid:
