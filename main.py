@@ -513,12 +513,17 @@ _OUTDOOR_CATEGORIES = {"restroom", "subway", "locker", "prayer_room", "halal_res
 
 
 def _vegan_category_label(vegan_level: str, category_key: str, language: str = "ko") -> str:
-    """'채식전문 · 음식점' 또는 'Vegan · Cafe' 형식의 카테고리 레이블 반환."""
+    """'채식전문 · 음식점' 또는 'Vegan Only · Restaurant' 형식의 카테고리 레이블 반환."""
     if language == "en":
         type_label = "Cafe" if category_key == "vegan_cafe" else "Restaurant"
+        level_label = {
+            "채식전문": "Vegan Only",
+            "채식가능": "Vegetarian-Friendly",
+        }.get(vegan_level, vegan_level)
     else:
         type_label = "카페" if category_key == "vegan_cafe" else "음식점"
-    return f"{vegan_level} · {type_label}" if vegan_level else type_label
+        level_label = vegan_level
+    return f"{level_label} · {type_label}" if level_label else type_label
 
 
 async def _outdoor_search(category_key: str, req: SearchRequest) -> SearchResponse:
@@ -725,6 +730,7 @@ async def place_search(req: SearchRequest):
                      END AS dist_m
               FROM store_details
               WHERE store_name ILIKE $1
+                 OR category ILIKE $1
                  OR similarity(
                       regexp_replace(store_name, '\\s+', '', 'g'),
                       regexp_replace($6, '\\s+', '', 'g')
@@ -733,7 +739,7 @@ async def place_search(req: SearchRequest):
             ) sub
             ORDER BY
               CASE
-                WHEN $3 = 'other' AND store_name ILIKE $1 THEN 0
+                WHEN store_name ILIKE $1 THEN 0
                 WHEN $3 = 'other' AND similarity(
                        regexp_replace(store_name, '\\s+', '', 'g'),
                        regexp_replace($6, '\\s+', '', 'g')
@@ -742,7 +748,8 @@ async def place_search(req: SearchRequest):
                        regexp_replace(store_name, '\\s+', '', 'g'),
                        regexp_replace($6, '\\s+', '', 'g')
                      ) >= 0.3 THEN 2
-                ELSE 3
+                WHEN category ILIKE $1 THEN 3
+                ELSE 4
               END,
               dist_m NULLS LAST
             LIMIT $2
