@@ -234,6 +234,71 @@ async def _enrich_facilities_with_db_hours(facilities: list[dict]) -> list[dict]
     return facilities
 
 
+def _tl_for(raw, language: str) -> dict:
+    """translations JSONB(텍스트/dict) → 해당 언어 dict. 없으면 {}."""
+    if not raw:
+        return {}
+    try:
+        t = raw if isinstance(raw, dict) else json.loads(raw)
+    except (ValueError, TypeError):
+        return {}
+    if not isinstance(t, dict):
+        return {}
+    return t.get(language) or {}
+
+
+async def _localize_facility_names(facilities: list[dict], category: str, language: str) -> None:
+    """검색된 시설 dict 의 name 을 캐시된 번역으로 in-place 교체(영어 모드 등).
+    speech 생성 전에 호출해야 안내 문구에도 영문명이 반영된다.
+    번역 캐시가 없는 시설은 원본(한국어) 유지 — DeepL 신규 호출 없음."""
+    if language == "ko" or not facilities:
+        return
+    try:
+        from core.db import get_pool
+        pool = await get_pool()
+        if category == "prayer_room":
+            # prayer_room_search 가 translations(JSONB 텍스트)를 함께 반환 → 그대로 사용
+            for f in facilities:
+                t = _tl_for(f.get("translations"), language)
+                if t.get("name"):
+                    f["name"] = t["name"]
+        elif category == "restroom":
+            mng_nos = [f.get("mng_no") for f in facilities if f.get("mng_no")]
+            if mng_nos:
+                async with pool.acquire() as conn:
+                    rows = await conn.fetch(
+                        "SELECT mng_no, COALESCE(translations::text, '{}') AS tl "
+                        "FROM public_restrooms WHERE mng_no = ANY($1::text[])",
+                        mng_nos,
+                    )
+                tmap = {r["mng_no"]: r["tl"] for r in rows}
+                for f in facilities:
+                    t = _tl_for(tmap.get(f.get("mng_no")), language)
+                    if t.get("name"):
+                        f["name"] = t["name"]
+        else:
+            # Kakao/exchange 등 일반 카테고리 → store_details 의 캐시된 번역을 상호명 일치로 매칭
+            names = [f["name"] for f in facilities if f.get("name")]
+            if names:
+                async with pool.acquire() as conn:
+                    rows = await conn.fetch(
+                        "SELECT store_name, COALESCE(translations::text, '{}') AS tl "
+                        "FROM store_details WHERE store_name = ANY($1::text[]) "
+                        "AND translations::text <> '{}'",
+                        names,
+                    )
+                tmap = {}
+                for r in rows:
+                    t = _tl_for(r["tl"], language)
+                    if t.get("name"):
+                        tmap.setdefault(r["store_name"], t["name"])
+                for f in facilities:
+                    if f.get("name") in tmap:
+                        f["name"] = tmap[f["name"]]
+    except Exception as e:
+        print(f"[search_agent] 시설명 번역 적용 실패 (무시): {e}")
+
+
 async def run_search_agent(req: ConvenienceRequest, user_id: str = "") -> ConvenienceResponse:
     # Step 1: category + 브랜드 키워드 결정
     # message 안에 특정 상호명(스타벅스/올리브영 등) 이 있으면 brand_keyword 에 담겨오고
@@ -284,7 +349,8 @@ async def run_search_agent(req: ConvenienceRequest, user_id: str = "") -> Conven
         halal_rows = await halal_restaurant_search(req.lat, req.lng, radius)
         raw = [
             {
-                "name":       r.get("name_ko") or r.get("name_en") or "할랄 식당",
+                "name":       ((r.get("name_en") or r.get("name_ko")) if language == "en"
+                               else (r.get("name_ko") or r.get("name_en"))) or "할랄 식당",
                 "distance_m": r.get("distance_m", 0),
                 "lat":        r.get("lat"),
                 "lng":        r.get("lng"),
@@ -310,6 +376,10 @@ async def run_search_agent(req: ConvenienceRequest, user_id: str = "") -> Conven
 
     # Step 4.5: Kakao Local API 는 open_hours 를 안 줘서 store_details DB 캐시에서 보강
     raw_sorted = await _enrich_facilities_with_db_hours(raw_sorted)
+
+    # Step 4.55: 영어 등 비-한국어 모드면 캐시된 번역으로 시설명 교체 (speech 생성 전).
+    # 안내 문구·Guide 버튼 모두 영문명으로 나오게. 캐시 없는 시설은 한국어 유지.
+    await _localize_facility_names(raw_sorted, category, language)
 
     # Step 4.6: open_hours 기반 is_open_now 계산 (보강 후의 값으로)
     for f in raw_sorted:
