@@ -45,21 +45,24 @@ async def call_api(api: str, system: str, user: str,
                    openai_model: str = "gpt-4o") -> dict:
     t0 = time.perf_counter()
     try:
+        JSON_HINT = "\n\nOutput valid JSON only. No explanation, no markdown."
+
         if api == "openai":
             resp = await _openai.chat.completions.create(
                 model=openai_model, temperature=0, max_tokens=600,
-                messages=[{"role":"system","content":system},
+                response_format={"type": "json_object"},
+                messages=[{"role":"system","content":system + JSON_HINT},
                           {"role":"user","content":user}],
             )
-            text = resp.choices[0].message.content or ""
-            inp  = resp.usage.prompt_tokens
-            out  = resp.usage.completion_tokens
+            text  = resp.choices[0].message.content or ""
+            inp   = resp.usage.prompt_tokens
+            out   = resp.usage.completion_tokens
             model = openai_model
 
         elif api == "claude":
             resp = await _claude.messages.create(
                 model="claude-opus-4-5", max_tokens=600,
-                system=system,
+                system=system + JSON_HINT,
                 messages=[{"role":"user","content":user}],
             )
             text  = resp.content[0].text if resp.content else ""
@@ -72,19 +75,27 @@ async def call_api(api: str, system: str, user: str,
                 _gemini.models.generate_content,
                 model="gemini-2.5-flash", contents=user,
                 config=_genai.types.GenerateContentConfig(
-                    system_instruction=system,
+                    system_instruction=system + JSON_HINT,
                     max_output_tokens=600, temperature=0,
+                    response_mime_type="application/json",
                 ),
             )
-            text  = resp.text if hasattr(resp, "text") else ""
+            text  = resp.text if hasattr(resp, "text") and resp.text else ""
             um    = resp.usage_metadata
             inp   = getattr(um, "prompt_token_count", 0) or 0
             out   = getattr(um, "candidates_token_count", 0) or 0
             model = "gemini-2.5-flash"
 
+        # JSON 추출 — 설명 텍스트가 섞인 경우 { } 안쪽만 추출
+        stripped = text.strip()
+        if stripped and not stripped.startswith("{"):
+            m = re.search(r'\{.*\}', stripped, re.DOTALL)
+            stripped = m.group() if m else stripped
+        text = stripped
+
         ms = round((time.perf_counter() - t0) * 1000)
         return {"ok":True, "ms":ms, "inp":inp, "out":out,
-                "cost":calc_cost(model,inp,out), "text":text.strip(), "model":model}
+                "cost":calc_cost(model,inp,out), "text":text, "model":model}
 
     except Exception as e:
         ms = round((time.perf_counter() - t0) * 1000)
