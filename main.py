@@ -526,6 +526,37 @@ def _vegan_category_label(vegan_level: str, category_key: str, language: str = "
     return f"{level_label} · {type_label}" if level_label else type_label
 
 
+def _norm_subway_station(s: str) -> str:
+    """'강남역' / '강남' / '서울 역' → '강남' 등 비교용 정규화 (끝 '역' 제거 + 공백 제거)."""
+    s = (s or "").strip()
+    if s.endswith("역"):
+        s = s[:-1]
+    return s.replace(" ", "")
+
+
+async def _subway_en_name_map() -> tuple[dict, dict]:
+    """subway_exits.translations[en] → 영문 역명 룩업 2종 반환.
+    - full:       {(norm_station, line): {name, line}}  — 역+호선 정확 매칭
+    - by_station: {norm_station: {name, line}}           — 호선 불명 시 역 단위 fallback
+    영문 번역이 채워진 행만 사용. 없으면 호출처가 원본(한국어) 유지.
+    """
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        erows = await conn.fetch(
+            "SELECT DISTINCT station_name, line, translations FROM subway_exits "
+            "WHERE translations::text <> '{}'",
+        )
+    full: dict = {}
+    by_station: dict = {}
+    for er in erows:
+        t = (_json.loads(er["translations"]).get("en") or {})
+        if t.get("name"):
+            k = _norm_subway_station(er["station_name"])
+            full[(k, er["line"])] = t
+            by_station.setdefault(k, t)
+    return full, by_station
+
+
 async def _outdoor_search(category_key: str, req: SearchRequest) -> SearchResponse:
     """건물 외 카테고리(화장실/지하철/물품보관/기도실/할랄식당)는 store_details 가 아닌
     각자 출처 테이블·JSON 에서 거리 정렬로 반환.
@@ -541,10 +572,46 @@ async def _outdoor_search(category_key: str, req: SearchRequest) -> SearchRespon
 
     if category_key == "restroom":
         rows = await public_restroom_search(lat, lng, radius=2000)
+        # 화장실 검색은 JSON 캐시 출처라 translations 가 없다. 영어 모드면 public_restrooms
+        # DB 에서 mng_no 로 캐시된 번역을 배치 조회해 붙여준다(상세화면과 동일 영어명 노출).
+        if req.language != "ko" and rows:
+            mng_nos = [r["mng_no"] for r in rows if r.get("mng_no")]
+            if mng_nos:
+                pool = await get_pool()
+                async with pool.acquire() as conn:
+                    trows = await conn.fetch(
+                        "SELECT mng_no, COALESCE(translations::text, '{}') AS translations "
+                        "FROM public_restrooms WHERE mng_no = ANY($1::text[])",
+                        mng_nos,
+                    )
+                tmap = {tr["mng_no"]: tr["translations"] for tr in trows}
+                for r in rows:
+                    r["translations"] = tmap.get(r.get("mng_no"), "{}")
     elif category_key == "subway":
         rows = await kakao_category_search("subway", lat, lng, radius=1500)
+        # Kakao 는 한국어 역명("강남역 2호선")만 준다. 영어 모드면 subway_exits.translations[en]
+        # 와 (역명, 호선)으로 매칭해 "Gangnam Station Line 2" 로 교체.
+        if req.language == "en" and rows:
+            full, by_station = await _subway_en_name_map()
+            for r in rows:
+                toks = (r.get("name") or "").split()
+                if not toks:
+                    continue
+                skey = _norm_subway_station(toks[0])
+                line = toks[-1] if len(toks) >= 2 else ""
+                t = full.get((skey, line)) or by_station.get(skey)
+                if t:
+                    r["name"] = f"{t.get('name','')} {t.get('line','')}".strip()
     elif category_key == "locker":
         rows = await seoul_locker_search(lat, lng, radius=1500)
+        # 물품보관함 이름은 "명동역 물품보관함" 형식 → 역명을 영문으로 바꿔 "Myeongdong Station Luggage Locker".
+        if req.language == "en" and rows:
+            _, by_station = await _subway_en_name_map()
+            for r in rows:
+                base = (r.get("name") or "").replace("물품보관함", "").strip()
+                t = by_station.get(_norm_subway_station(base))
+                if t:
+                    r["name"] = f"{t.get('name','')} Luggage Locker".strip()
     elif category_key == "prayer_room":
         rows = await prayer_room_search(lat, lng, radius=2000)
     elif category_key == "halal_restaurant":
@@ -579,13 +646,14 @@ async def _outdoor_search(category_key: str, req: SearchRequest) -> SearchRespon
                 "vegan_id":     r.get("vegan_id", ""),
                 "vegan_level":  r.get("vegan_level", ""),
                 "vegan_menu":   r.get("vegan_menu", ""),
+                "translations": r.get("translations", "{}"),
             }
             for r in raw
         ]
     elif category_key == "accommodation":
-        return await _accommodation_search(req, lat, lng)
+        return await _accommodation_search(req, lat, lng, language=req.language)
     elif category_key in ("tourist", "cultural"):
-        return await _tourist_search(req, lat, lng)
+        return await _tourist_search(req, lat, lng, language=req.language)
     else:
         rows = []
 
@@ -621,15 +689,31 @@ async def _outdoor_search(category_key: str, req: SearchRequest) -> SearchRespon
     }
     LABEL = _LABEL_EN if req.language == "en" else _LABEL_KO
 
+    # 캐시된 언어별 번역 적용 — 매장 상세화면과 동일하게 검색 결과도 영어 매장명/주소 노출.
+    # translations 컬럼이 없는 출처(subway/locker 등)는 원본(한국어) 그대로.
+    def _outdoor_tl(r: dict, field: str) -> str:
+        if req.language == "ko":
+            return ""
+        raw = r.get("translations")
+        if not raw:
+            return ""
+        try:
+            t = raw if isinstance(raw, dict) else _json.loads(raw)
+        except (ValueError, TypeError):
+            return ""
+        if not isinstance(t, dict):
+            return ""
+        return (t.get(req.language, {}) or {}).get(field, "") or ""
+
     results = [
         SearchResultItem(
             id=_outdoor_id(category_key, r),
-            store_name=r.get("name", ""),
+            store_name=_outdoor_tl(r, "name") or r.get("name", ""),
             category=(_vegan_category_label(r.get("vegan_level", ""), category_key, req.language)
                       if category_key in ("vegan_restaurant", "vegan_cafe")
                       else LABEL.get(category_key, category_key)),
             category_key=category_key,
-            addr=r.get("address", ""),
+            addr=_outdoor_tl(r, "addr") or r.get("address", ""),
             phone=r.get("phone", ""),
             lat=r.get("lat"),
             lng=r.get("lng"),
