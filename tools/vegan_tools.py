@@ -28,6 +28,7 @@ async def vegan_restaurant_search(
             """
             SELECT id, store_name, category, category_key, addr, phone,
                    details::text AS details,
+                   COALESCE(translations::text, '{}') AS translations,
                    open_hours, floor,
                    lat, lng,
                    ST_Distance(geom, ST_SetSRID(ST_MakePoint($2, $1), 4326)::geography) AS dist
@@ -58,5 +59,7 @@ async def vegan_restaurant_search(
             "floor":       r["floor"] or "",
             "vegan_level": details.get("vegan_level", ""),
             "vegan_menu":  details.get("vegan_menu", ""),
+            # 캐시된 언어별 번역(JSONB 텍스트) — /place/search 가 영어 매장명 적용에 사용.
+            "translations": r["translations"],
         })
     return results
