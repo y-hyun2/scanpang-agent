@@ -253,6 +253,7 @@ async def prayer_room_search(lat: float, lng: float, radius: int) -> list[dict]:
         rows = await conn.fetch(
             """
             SELECT room_id, name, address, phone, open_hours, lat, lng,
+                   COALESCE(translations::text, '{}') AS translations,
                    ST_Distance(geom, ST_SetSRID(ST_MakePoint($2, $1), 4326)::geography) AS dist
             FROM prayer_rooms
             ORDER BY dist
@@ -270,6 +271,8 @@ async def prayer_room_search(lat: float, lng: float, radius: int) -> list[dict]:
             "address":      r["address"] or "",
             "phone":        r["phone"] or "",
             "open_hours":   r["open_hours"] or "",
+            # 캐시된 언어별 번역(JSONB 텍스트) — /place/search 가 영어 매장명 적용에 사용.
+            "translations": r["translations"],
             "extra":        {},
         }
         for r in rows

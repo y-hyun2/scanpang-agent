@@ -114,7 +114,7 @@ async def _fetch_nearby_buildings(lat: float, lng: float) -> list[dict]:
         return []
 
 
-async def run_route_search(req: NavRequest, user_id: str = "") -> dict:
+async def run_route_search(req: NavRequest, user_id: str = "", language_override: str | None = None) -> dict:
     """
     경로 안내 1단계: 메시지 파싱 → POI 검색 → 후보 목록 + 추천 반환.
     사용자가 앱에서 확인/선택 후 /navigation/route 호출.
@@ -139,7 +139,7 @@ async def run_route_search(req: NavRequest, user_id: str = "") -> dict:
 
     keyword = intent.get("keyword", req.message)
     intent_type = intent.get("intent", "specific_place")
-    language = intent.get("language", "ko")
+    language = language_override or intent.get("language", "ko")
 
     # Step 1: POI 검색 (5km → 전국 fallback)
     pois = await search_poi(keyword, req.lat, req.lng)
@@ -203,6 +203,12 @@ async def run_route_search(req: NavRequest, user_id: str = "") -> dict:
         "candidates": candidates,
         "intent": intent_type,
         "language": language,
+        # 프론트(ArExploreScreen.extractNavDest) 가 raw_data["lat"]/["lng"]/["name"]
+        # 를 1순위로 본다. candidates 안의 pns_lat/pns_lon 은 미스매치라 버튼 렌더링
+        # 실패. 추천 후보 좌표를 top-level 로 같이 노출해 "X(으)로 안내" 버튼이 뜨게.
+        "lat": rec["pns_lat"],
+        "lng": rec["pns_lon"],
+        "name": rec["name"],
     }
 
 
@@ -348,6 +354,16 @@ async def run_nav_guide_agent(
         return {"speech": msg, "raw": ctx}
 
     lang_label = {"ko": "ko", "en": "en", "ar": "ar", "ja": "ja", "zh": "zh"}.get(language, "ko")
+
+    # 프론트가 보낸 remaining_time_min 이 0 인데 remaining_distance_m 가 양수면
+    # int 잘림 또는 미설정으로 본다. 도보 평균 80m/min(=4.8km/h) 기준으로 재계산.
+    # 1분 미만이면 "약 1분" 으로 표시되도록 ceil.
+    remaining_distance_m = int(ctx.get("remaining_distance_m", 0) or 0)
+    remaining_time_min = int(ctx.get("remaining_time_min", 0) or 0)
+    if remaining_distance_m > 0 and remaining_time_min == 0:
+        import math
+        remaining_time_min = max(1, math.ceil(remaining_distance_m / 80))
+
     system = _NAV_GUIDE_SYSTEM.format(
         language          = lang_label,
         is_routing        = ctx.get("is_routing", False),
@@ -357,8 +373,8 @@ async def run_nav_guide_agent(
         current_speech    = ctx.get("current_speech", "") or "(없음)",
         next_direction    = ctx.get("next_direction", "") or "(없음)",
         next_distance_m   = ctx.get("next_distance_m", 0),
-        remaining_distance_m = ctx.get("remaining_distance_m", 0),
-        remaining_time_min   = ctx.get("remaining_time_min", 0),
+        remaining_distance_m = remaining_distance_m,
+        remaining_time_min   = remaining_time_min,
     )
     try:
         speech = await call_llm(

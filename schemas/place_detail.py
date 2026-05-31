@@ -15,6 +15,9 @@ class PlaceDetailRequest(BaseModel):
     user_lat: Optional[float] = None
     user_lng: Optional[float] = None
     language: str = "ko"         # 응답 언어 — "ko"(기본) / "en"
+    # True 면 DeepL 번역을 새로 트리거하지 않고 이미 캐시된 번역만 사용한다.
+    # 저장/최근 목록의 매장명 즉시 전환용 — 캐시 없으면 원본(한국어) 그대로 반환.
+    no_translate: bool = False
 
 
 class PlaceDetailResponse(BaseModel):
