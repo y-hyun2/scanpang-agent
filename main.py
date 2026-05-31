@@ -815,6 +815,10 @@ async def place_search(req: SearchRequest):
               FROM store_details
               WHERE store_name ILIKE $1
                  OR category ILIKE $1
+                 -- 영어 등 비-한국어 검색어가 한국어 매장 데이터와 안 맞는 문제 보완:
+                 -- 캐시된 현지화 매장명/카테고리(translations[$7])도 매칭. 예: "chicken" → "BBQ Chicken".
+                 OR translations -> $7 ->> 'name' ILIKE $1
+                 OR translations -> $7 ->> 'category' ILIKE $1
                  OR similarity(
                       regexp_replace(store_name, '\\s+', '', 'g'),
                       regexp_replace($6, '\\s+', '', 'g')
@@ -843,6 +847,7 @@ async def place_search(req: SearchRequest):
             category_key,
             user_lng, user_lat,
             clean_q,          # trgm도 clean_q 기준
+            req.language,     # $7 — translations[language] 매칭용
         )
 
     results: list[SearchResultItem] = []
