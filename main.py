@@ -735,7 +735,7 @@ async def place_search(req: SearchRequest):
             ) sub
             ORDER BY
               CASE
-                WHEN store_name ILIKE $1 THEN 0
+                WHEN $3 = 'other' AND store_name ILIKE $1 THEN 0
                 WHEN $3 = 'other' AND similarity(
                        regexp_replace(store_name, '\\s+', '', 'g'),
                        regexp_replace($6, '\\s+', '', 'g')
