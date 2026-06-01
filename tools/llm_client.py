@@ -23,7 +23,7 @@ tools/llm_client.py
 from __future__ import annotations
 
 import os
-from typing import Any, Optional
+from typing import Any
 
 from dotenv import load_dotenv
 from openai import AsyncOpenAI
@@ -33,14 +33,39 @@ from core.usage_tracker import get_tracker
 load_dotenv()
 
 _OPENAI_KEY = os.getenv("OPENAI_API_KEY", "")
-_client: Optional[AsyncOpenAI] = None
+_OPENROUTER_KEY = os.getenv("OPENROUTER_API_KEY", "")
+_clients: dict[str, AsyncOpenAI] = {}
 
 
-def _get_client() -> AsyncOpenAI:
-    global _client
-    if _client is None:
-        _client = AsyncOpenAI(api_key=_OPENAI_KEY)
-    return _client
+def _get_client(model: str) -> AsyncOpenAI:
+    """모델 이름에 '/' 가 있으면 OpenRouter(vendor/model 형식), 아니면 OpenAI."""
+    backend = "openrouter" if "/" in model else "openai"
+    if backend not in _clients:
+        if backend == "openrouter":
+            _clients[backend] = AsyncOpenAI(
+                api_key=_OPENROUTER_KEY,
+                base_url="https://openrouter.ai/api/v1",
+            )
+        else:
+            _clients[backend] = AsyncOpenAI(api_key=_OPENAI_KEY)
+    return _clients[backend]
+
+
+def normalize_model_kwargs(model: str, kwargs: dict) -> dict:
+    """모델별 파라미터 차이를 보정한다.
+
+    - gpt-5 / o-series: max_tokens 미지원 → max_completion_tokens 로 변환.
+    - o-series(o1/o3/o4, 순수 reasoning)만 temperature 커스텀값 미지원 → 제거.
+      (gpt-5.4-mini 등 gpt-5 계열은 temperature=0 정상 지원 → 결정성 위해 유지)
+    """
+    base = model.split("/")[-1]
+    if base.startswith(("gpt-5", "o1", "o3", "o4")):
+        kwargs = dict(kwargs)
+        if "max_tokens" in kwargs:
+            kwargs["max_completion_tokens"] = kwargs.pop("max_tokens")
+        if base.startswith(("o1", "o3", "o4")):
+            kwargs.pop("temperature", None)
+    return kwargs
 
 
 async def call_llm(
@@ -65,11 +90,11 @@ async def call_llm(
     Returns:
         응답 첫 choice 의 message.content (문자열).
     """
-    client = _get_client()
+    client = _get_client(model)
     response = await client.chat.completions.create(
         model=model,
         messages=messages,
-        **openai_kwargs,
+        **normalize_model_kwargs(model, openai_kwargs),
     )
 
     if record and user_id:

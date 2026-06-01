@@ -160,7 +160,7 @@ def _print_report(metrics: dict, sub: dict, anaphora: dict, results: list[dict],
 
 # ── 메인 ──────────────────────────────────────────────────────────────────────
 
-async def _run_once(cases: list[dict], run_idx: int, total_runs: int) -> list[dict]:
+async def _run_once(cases: list[dict], run_idx: int, total_runs: int, model: str = "gpt-4o") -> list[dict]:
     results = []
     for i, case in enumerate(cases, 1):
         print(f"  run {run_idx}/{total_runs}  [{i:3d}/{len(cases)}] {case['id']}", end="\r")
@@ -168,6 +168,7 @@ async def _run_once(cases: list[dict], run_idx: int, total_runs: int) -> list[di
             agent, resolved, sub_category = await classify_intent(
                 message=case["message"],
                 session_context=case.get("session_context", ""),
+                model=model,
             )
         except Exception as e:
             print(f"\n  ERROR [{case['id']}]: {e}")
@@ -238,7 +239,7 @@ def _print_avg_report(all_runs: list[list[dict]], all_metrics: list[dict]) -> No
     print()
 
 
-async def run_eval(dataset_path: str, verbose: bool, runs: int) -> None:
+async def run_eval(dataset_path: str, verbose: bool, runs: int, model: str = "gpt-4o") -> None:
     cases = []
     with open(dataset_path, encoding="utf-8") as f:
         for line in f:
@@ -253,7 +254,7 @@ async def run_eval(dataset_path: str, verbose: bool, runs: int) -> None:
     all_metrics: list[dict] = []
 
     for run_idx in range(1, runs + 1):
-        results = await _run_once(cases, run_idx, runs)
+        results = await _run_once(cases, run_idx, runs, model)
         print(f"  run {run_idx} 완료 {len(results)}개                    ")
         metrics = _compute_metrics(results)
         sub     = _compute_sub_metrics(results)
@@ -294,8 +295,13 @@ def main() -> None:
         "--runs", type=int, default=1,
         help="반복 실행 횟수 (기본 1, 신뢰도 측정시 3 권장)",
     )
+    parser.add_argument(
+        "--model", default="gpt-4o",
+        help="분류 모델 (예: gpt-4o, gpt-5.4-mini, google/gemma-4-31b-it:free)",
+    )
     args = parser.parse_args()
-    asyncio.run(run_eval(args.dataset, args.verbose, args.runs))
+    print(f"모델: {args.model}")
+    asyncio.run(run_eval(args.dataset, args.verbose, args.runs, args.model))
 
 
 if __name__ == "__main__":

@@ -5,14 +5,12 @@ verbatim_quote 검증으로 환각을 제거한다.
 """
 
 import json
-import os
 
-from openai import AsyncOpenAI
 from dotenv import load_dotenv
 
-load_dotenv()
+from tools.llm_client import call_llm
 
-_client = AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY", ""))
+load_dotenv()
 
 
 def _validate_quote(verbatim_quote: str, raw_text: str) -> bool:
@@ -50,6 +48,7 @@ _HOMEPAGE_FLOOR_SYSTEM_PROMPT = """\
 async def extract_floor_info_from_homepage(
     building_name: str,
     homepage_text: str,
+    model: str = "gpt-4o-mini",
 ) -> list[dict]:
     """
     홈페이지 텍스트에서 LLM으로 층별 매장 목록을 추출한다.
@@ -68,17 +67,20 @@ async def extract_floor_info_from_homepage(
     )
 
     try:
-        response = await _client.chat.completions.create(
-            model="gpt-4o-mini",
-            temperature=0,
-            response_format={"type": "json_object"},
+        content = await call_llm(
+            user_id="",
+            purpose="floor_extract",
             messages=[
                 {"role": "system", "content": _HOMEPAGE_FLOOR_SYSTEM_PROMPT},
                 {"role": "user",   "content": user_content},
             ],
+            model=model,
+            record=False,
+            temperature=0,
+            response_format={"type": "json_object"},
             max_tokens=2000,
         )
-        data = json.loads(response.choices[0].message.content)
+        data = json.loads(content)
         raw_floor_info = data.get("floor_info", [])
     except Exception as e:
         print(f"[llm_extractor] extract_floor_info_from_homepage 실패: {e}")

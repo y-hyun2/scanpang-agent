@@ -25,11 +25,11 @@ import os
 import re
 from typing import Optional
 
-from openai import AsyncOpenAI
 from dotenv import load_dotenv
 
+from tools.llm_client import call_llm
+
 load_dotenv()
-_client = AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY", ""))
 
 _DAYS = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"]
 
@@ -91,7 +91,7 @@ def _looks_valid(schedule: dict) -> bool:
     return True
 
 
-async def normalize_open_hours(open_hours: str) -> Optional[dict]:
+async def normalize_open_hours(open_hours: str, model: str = "gpt-4o-mini") -> Optional[dict]:
     """
     자유 텍스트 → schedule dict 또는 None.
     None 반환 조건:
@@ -108,18 +108,20 @@ async def normalize_open_hours(open_hours: str) -> Optional[dict]:
         return None
 
     try:
-        resp = await _client.chat.completions.create(
-            model="gpt-4o-mini",
-            response_format={"type": "json_object"},
+        content = await call_llm(
+            user_id="",
+            purpose="open_hours_normalize",
             messages=[
                 {"role": "system", "content": _NORMALIZE_SYSTEM},
                 {"role": "user", "content": text},
             ],
+            model=model,
+            record=False,
+            response_format={"type": "json_object"},
             temperature=0,
             max_tokens=400,
         )
-        content = resp.choices[0].message.content or "{}"
-        parsed = json.loads(content)
+        parsed = json.loads(content or "{}")
     except Exception as e:
         print(f"[open_hours_normalizer] LLM 실패: {type(e).__name__}: {e}")
         return None

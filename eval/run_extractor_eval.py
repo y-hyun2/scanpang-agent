@@ -81,18 +81,14 @@ def _verbatim_pass_rate(raw_response: list[dict], html_text: str) -> dict:
 
 # ── 평가 ──────────────────────────────────────────────────────────────────────
 
-async def eval_case(case: dict) -> dict:
+async def eval_case(case: dict, model: str = "gpt-4o-mini") -> dict:
     building_name = case["building_name"]
     html_text     = case["html_text"]
     ground_truth  = case["ground_truth"]
 
     # verbatim 통과율을 재계산하기 위해 LLM 원본 응답도 별도로 가져옴
-    # (내부 함수를 직접 호출해 raw response 확보)
-    from openai import AsyncOpenAI
-    from dotenv import load_dotenv
     import json as _json
-    load_dotenv()
-    _client = AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY", ""))
+    from tools.llm_client import call_llm
     from rag.automation.llm_extractor import _HOMEPAGE_FLOOR_SYSTEM_PROMPT
 
     truncated    = html_text[:6000]
@@ -101,17 +97,20 @@ async def eval_case(case: dict) -> dict:
     raw_response = []
     parse_ok = False
     try:
-        resp = await _client.chat.completions.create(
-            model="gpt-4o-mini",
-            temperature=0,
-            response_format={"type": "json_object"},
+        content = await call_llm(
+            user_id="",
+            purpose="floor_extract_raw",
             messages=[
                 {"role": "system", "content": _HOMEPAGE_FLOOR_SYSTEM_PROMPT},
                 {"role": "user",   "content": user_content},
             ],
+            model=model,
+            record=False,
+            temperature=0,
+            response_format={"type": "json_object"},
             max_tokens=2000,
         )
-        data = _json.loads(resp.choices[0].message.content)
+        data = _json.loads(content)
         raw_response = data.get("floor_info", [])
         parse_ok = True
     except Exception as e:
@@ -120,7 +119,7 @@ async def eval_case(case: dict) -> dict:
     verbatim = _verbatim_pass_rate(raw_response, html_text)
 
     # 검증 후 최종 출력 (extract_floor_info_from_homepage 사용)
-    validated = await extract_floor_info_from_homepage(building_name, html_text)
+    validated = await extract_floor_info_from_homepage(building_name, html_text, model=model)
 
     # floor → store names 변환
     extracted: dict[str, list[str]] = {}
@@ -215,7 +214,7 @@ def print_report(results: list[dict], verbose: bool) -> None:
     print()
 
 
-async def run_eval(dataset_path: str, verbose: bool) -> None:
+async def run_eval(dataset_path: str, verbose: bool, model: str = "gpt-4o-mini") -> None:
     cases = []
     with open(dataset_path, encoding="utf-8") as f:
         for line in f:
@@ -229,7 +228,7 @@ async def run_eval(dataset_path: str, verbose: bool) -> None:
     results = []
     for i, case in enumerate(cases, 1):
         print(f"  [{i:2d}/{len(cases)}] {case['id']}  ({case['type']})", end="\r")
-        r = await eval_case(case)
+        r = await eval_case(case, model)
         results.append(r)
 
     print(f"  완료 {len(results)}개                         ")
@@ -246,8 +245,11 @@ def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--dataset", default="eval/datasets/extractor_golden.jsonl")
     parser.add_argument("--verbose", action="store_true")
+    parser.add_argument("--model", default="gpt-4o-mini",
+                        help="추출 모델 (예: gpt-4o-mini, gpt-5.4-mini)")
     args = parser.parse_args()
-    asyncio.run(run_eval(args.dataset, args.verbose))
+    print(f"모델: {args.model}")
+    asyncio.run(run_eval(args.dataset, args.verbose, args.model))
 
 
 if __name__ == "__main__":

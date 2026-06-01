@@ -64,10 +64,10 @@ def _is_24h_equivalent(schedule: dict) -> bool:
 
 # ── 평가 ──────────────────────────────────────────────────────────────────────
 
-async def eval_case(case: dict) -> dict:
+async def eval_case(case: dict, model: str = "gpt-4o-mini") -> dict:
     raw_input = case["input"]
     try:
-        result = await normalize_open_hours(raw_input)
+        result = await normalize_open_hours(raw_input, model=model)
     except Exception as e:
         return {**case, "error": str(e), "schema_valid": False,
                 "always_open_correct": False, "day_results": {}, "exact_match": False}
@@ -211,7 +211,7 @@ def print_report(results: list[dict], verbose: bool) -> None:
     print()
 
 
-async def run_eval(dataset_path: str, verbose: bool) -> None:
+async def run_eval(dataset_path: str, verbose: bool, model: str = "gpt-4o-mini") -> None:
     cases = []
     with open(dataset_path, encoding="utf-8") as f:
         for line in f:
@@ -225,7 +225,7 @@ async def run_eval(dataset_path: str, verbose: bool) -> None:
     results = []
     for i, case in enumerate(cases, 1):
         print(f"  [{i:2d}/{len(cases)}] {case['id']}", end="\r")
-        r = await eval_case(case)
+        r = await eval_case(case, model)
         results.append(r)
 
     print(f"  완료 {len(results)}개                   ")
@@ -244,8 +244,11 @@ def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--dataset", default="eval/datasets/open_hours_golden.jsonl")
     parser.add_argument("--verbose", action="store_true")
+    parser.add_argument("--model", default="gpt-4o-mini",
+                        help="정규화 모델 (예: gpt-4o-mini, gpt-5.4-mini)")
     args = parser.parse_args()
-    asyncio.run(run_eval(args.dataset, args.verbose))
+    print(f"모델: {args.model}")
+    asyncio.run(run_eval(args.dataset, args.verbose, args.model))
 
 
 if __name__ == "__main__":

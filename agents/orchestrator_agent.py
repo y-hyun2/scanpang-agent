@@ -201,6 +201,7 @@ async def classify_intent(
     message: str,
     session_context: str = "",
     user_id: str = "",
+    model: str = "gpt-5.4-mini",  # 베이스라인 평가 결과 4o(F1 0.882) 대비 5.4-mini(1.000)가 더 정확+저렴
 ) -> tuple[Literal["place", "navigation", "nav_guide", "halal", "convenience", "smalltalk"], str, str]:
     """
     사용자 메시지 → (에이전트, resolved_message, sub_category) 튜플.
@@ -221,7 +222,7 @@ async def classify_intent(
             user_id=user_id,
             purpose="intent_classify",
             messages=messages,
-            model="gpt-4o",
+            model=model,
             temperature=0,
             response_format={"type": "json_object"},
         )
