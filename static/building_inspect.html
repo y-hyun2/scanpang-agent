@@ -127,7 +127,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;display:
 
   <div id="api-bar">
     <input id="api-url" type="text" value="http://localhost:8000"/>
-    <button class="btn btn-primary btn-sm" onclick="loadAll()">전체 불러오기</button>
+    <button class="btn btn-primary btn-sm" onclick="loadAll(true)">전체 불러오기</button>
   </div>
 
   <!-- 모드 탭 -->
@@ -364,7 +364,7 @@ function setMode(m){
 // ══════════════════════════════════════════════════════════
 // 전체 불러오기
 // ══════════════════════════════════════════════════════════
-async function loadAll(){
+async function loadAll(fitBounds=false){
   showStatus('<span class="spinner"></span>전체 건물 불러오는 중…',true)
   try{
     const r=await fetch(`${apiBase()}/inspect/buildings`)
@@ -376,7 +376,7 @@ async function loadAll(){
     document.getElementById('st-total').textContent=allFeatures.length.toLocaleString()
     document.getElementById('st-measured').textContent=allFeatures.filter(f=>f.properties.height>0).length
     document.getElementById('st-sus').textContent=allFeatures.filter(f=>{const h=f.properties.render_height;return h>0&&h<=3}).length
-    if(allFeatures.length>0){
+    if(fitBounds && allFeatures.length>0){
       const l=L.geoJSON({type:'FeatureCollection',features:allFeatures})
       map.fitBounds(l.getBounds(),{padding:[20,20]})
     }

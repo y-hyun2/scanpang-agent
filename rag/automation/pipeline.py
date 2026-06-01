@@ -544,8 +544,8 @@ async def process_one_building(building_key: str) -> dict:
                      floor_info, coverage_rate, last_updated, source,
                      image_url, homepage, open_hours, closed_days,
                      parking_info, admission_fee, facilities)
-                VALUES ($1,$2,$3,$4,$5,$6,$7,$8::jsonb,$9,$10,$11,
-                        $12,$13,$14,$15,$16,$17,$18::jsonb)
+                VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,
+                        $12,$13,$14,$15,$16,$17,$18)
                 ON CONFLICT (building_key) DO UPDATE SET
                     name_ko       = EXCLUDED.name_ko,
                     addr          = EXCLUDED.addr,
@@ -564,14 +564,14 @@ async def process_one_building(building_key: str) -> dict:
                     facilities    = EXCLUDED.facilities
                 """,
                 building_key, name_ko, lat, lng, addr, phone, category,
-                json.dumps(floor_info_list, ensure_ascii=False),
+                floor_info_list,
                 result["coverage_rate"],
                 datetime.now(timezone.utc),
                 "automated",
                 image_url or None, homepage or None,
                 open_hours or None, closed_days or None,
                 parking_info or None, admission_fee or None,
-                json.dumps(naver_facilities, ensure_ascii=False) if naver_facilities else None,
+                naver_facilities or None,
             )
         print(f"[pipeline] Supabase upsert 완료: {building_key}")
         result["status"] = "ok" if floor_info_list else "partial"
