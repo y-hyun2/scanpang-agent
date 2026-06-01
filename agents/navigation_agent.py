@@ -128,7 +128,7 @@ async def run_route_search(req: NavRequest, user_id: str = "", language_override
             {"role": "system", "content": INTENT_PROMPT},
             {"role": "user", "content": req.message},
         ],
-        model="gpt-4o",
+        model="gpt-5.4-mini",
         temperature=0,
     )
     try:
@@ -163,7 +163,7 @@ async def run_route_search(req: NavRequest, user_id: str = "", language_override
                     keyword=keyword, lat=req.lat, lng=req.lng, poi_list=poi_list_str,
                 )},
             ],
-            model="gpt-4o",
+            model="gpt-5.4-mini",
             temperature=0,
         )
         try:
@@ -260,7 +260,7 @@ async def run_route_agent(req: RouteRequest, user_id: str = "") -> dict:
                 total_time_min=route["total_time_min"],
             )},
         ],
-        model="gpt-4o",
+        model="gpt-5.4-mini",
         temperature=0,
     )
     try:
@@ -384,7 +384,7 @@ async def run_nav_guide_agent(
                 {"role": "system", "content": system},
                 {"role": "user", "content": message},
             ],
-            model="gpt-4o",
+            model="gpt-5.4-mini",
             temperature=0,
         )
         return {"speech": speech, "raw": ctx}

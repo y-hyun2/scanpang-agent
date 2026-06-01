@@ -95,7 +95,7 @@ async def fetch_kakao_info(place_name: str, kakao_name: Optional[str] = None) ->
 
 async def gpt_generate_description(place_name: str) -> str:
     response = await openai_client.chat.completions.create(
-        model="gpt-4o",
+        model="gpt-5.4-mini",
         messages=[
             {
                 "role": "user",
@@ -107,7 +107,7 @@ async def gpt_generate_description(place_name: str) -> str:
                 ),
             }
         ],
-        max_tokens=200,
+        max_completion_tokens=200,
     )
     return response.choices[0].message.content.strip()
 

@@ -101,7 +101,7 @@ async def _extract_category_and_language(message: str, user_id: str = "") -> tup
     content = await call_llm(
         user_id=user_id,
         purpose="conv_category",
-        model="gpt-4o",
+        model="gpt-5.4-mini",
         temperature=0,
         messages=[
             {"role": "system", "content": CATEGORY_EXTRACT_PROMPT},
@@ -125,6 +125,7 @@ async def _generate_speech(
     language: str,
     user_message: str = "",
     user_id: str = "",
+    model: str = "gpt-5.4-mini",
 ) -> str:
     if not facilities:
         messages = {
@@ -161,7 +162,7 @@ async def _generate_speech(
     return await call_llm(
         user_id=user_id,
         purpose="conv_speech",
-        model="gpt-4o",
+        model=model,
         temperature=0.3,
         messages=[
             {"role": "system", "content": SPEECH_PROMPT},

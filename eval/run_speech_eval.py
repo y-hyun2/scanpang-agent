@@ -26,6 +26,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 from openai import AsyncOpenAI
+from tools.llm_client import call_llm
 _client = AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY", ""))
 
 
@@ -204,7 +205,7 @@ ALL_CASES = SEARCH_CASES + HALAL_CASES + PLACE_CASES
 
 # ── 응답 수집 ─────────────────────────────────────────────────────────────────
 
-async def _get_search_speech(case: dict) -> tuple[str, str]:
+async def _get_search_speech(case: dict, model: str = "gpt-4o") -> tuple[str, str]:
     """search_agent._generate_speech 직접 호출. (context, speech) 반환."""
     from agents.search_agent import _generate_speech
     facilities = case["facilities"]
@@ -224,11 +225,11 @@ async def _get_search_speech(case: dict) -> tuple[str, str]:
     else:
         context_lines.append("No facilities found.")
 
-    speech = await _generate_speech(facilities, category, language)
+    speech = await _generate_speech(facilities, category, language, model=model)
     return "\n".join(context_lines), speech
 
 
-async def _get_halal_speech(case: dict) -> tuple[str, str]:
+async def _get_halal_speech(case: dict, model: str = "gpt-4o") -> tuple[str, str]:
     """halal_agent._generate_speech 직접 호출. (context, speech) 반환."""
     from agents.halal_agent import _generate_speech
     data     = case["data"]
@@ -247,11 +248,11 @@ async def _get_halal_speech(case: dict) -> tuple[str, str]:
         direction = data["direction"]
         context = f"Qibla direction: {direction:.1f}° (Northwest)\nLanguage: {language}"
 
-    speech = await _generate_speech(data, category, language)
+    speech = await _generate_speech(data, category, language, model=model)
     return context, speech
 
 
-async def _get_place_speech(case: dict) -> tuple[str, str]:
+async def _get_place_speech(case: dict, model: str = "gpt-4o") -> tuple[str, str]:
     """place_chat_agent 직접 호출. (context, speech) 반환."""
     from agents.place_insight_agent import run_place_chat_agent
     context = f"User question: {case['message']}\nLanguage: {case['language']}\nLocation: lat={case['lat']}, lng={case['lng']}"
@@ -260,6 +261,7 @@ async def _get_place_speech(case: dict) -> tuple[str, str]:
         lat=case["lat"],
         lng=case["lng"],
         language=case["language"],
+        model=model,
     )
     return context, result.get("speech", "")
 
@@ -288,20 +290,23 @@ Output JSON only:
 """
 
 
-async def _judge(context: str, speech: str, language: str) -> dict:
+async def _judge(context: str, speech: str, language: str, judge_model: str = "gpt-5.2") -> dict:
     user_content = f"[CONTEXT GIVEN TO SYSTEM]\n{context}\n\n[SYSTEM RESPONSE]\n{speech}\n\n[REQUESTED LANGUAGE] {language}"
     try:
-        resp = await _client.chat.completions.create(
-            model="gpt-4o",
-            response_format={"type": "json_object"},
+        content = await call_llm(
+            user_id="",
+            purpose="speech_judge",
             messages=[
                 {"role": "system", "content": _JUDGE_SYSTEM},
                 {"role": "user",   "content": user_content},
             ],
+            model=judge_model,
+            record=False,
+            response_format={"type": "json_object"},
             temperature=0,
             max_tokens=200,
         )
-        return json.loads(resp.choices[0].message.content)
+        return json.loads(content)
     except Exception as e:
         print(f"    [judge 오류] {e}")
         return {"groundedness": 0, "completeness": 0, "language_match": 0,
@@ -381,8 +386,9 @@ def print_report(results: list[dict], verbose: bool) -> None:
 
 # ── 메인 ──────────────────────────────────────────────────────────────────────
 
-async def run_eval(verbose: bool) -> None:
+async def run_eval(verbose: bool, model: str = "gpt-4o", judge_model: str = "gpt-5.2") -> None:
     print(f"평가 대상: {len(ALL_CASES)}개 케이스")
+    print(f"후보 모델: {model}  |  Judge: {judge_model}")
     print("응답 수집 + Judge 채점 실행 중...")
 
     results = []
@@ -394,17 +400,17 @@ async def run_eval(verbose: bool) -> None:
 
         try:
             if comp == "search_agent":
-                context, speech = await _get_search_speech(case)
+                context, speech = await _get_search_speech(case, model)
             elif comp == "halal_agent":
-                context, speech = await _get_halal_speech(case)
+                context, speech = await _get_halal_speech(case, model)
             else:
-                context, speech = await _get_place_speech(case)
+                context, speech = await _get_place_speech(case, model)
         except Exception as e:
             print(f"\n  ERROR collecting [{cid}]: {e}")
             results.append({**case, "speech": "", "context": "", "scores": None, "format": {}})
             continue
 
-        scores = await _judge(context, speech, lang)
+        scores = await _judge(context, speech, lang, judge_model)
         fmt    = _format_check(speech, lang)
 
         results.append({
@@ -428,8 +434,12 @@ async def run_eval(verbose: bool) -> None:
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--verbose", action="store_true", help="케이스별 상세 출력")
+    parser.add_argument("--model", default="gpt-4o",
+                        help="피평가 후보 모델 (예: gpt-4o, gpt-5.4-mini)")
+    parser.add_argument("--judge-model", default="gpt-5.2",
+                        help="Judge 모델 (후보보다 강한 모델, 기본 gpt-5.2)")
     args = parser.parse_args()
-    asyncio.run(run_eval(args.verbose))
+    asyncio.run(run_eval(args.verbose, args.model, args.judge_model))
 
 
 if __name__ == "__main__":

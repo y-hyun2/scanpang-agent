@@ -31,7 +31,7 @@ load_dotenv()
 # ── LLM: 음성 생성 ──────────────────────────────────────────────────────────
 
 async def _generate_speech(
-    data: dict, category: str, language: str, user_id: str = "",
+    data: dict, category: str, language: str, user_id: str = "", model: str = "gpt-5.4-mini",
 ) -> str:
     """카테고리별 데이터를 기반으로 자연어 음성 생성."""
     lang_map = {"ko": "Korean", "en": "English", "ar": "Arabic", "ja": "Japanese", "zh": "Chinese"}
@@ -105,7 +105,7 @@ Be warm, helpful, and respectful of Islamic practices."""
         return await call_llm(
             user_id=user_id,
             purpose="halal_speech",
-            model="gpt-4o",
+            model=model,
             messages=[
                 {"role": "system", "content": system},
                 {"role": "user", "content": context},

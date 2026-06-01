@@ -72,7 +72,7 @@ async def call_llm(
     user_id: str,
     purpose: str,
     messages: list[dict],
-    model: str = "gpt-4o",
+    model: str = "gpt-5.4-mini",
     record: bool = True,
     **openai_kwargs: Any,
 ) -> str:

@@ -102,7 +102,7 @@ async def llm_generate_docent(context: str, language: str, user_id: str = "") ->
     return await call_llm(
         user_id=user_id,
         purpose="docent",
-        model="gpt-4o",
+        model="gpt-5.4-mini",
         messages=[
             {"role": "system", "content": system_prompt},
             {"role": "user",   "content": context},
@@ -313,6 +313,7 @@ async def run_place_chat_agent(
     lng: float,
     language: str = "ko",
     user_id: str = "",
+    model: str = "gpt-5.4-mini",
 ) -> dict:
     """관광지/랜드마크/지역 정보 응답 — orchestrator chat 전용 진입점.
 
@@ -329,7 +330,7 @@ async def run_place_chat_agent(
         speech = await call_llm(
             user_id=user_id,
             purpose="place_chat",
-            model="gpt-4o",
+            model=model,
             messages=[
                 {"role": "system", "content": system_prompt},
                 {"role": "user",   "content": user_prompt},
