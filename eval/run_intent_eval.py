@@ -296,8 +296,8 @@ def main() -> None:
         help="반복 실행 횟수 (기본 1, 신뢰도 측정시 3 권장)",
     )
     parser.add_argument(
-        "--model", default="gpt-4o",
-        help="분류 모델 (예: gpt-4o, gpt-5.4-mini, google/gemma-4-31b-it:free)",
+        "--model", default="gpt-5.4-mini",
+        help="분류 모델 (프로덕션 기본 gpt-5.4-mini; baseline 비교는 --model gpt-4o)",
     )
     args = parser.parse_args()
     print(f"모델: {args.model}")

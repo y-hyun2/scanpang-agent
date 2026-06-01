@@ -434,8 +434,8 @@ async def run_eval(verbose: bool, model: str = "gpt-4o", judge_model: str = "gpt
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--verbose", action="store_true", help="케이스별 상세 출력")
-    parser.add_argument("--model", default="gpt-4o",
-                        help="피평가 후보 모델 (예: gpt-4o, gpt-5.4-mini)")
+    parser.add_argument("--model", default="gpt-5.4-mini",
+                        help="피평가 후보 모델 (프로덕션 기본 gpt-5.4-mini; baseline은 --model gpt-4o)")
     parser.add_argument("--judge-model", default="gpt-5.2",
                         help="Judge 모델 (후보보다 강한 모델, 기본 gpt-5.2)")
     args = parser.parse_args()
