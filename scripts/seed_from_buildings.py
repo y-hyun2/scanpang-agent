@@ -108,7 +108,7 @@ async def _find_building_for_store(
     retries: int = 3,
 ) -> str | None:
     """
-    30m 이내에서 가장 가까운 buildings.geom 폴리곤의 ufid 반환.
+    50m 이내에서 가장 가까운 building.geom 폴리곤의 building_key 반환.
     없으면 None → 호출 측에서 __outdoor__ 처리.
     네트워크 단절 시 최대 retries회 재시도.
     """
@@ -117,8 +117,8 @@ async def _find_building_for_store(
             async with bld_pool.acquire() as conn:
                 row = await conn.fetchrow(
                     """
-                    SELECT ufid
-                    FROM buildings
+                    SELECT building_key
+                    FROM building
                     WHERE ST_DWithin(
                         geom::geography,
                         ST_SetSRID(ST_MakePoint($1, $2), 4326)::geography,
@@ -129,7 +129,7 @@ async def _find_building_for_store(
                     """,
                     store_lng, store_lat,
                 )
-            return row["ufid"] if row else None
+            return row["building_key"] if row else None
         except Exception as e:
             if attempt < retries - 1:
                 wait = 2 ** attempt  # 1s, 2s
@@ -143,14 +143,14 @@ async def _find_building_for_store(
 # ── buildings 로드 ────────────────────────────────────────────────────────────
 
 async def load_buildings() -> list[tuple[str, str, float, float]]:
-    """buildings DB에서 (ufid, bld_nm, center_lat, center_lng) 목록 반환."""
+    """building DB에서 (building_key, bld_nm, center_lat, center_lng) 목록 반환."""
     pool = await get_pool()
     async with pool.acquire() as conn:
         rows = await conn.fetch(
-            "SELECT ufid, bld_nm, center_lat, center_lng FROM buildings "
-            "WHERE ufid IS NOT NULL AND center_lat IS NOT NULL AND center_lng IS NOT NULL"
+            "SELECT building_key, bld_nm, center_lat, center_lng FROM building "
+            "WHERE center_lat IS NOT NULL AND center_lng IS NOT NULL"
         )
-    return [(r["ufid"], r["bld_nm"] or "", r["center_lat"], r["center_lng"]) for r in rows]
+    return [(r["building_key"], r["bld_nm"] or "", r["center_lat"], r["center_lng"]) for r in rows]
 
 
 def sort_buildings(
@@ -197,25 +197,25 @@ async def run(
 
     async with pool.acquire() as conn:
         existing: set[str] = (
-            {r["id"] for r in await conn.fetch("SELECT id FROM store_details")}
+            {f"{r['place_id']}/{r['store_name']}" for r in await conn.fetch("SELECT place_id, store_name FROM storedetails")}
             if skip_existing else set()
         )
 
-    done_ufids: set[str] = set()
+    done_keys: set[str] = set()
     if skip_existing and resume_path.exists():
-        done_ufids = set(resume_path.read_text(encoding="utf-8").splitlines())
-        print(f"resume 파일에서 {len(done_ufids)}개 건물 skip 로드")
+        done_keys = set(resume_path.read_text(encoding="utf-8").splitlines())
+        print(f"resume 파일에서 {len(done_keys)}개 건물 skip 로드")
 
     total_results: list[dict] = []
     t_start = time.time()
     first_store = True
 
     async with httpx.AsyncClient() as client:
-        for b_idx, (ufid, bld_nm, lat, lng) in enumerate(buildings, 1):
-            if ufid in done_ufids:
+        for b_idx, (building_key, bld_nm, lat, lng) in enumerate(buildings, 1):
+            if building_key in done_keys:
                 continue
             print(f"\n{'='*60}")
-            print(f"[{b_idx}/{len(buildings)}] {ufid}  {bld_nm}  lat={lat:.5f} lng={lng:.5f}")
+            print(f"[{b_idx}/{len(buildings)}] {building_key}  {bld_nm}  lat={lat:.5f} lng={lng:.5f}")
 
             quota_exceeded = False
             for cat in categories:
@@ -242,13 +242,13 @@ async def run(
                     if not name or s_lat == 0 or s_lng == 0:
                         continue
 
-                    matched_ufid = await _find_building_for_store(pool, s_lat, s_lng)
-                    if not matched_ufid:
+                    matched_key = await _find_building_for_store(pool, s_lat, s_lng)
+                    if not matched_key:
                         print(f"    [{i:2d}] {name} - 건물 미매칭 skip")
                         continue
 
-                    store_id = f"{matched_ufid}__{name}"
-                    if store_id in existing:
+                    dedup_key = f"{matched_key}/{name}"
+                    if dedup_key in existing:
                         print(f"    [{i:2d}] {name} — skip (기존)")
                         continue
 
@@ -257,26 +257,26 @@ async def run(
                     first_store = False
 
                     try:
-                        row = await get_store_detail(matched_ufid, name, lat=s_lat, lng=s_lng)
-                        existing.add(store_id)
+                        row = await get_store_detail(matched_key, name, lat=s_lat, lng=s_lng)
+                        existing.add(dedup_key)
                         total_results.append({
-                            "building_ufid": ufid,
-                            "matched_ufid": matched_ufid,
-                            "store_name": name,
-                            "category": cat,
-                            "place_id": matched_ufid,
-                            "category_key": row.get("category_key"),
-                            "source": row.get("source") or "(empty)",
+                            "building_key":  building_key,
+                            "matched_key":   matched_key,
+                            "store_name":    name,
+                            "category":      cat,
+                            "place_id":      matched_key,
+                            "category_key":  row.get("category_key"),
+                            "source":        row.get("source") or "(empty)",
                         })
                         print(
                             f"    [{i:2d}] {name}"
-                            f"  matched={matched_ufid}"
+                            f"  matched={matched_key}"
                             f"  key={row.get('category_key')}"
                         )
                     except Exception as e:
                         print(f"    [{i:2d}] {name} ✗ {type(e).__name__}: {e}")
                         total_results.append({
-                            "building_ufid": ufid, "store_name": name,
+                            "building_key": building_key, "store_name": name,
                             "category": cat, "error": str(e),
                         })
 
@@ -284,8 +284,8 @@ async def run(
                 break
             if skip_existing:
                 with resume_path.open("a", encoding="utf-8") as f:
-                    f.write(ufid + "\n")
-                done_ufids.add(ufid)
+                    f.write(building_key + "\n")
+                done_keys.add(building_key)
 
     total_t = time.time() - t_start
     ok = [r for r in total_results if "error" not in r]

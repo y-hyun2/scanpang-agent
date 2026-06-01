@@ -1,7 +1,7 @@
 """
 worker.py
 asyncio 기반 백그라운드 워커. FastAPI lifespan에서 start/stop을 호출한다.
-ufid 큐를 소비하며 pipeline.process_one_building을 순차 실행한다.
+building_key 큐를 소비하며 pipeline.process_one_building을 순차 실행한다.
 """
 
 import asyncio
@@ -10,31 +10,31 @@ from typing import Optional
 
 from rag.automation.pipeline import process_one_building
 
-# ufid → 처리 시작 timestamp (1시간 dedupe)
+# building_key → 처리 시작 timestamp (1시간 dedupe)
 _in_progress: dict[str, float] = {}
 _queue: asyncio.Queue = asyncio.Queue()
 _worker_task: Optional[asyncio.Task] = None
 
-_DEDUPE_TTL_SEC = 3600  # 1시간 이내 동일 ufid 재처리 방지
+_DEDUPE_TTL_SEC = 3600  # 1시간 이내 동일 building_key 재처리 방지
 
 
-def enqueue(ufid: str) -> bool:
+def enqueue(building_key: str) -> bool:
     """
-    ufid를 워커 큐에 추가한다.
-    1시간 이내에 이미 처리 중이거나 처리 완료된 ufid는 무시한다.
+    building_key를 워커 큐에 추가한다.
+    1시간 이내에 이미 처리 중이거나 처리 완료된 building_key는 무시한다.
 
     Returns:
         True: 큐에 추가됨
         False: dedupe로 무시됨
     """
     now = time.time()
-    last = _in_progress.get(ufid, 0)
+    last = _in_progress.get(building_key, 0)
     if now - last < _DEDUPE_TTL_SEC:
         return False
 
-    _in_progress[ufid] = now
-    _queue.put_nowait(ufid)
-    print(f"[worker] enqueue: {ufid}")
+    _in_progress[building_key] = now
+    _queue.put_nowait(building_key)
+    print(f"[worker] enqueue: {building_key}")
     return True
 
 
@@ -42,15 +42,15 @@ async def _worker_loop() -> None:
     print("[worker] 워커 루프 시작")
     while True:
         try:
-            ufid = await _queue.get()
+            building_key = await _queue.get()
         except asyncio.CancelledError:
             print("[worker] 워커 루프 종료")
             break
 
         try:
-            await process_one_building(ufid)
+            await process_one_building(building_key)
         except Exception as e:
-            print(f"[worker] process_one_building 예외 ({ufid}): {e}")
+            print(f"[worker] process_one_building 예외 ({building_key}): {e}")
         finally:
             _queue.task_done()
 

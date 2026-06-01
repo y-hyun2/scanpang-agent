@@ -4,7 +4,7 @@ from dotenv import load_dotenv
 
 from core.db import get_pool
 from schemas.place import PlaceRequest
-from tools.building_raycast import fetch_building_by_ufid
+from tools.building_raycast import fetch_building_by_key
 from tools.llm_client import call_llm
 
 load_dotenv()
@@ -12,31 +12,25 @@ load_dotenv()
 _STALE_DAYS = 30
 
 
-async def _record_user_scan(user_id: str, ufid: str) -> None:
+async def _record_user_scan(user_id: str, building_key: str) -> None:
     """
     사용자가 AR 카메라로 건물을 스캔(=`/place/query` 호출) 한 사실을
     user_building_scans 테이블에 누적 기록.
-
-    동일 (user_id, ufid) 가 다시 들어오면 scan_count += 1, last_scanned_at 갱신.
-    user_id 가 빈 문자열(인증 안 거친 호출)이면 기록 스킵 — 익명 스캔은 분석 가치 X.
-
-    실패해도 호출자(run_place_insight_agent) 흐름 영향 X: 도슨트 생성이 본질이라
-    스캔 기록 실패가 사용자 경험 막아선 안 됨.
     """
-    if not user_id or not ufid:
+    if not user_id or not building_key:
         return
     try:
         pool = await get_pool()
         async with pool.acquire() as conn:
             await conn.execute(
                 """
-                INSERT INTO user_building_scans (user_id, ufid)
+                INSERT INTO user_building_scans (user_id, building_key)
                 VALUES ($1, $2)
-                ON CONFLICT (user_id, ufid) DO UPDATE
+                ON CONFLICT (user_id, building_key) DO UPDATE
                    SET scan_count = user_building_scans.scan_count + 1,
                        last_scanned_at = now()
                 """,
-                user_id, ufid,
+                user_id, building_key,
             )
     except Exception as e:
         print(f"[place_insight] 스캔 기록 실패 (무시): {e}")
@@ -71,13 +65,13 @@ def _is_stale(last_updated) -> bool:
         return True
 
 
-async def _fetch_place_info(ufid: str) -> dict:
-    """Supabase place_info 테이블에서 ufid로 직접 조회."""
+async def _fetch_place_info(building_key: str) -> dict:
+    """placeinfo 테이블에서 building_key로 직접 조회."""
     try:
         pool = await get_pool()
         async with pool.acquire() as conn:
             row = await conn.fetchrow(
-                "SELECT * FROM place_info WHERE ufid = $1", ufid
+                "SELECT * FROM placeinfo WHERE building_key = $1", building_key
             )
         return dict(row) if row else {}
     except Exception as e:
@@ -143,33 +137,33 @@ async def run_place_insight_agent(req: PlaceRequest, progress_cb=None, user_id: 
     # 1) 바라보는 건물 식별 — frontend 가 건물 핀 탭 시 ufid 전달. ufid 없으면
     # 식별 불가 (raycast 경로는 제거됨, frontend 는 항상 ufid 를 보내야 한다).
     await _progress(5, "건물 식별 중...")
-    vworld_meta = await fetch_building_by_ufid(req.ufid) if req.ufid else None
+    vworld_meta = await fetch_building_by_key(req.ufid) if req.ufid else None
     await _progress(25, "건물 정보 조회 중...")
 
-    place_data          = {}
+    place_data           = {}
     bld_name_from_vworld = ""
 
     if vworld_meta:
         bld_name_from_vworld = vworld_meta.get("bld_nm") or "주변 건물"
-        ufid = vworld_meta.get("ufid", "")
+        building_key = vworld_meta.get("building_key", "")
 
-        if ufid:
-            await _record_user_scan(user_id, ufid)
+        if building_key:
+            await _record_user_scan(user_id, building_key)
 
-        # 2) Supabase place_info 직접 조회 (ufid PK)
-        if ufid:
-            place_data = await _fetch_place_info(ufid)
+        # 2) placeinfo 직접 조회 (building_key PK)
+        if building_key:
+            place_data = await _fetch_place_info(building_key)
         await _progress(45, "데이터 처리 중...")
 
         # 3) cache miss → 백그라운드 파이프라인 트리거
-        if not place_data and ufid:
-            _trigger_background_pipeline(ufid)
-            return _partial_response(bld_name_from_vworld, ufid)
+        if not place_data and building_key:
+            _trigger_background_pipeline(building_key)
+            return _partial_response(bld_name_from_vworld, building_key)
 
         # 4) cache hit — 오래된 데이터면 백그라운드 갱신 예약
-        if place_data and ufid and _is_stale(place_data.get("last_updated")):
-            print(f"[place_insight] stale 데이터 — 백그라운드 갱신 예약: {ufid}")
-            _trigger_background_pipeline(ufid)
+        if place_data and building_key and _is_stale(place_data.get("last_updated")):
+            print(f"[place_insight] stale 데이터 — 백그라운드 갱신 예약: {building_key}")
+            _trigger_background_pipeline(building_key)
 
     if not place_data and bld_name_from_vworld:
         return _partial_response(bld_name_from_vworld)
@@ -224,7 +218,7 @@ async def run_place_insight_agent(req: PlaceRequest, progress_cb=None, user_id: 
         "admission_fee":     place_data.get("admission_fee", ""),
         "address":           place_data.get("addr", ""),
         "phone":             place_data.get("phone", ""),
-        "ufid":              place_data.get("ufid", "") or (vworld_meta.get("ufid", "") if vworld_meta else ""),
+        "ufid":              place_data.get("building_key", "") or (vworld_meta.get("building_key", "") if vworld_meta else ""),
         "distance_m":        _compute_distance_m(
             req.user_lat, req.user_lng,
             place_data.get("lat") if place_data.get("lat") is not None
@@ -281,11 +275,11 @@ Language: {req.language}
     }
 
 
-def _trigger_background_pipeline(ufid: str) -> None:
+def _trigger_background_pipeline(building_key: str) -> None:
     try:
         from rag.automation.worker import enqueue
-        if enqueue(ufid):
-            print(f"[place_insight] 자동화 파이프라인 enqueue: {ufid}")
+        if enqueue(building_key):
+            print(f"[place_insight] 자동화 파이프라인 enqueue: {building_key}")
     except Exception as e:
         print(f"[place_insight] worker enqueue 실패 (무시): {e}")
 

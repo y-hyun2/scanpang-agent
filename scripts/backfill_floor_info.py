@@ -1,6 +1,6 @@
 """
 backfill_floor_info.py
-place_info.floor_info 컬럼의 floor 라벨을 tools.floor_utils 기준으로 정규화 + 정렬.
+placeinfo.floor_info 컬럼의 floor 라벨을 tools.floor_utils 기준으로 정규화 + 정렬.
 
 기존 라벨: "1층"/"3F"/"지하1층"/"B1"/"미확인"/"기타"/"" 가 혼재.
 실행 후: B3 → B2 → B1 → 1F → 2F → ... → RF → 기타 오름차순.
@@ -22,7 +22,7 @@ async def main(dry_run: bool = False) -> None:
     pool = await get_pool()
     async with pool.acquire() as conn:
         rows = await conn.fetch(
-            "SELECT ufid, floor_info FROM place_info WHERE floor_info IS NOT NULL"
+            "SELECT building_key, floor_info FROM placeinfo WHERE floor_info IS NOT NULL"
         )
 
     changed: list[tuple[str, list, list]] = []
@@ -32,13 +32,13 @@ async def main(dry_run: bool = False) -> None:
             continue
         new = sort_floor_info(old)
         if new != old:
-            changed.append((r["ufid"], old, new))
+            changed.append((r["building_key"], old, new))
 
     print(f"[backfill] 대상 row: {len(rows)}개, 변경 row: {len(changed)}개")
-    for ufid, old, new in changed[:5]:
+    for building_key, old, new in changed[:5]:
         old_keys = [f.get("floor") for f in old if isinstance(f, dict)]
         new_keys = [f.get("floor") for f in new if isinstance(f, dict)]
-        print(f"  - {ufid}: {old_keys} → {new_keys}")
+        print(f"  - {building_key}: {old_keys} → {new_keys}")
     if len(changed) > 5:
         print(f"  ... (+{len(changed) - 5}건)")
 
@@ -49,11 +49,11 @@ async def main(dry_run: bool = False) -> None:
 
     async with pool.acquire() as conn:
         async with conn.transaction():
-            for ufid, _old, new in changed:
+            for building_key, _old, new in changed:
                 await conn.execute(
-                    "UPDATE place_info SET floor_info = $1::jsonb WHERE ufid = $2",
+                    "UPDATE placeinfo SET floor_info = $1::jsonb WHERE building_key = $2",
                     json.dumps(new, ensure_ascii=False),
-                    ufid,
+                    building_key,
                 )
     print(f"[backfill] {len(changed)}개 row 업데이트 완료")
     await close_pool()

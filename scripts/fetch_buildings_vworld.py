@@ -1,10 +1,13 @@
 """
 fetch_buildings_vworld.py
 ─────────────────────────────────────────────────────────────────────────────
-VWorld WFS에서 중심 좌표 반경 내 모든 건물을 수집해 buildings 테이블에 적재.
-저장 컬럼: bd_mgt_sn, ufid, bld_nm, usability,
+VWorld WFS에서 중심 좌표 반경 내 모든 건물을 수집해 building 테이블에 적재.
+저장 컬럼: building_key, bd_mgt_sn, ufid, bld_nm, usability,
          grnd_flr, ugrnd_flr, height, estimated_height,
          center_lat, center_lng, h3_index_10, geom
+
+building_key = COALESCE(bd_mgt_sn, ufid)
+ufid = "NN" 인 건물도 bd_mgt_sn 이 있으면 수집 (ufid = NULL 로 저장)
 
 실행:
     python scripts/fetch_buildings_vworld.py
@@ -30,9 +33,9 @@ load_dotenv()
 # ============================================================================
 # 적재 대상 (중심 좌표 + 반경)
 # ============================================================================
-CENTER_LAT  = 37.4968
-CENTER_LNG  = 127.0407
-RADIUS_M    = 200
+CENTER_LAT   = 37.4968
+CENTER_LNG   = 127.0407
+RADIUS_M     = 200
 COMMIT_EVERY = 100
 
 
@@ -125,9 +128,15 @@ def fetch_features_recursive(bbox, vworld_key, depth=0, max_depth=8,
     features = data.get("features", [])
     new_count = 0
     for f in features:
-        bd = (f.get("properties") or {}).get("bd_mgt_sn")
-        if bd and bd not in seen_ids:
-            seen_ids.add(bd)
+        props     = f.get("properties") or {}
+        bd_mgt_sn = props.get("bd_mgt_sn") or ""
+        ufid      = props.get("ufid") or ""
+        if ufid.strip().upper() == "NN":
+            ufid = ""
+        # building_key: bd_mgt_sn 우선, 없으면 ufid
+        dedup_key = bd_mgt_sn or ufid
+        if dedup_key and dedup_key not in seen_ids:
+            seen_ids.add(dedup_key)
             collected.append(f)
             new_count += 1
 
@@ -184,7 +193,8 @@ def run_pipeline(lat=CENTER_LAT, lng=CENTER_LNG, radius_m=RADIUS_M):
     cursor = conn.cursor()
 
     insert_query = """
-        INSERT INTO buildings (
+        INSERT INTO building (
+            building_key,
             bd_mgt_sn, ufid,
             bld_nm, usability,
             grnd_flr, ugrnd_flr,
@@ -192,6 +202,7 @@ def run_pipeline(lat=CENTER_LAT, lng=CENTER_LNG, radius_m=RADIUS_M):
             center_lat, center_lng,
             h3_index_10, geom
         ) VALUES (
+            %s,
             %s, %s,
             %s, %s,
             %s, %s,
@@ -199,13 +210,12 @@ def run_pipeline(lat=CENTER_LAT, lng=CENTER_LNG, radius_m=RADIUS_M):
             %s, %s,
             %s, ST_Multi(ST_SetSRID(ST_GeomFromGeoJSON(%s), 4326))
         )
-        ON CONFLICT (ufid) DO NOTHING;
+        ON CONFLICT (building_key) DO NOTHING;
     """
 
-    success_count         = 0
-    skipped_no_bd_mgt_sn = 0
-    skipped_invalid_ufid  = 0
-    skipped_no_geom       = 0
+    success_count    = 0
+    skipped_no_key   = 0
+    skipped_no_geom  = 0
 
     for feature in features:
         props    = feature.get("properties", {})
@@ -214,9 +224,14 @@ def run_pipeline(lat=CENTER_LAT, lng=CENTER_LNG, radius_m=RADIUS_M):
             skipped_no_geom += 1
             continue
 
-        bd_mgt_sn = props.get("bd_mgt_sn")
-        if not bd_mgt_sn:
-            skipped_no_bd_mgt_sn += 1
+        bd_mgt_sn = props.get("bd_mgt_sn") or None
+        ufid      = props.get("ufid") or None
+        if ufid and ufid.strip().upper() == "NN":
+            ufid = None
+
+        building_key = bd_mgt_sn or ufid
+        if not building_key:
+            skipped_no_key += 1
             continue
 
         poly = shape(geometry)
@@ -225,11 +240,6 @@ def run_pipeline(lat=CENTER_LAT, lng=CENTER_LNG, radius_m=RADIUS_M):
             continue
         centroid = poly.centroid
         c_lat, c_lng = centroid.y, centroid.x
-
-        ufid = props.get("ufid")
-        if not ufid or ufid.strip().upper() == "NN":
-            skipped_invalid_ufid += 1
-            continue
 
         bld_nm            = props.get("bld_nm") or None
         usability         = props.get("usability") or None
@@ -248,6 +258,7 @@ def run_pipeline(lat=CENTER_LAT, lng=CENTER_LNG, radius_m=RADIUS_M):
         h3_index = h3.latlng_to_cell(c_lat, c_lng, 10)
 
         params = (
+            building_key,
             bd_mgt_sn, ufid,
             bld_nm, usability,
             grnd_flr, ugrnd_flr,
@@ -263,7 +274,7 @@ def run_pipeline(lat=CENTER_LAT, lng=CENTER_LNG, radius_m=RADIUS_M):
                 break
             except psycopg2.OperationalError as e:
                 if attempt == 0:
-                    print(f"  ⚠ 연결 끊김, 재연결 후 재시도... (bd_mgt_sn: {bd_mgt_sn})")
+                    print(f"  ⚠ 연결 끊김, 재연결 후 재시도... (building_key: {building_key})")
                     try:
                         conn.close()
                     except Exception:
@@ -271,9 +282,9 @@ def run_pipeline(lat=CENTER_LAT, lng=CENTER_LNG, radius_m=RADIUS_M):
                     conn   = _connect(db_url)
                     cursor = conn.cursor()
                 else:
-                    print(f"  ✗ 재시도 실패, 건너뜀 (bd_mgt_sn: {bd_mgt_sn}): {e}")
+                    print(f"  ✗ 재시도 실패, 건너뜀 (building_key: {building_key}): {e}")
             except Exception as e:
-                print(f"데이터 삽입 오류 (bd_mgt_sn: {bd_mgt_sn}): {e}")
+                print(f"데이터 삽입 오류 (building_key: {building_key}): {e}")
                 try:
                     conn.rollback()
                 except Exception:
@@ -289,17 +300,15 @@ def run_pipeline(lat=CENTER_LAT, lng=CENTER_LNG, radius_m=RADIUS_M):
     conn.close()
 
     print(f"\n작업 완료. 총 {success_count}개 적재 성공.")
-    if skipped_no_bd_mgt_sn:
-        print(f"  - 건물관리번호 없음으로 스킵: {skipped_no_bd_mgt_sn}개")
-    if skipped_invalid_ufid:
-        print(f"  - ufid 없음/NN으로 스킵: {skipped_invalid_ufid}개")
+    if skipped_no_key:
+        print(f"  - bd_mgt_sn·ufid 둘 다 없어 스킵: {skipped_no_key}개")
     if skipped_no_geom:
         print(f"  - geometry 없음으로 스킵: {skipped_no_geom}개")
 
 
 if __name__ == "__main__":
     import argparse
-    parser = argparse.ArgumentParser(description="VWorld WFS → buildings 테이블 적재")
+    parser = argparse.ArgumentParser(description="VWorld WFS → building 테이블 적재")
     parser.add_argument("--lat",    type=float, default=CENTER_LAT)
     parser.add_argument("--lng",    type=float, default=CENTER_LNG)
     parser.add_argument("--radius", type=int,   default=RADIUS_M, dest="radius_m")

@@ -117,10 +117,18 @@ def _parse_jsonb_list(val) -> list:
 from rag.automation.worker import start_worker, stop_worker
 from core.db import get_pool, close_pool
 from api.h3_buildings import router as h3_buildings_router
+from api.building_inspect import router as building_inspect_router
+from fastapi.staticfiles import StaticFiles
+import os as _os
 
 app = FastAPI(title="ScanPang Navigation API")
 
 app.include_router(h3_buildings_router)
+app.include_router(building_inspect_router)
+
+_static_dir = _os.path.join(_os.path.dirname(__file__), "static")
+if _os.path.isdir(_static_dir):
+    app.mount("/static", StaticFiles(directory=_static_dir), name="static")
 
 
 @app.on_event("startup")
@@ -741,7 +749,7 @@ async def place_autocomplete(req: AutocompleteRequest):
             """
             WITH matches AS (
                 SELECT DISTINCT store_name
-                FROM store_details
+                FROM storedetails
                 WHERE store_name ILIKE $1
                    OR similarity(
                         regexp_replace(store_name, '\\s+', '', 'g'),
@@ -801,7 +809,7 @@ async def place_search(req: SearchRequest):
             """
             SELECT * FROM (
               SELECT id, store_name, category, category_key, addr, phone,
-                     place_id, lat, lng, floor, image_urls, open_hours, details,
+                     place_id, lat, lng, floor, image_urls, raw_open_hours AS open_hours, details,
                      COALESCE(translations::text, '{}') AS translations,
                      last_updated,
                      CASE
@@ -812,7 +820,7 @@ async def place_search(req: SearchRequest):
                          )
                        ELSE NULL
                      END AS dist_m
-              FROM store_details
+              FROM storedetails
               WHERE store_name ILIKE $1
                  OR category ILIKE $1
                  -- 영어 등 비-한국어 검색어가 한국어 매장 데이터와 안 맞는 문제 보완:
@@ -883,7 +891,7 @@ async def place_search(req: SearchRequest):
         # 캐시 없으면 백그라운드 번역 트리거 (현재 요청은 한국어로 즉시 반환, 다음 요청부터 영어)
         if req.language != "ko" and not _tl and r["lat"] is not None and r["lng"] is not None:
             asyncio.ensure_future(_ensure_translations(
-                pool, "store_details", "id", r["id"],
+                pool, "storedetails", "id", r["id"],
                 {
                     "name":     r["store_name"] or "",
                     "addr":     r["addr"] or "",
@@ -1652,10 +1660,11 @@ async def place_detail(req: PlaceDetailRequest):
             SELECT id, store_name, place_id, lat, lng,
                    category, category_key, addr, phone, floor,
                    homepage, place_url,
-                   open_hours, closed_days,
+                   raw_open_hours AS open_hours, raw_closed_days AS closed_days,
+                   holiday_note,
                    image_urls, details, source, last_updated,
                    COALESCE(translations::text, '{}') AS translations
-            FROM store_details
+            FROM storedetails
             WHERE id = $1
             """,
             req.id,
@@ -1669,13 +1678,9 @@ async def place_detail(req: PlaceDetailRequest):
         raise HTTPException(status_code=404, detail=f"매장 '{req.id}' 정보를 찾을 수 없습니다.")
 
     # floor_info_seed 인 lightweight row → 카드 탭한 지금이 풀필드 fetch 타이밍.
-    # get_store_detail 이 fetcher 디스패치(kakao_scraper + naver_place 등) + UPSERT
-    # 수행. cache_id 는 '{place_id}__{store_name}' 패턴이라 req.id 그대로 재사용.
     if row["source"] == "floor_info_seed":
-        sep = "__"
-        idx = req.id.find(sep)
-        place_id_part = req.id[:idx] if idx >= 0 else (row["place_id"] or "")
-        store_name_part = req.id[idx + len(sep):] if idx >= 0 else row["store_name"]
+        place_id_part   = row["place_id"] or ""
+        store_name_part = row["store_name"] or ""
         try:
             await get_store_detail(place_id_part, store_name_part, language=req.language)
             async with pool.acquire() as conn:
@@ -1684,10 +1689,11 @@ async def place_detail(req: PlaceDetailRequest):
                     SELECT id, store_name, place_id, lat, lng,
                            category, category_key, addr, phone, floor,
                            homepage, place_url,
-                           open_hours, closed_days,
+                           raw_open_hours AS open_hours, raw_closed_days AS closed_days,
+                           holiday_note,
                            image_urls, details, source, last_updated,
                            COALESCE(translations::text, '{}') AS translations
-                    FROM store_details WHERE id = $1
+                    FROM storedetails WHERE id = $1
                     """,
                     req.id,
                 )
@@ -1743,7 +1749,7 @@ async def place_detail(req: PlaceDetailRequest):
     if req.language != "ko" and not t and not req.no_translate \
             and row["lat"] is not None and row["lng"] is not None:
         t = await _ensure_translations(
-            pool, "store_details", "id", row["id"],
+            pool, "storedetails", "id", row["id"],
             {
                 "name":        row["store_name"] or "",
                 "addr":        row["addr"] or "",

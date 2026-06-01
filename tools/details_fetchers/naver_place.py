@@ -14,7 +14,7 @@ async def fetch(
     building_ufid: str = "",
     category_name: str = "",
     addr_hint: str = "",
-    structured_hours: bool = False,
+    structured_hours: bool = True,
 ) -> dict:
     """
     Naver Place에서 매장 상세를 가져와 store_details fetcher 포맷으로 변환.

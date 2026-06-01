@@ -122,7 +122,7 @@ async def run(
 
     pool = await get_pool()
     async with pool.acquire() as conn:
-        existing = {r["id"] for r in await conn.fetch("SELECT id FROM store_details")} if skip_existing else set()
+        existing = {f"{r['place_id']}/{r['store_name']}" for r in await conn.fetch("SELECT place_id, store_name FROM storedetails")} if skip_existing else set()
 
     results: list[dict] = []
     t_start = time.time()

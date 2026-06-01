@@ -52,8 +52,8 @@ DIVERSE_STORES: dict[str, list] = {
 async def _existing_ids() -> set[str]:
     pool = await get_pool()
     async with pool.acquire() as conn:
-        rows = await conn.fetch("SELECT id FROM store_details")
-    return {r["id"] for r in rows}
+        rows = await conn.fetch("SELECT place_id, store_name FROM storedetails")
+    return {f"{r['place_id']}/{r['store_name']}" for r in rows}
 
 
 async def _resolve_building(store_name: str) -> dict | None:
@@ -61,13 +61,13 @@ async def _resolve_building(store_name: str) -> dict | None:
     매장명이 어느 빌딩에 속하는지 자동 매핑.
     1) place_info.name_ko = 매장명 (매장 = 건물 자체. 예: 명동성당, N서울타워)
     2) place_info.floor_info 안 stores[].name = 매장명 (매장 ⊂ 건물의 층별정보)
-    Returns: {"ufid", "lat", "lng", "match_kind": "building"|"floor_info"} 또는 None
+    Returns: {"building_key", "lat", "lng", "match_kind": "building"|"floor_info"} 또는 None
     """
     pool = await get_pool()
     async with pool.acquire() as conn:
         # 1차: 건물명 정확/부분 일치
         row = await conn.fetchrow(
-            "SELECT ufid, lat, lng FROM place_info "
+            "SELECT building_key, lat, lng FROM placeinfo "
             "WHERE name_ko ILIKE $1 ORDER BY length(name_ko) LIMIT 1",
             f"%{store_name}%",
         )
@@ -77,7 +77,7 @@ async def _resolve_building(store_name: str) -> dict | None:
         # 2차: floor_info JSONB 안 매장명 검색
         row = await conn.fetchrow(
             """
-            SELECT ufid, lat, lng FROM place_info
+            SELECT building_key, lat, lng FROM placeinfo
             WHERE floor_info IS NOT NULL
               AND EXISTS (
                   SELECT 1
@@ -128,7 +128,7 @@ async def run(categories: list[str], skip_existing: bool, sleep_sec: float):
         else:
             bld = await _resolve_building(store_name)
             if bld:
-                place_id = bld["ufid"]
+                place_id = bld["building_key"]
                 lat, lng = float(bld["lat"]), float(bld["lng"])
                 entry_label = f"building({bld['match_kind']})"
             else:
@@ -136,8 +136,8 @@ async def run(categories: list[str], skip_existing: bool, sleep_sec: float):
                 lat, lng = MYEONGDONG_LAT, MYEONGDONG_LNG
                 entry_label = "outdoor"
 
-        cache_id = f"{place_id}__{store_name}"
-        if skip_existing and cache_id in existing:
+        dedup_key = f"{place_id}/{store_name}"
+        if skip_existing and dedup_key in existing:
             print(f"[{i:2d}/{len(targets)}] {store_name} ({cat}) — 캐시 hit, skip")
             skipped_existing += 1
             continue

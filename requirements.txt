@@ -16,3 +16,4 @@ playwright
 h3>=4.1
 cachetools>=5.5
 PyJWT[crypto]>=2.8.0
+aiofiles

@@ -17,6 +17,7 @@ _response_cache: TTLCache = TTLCache(maxsize=CACHE_MAX_ENTRIES, ttl=CACHE_TTL_SE
 
 
 class BuildingDto(BaseModel):
+    building_key: str
     ufid: Optional[str]
     bld_nm: Optional[str]
     render_height: float
@@ -44,7 +45,6 @@ async def get_buildings_chunk(
     중심 H3 셀 + 1-ring(주변 6개) = 7개 셀의 건물 반환.
     h3_cell 또는 (lat, lng) 둘 중 하나 필수.
     """
-    # 입력 정규화: lat/lng → h3_cell
     if h3_cell is None:
         if lat is None or lng is None:
             raise HTTPException(400, "h3_cell 또는 (lat, lng) 둘 중 하나가 필요합니다")
@@ -60,14 +60,11 @@ async def get_buildings_chunk(
         raise HTTPException(status_code=400, detail="Resolution 10 셀만 허용")
 
     cells = list(h3.grid_disk(h3_cell, 1))
-
-    # h3_cell 중심 좌표 → ST_DWithin 기준점
-    # 건물 centroid가 아닌 폴리곤(건물 면적) 기준으로 거리 측정하므로
-    # 롯데백화점처럼 centroid가 셀 밖에 있는 큰 건물도 포함된다.
     cell_lat, cell_lng = h3.cell_to_latlng(h3_cell)
 
     query = """
         SELECT
+            building_key,
             ufid,
             bld_nm,
             bd_mgt_sn,
@@ -76,7 +73,7 @@ async def get_buildings_chunk(
             ST_AsGeoJSON(geom) AS geom_json,
             ST_Y(ST_Centroid(geom)) AS center_lat,
             ST_X(ST_Centroid(geom)) AS center_lng
-        FROM buildings
+        FROM building
         WHERE ST_DWithin(
             geom::geography,
             ST_Point($2, $1)::geography,
@@ -87,29 +84,26 @@ async def get_buildings_chunk(
     async with pool.acquire() as conn:
         rows = await conn.fetch(query, cell_lat, cell_lng)
 
-    # ── place_info.name_ko 보강: cadastral bld_nm이 NULL인 건물에 한해 ──
-    # 좌표 근접(≈50m) 매칭으로 main pool의 place_info에서 진짜 건물명을 가져와 채움.
-    # 한 청크당 단 1회 배치 쿼리. 매칭 안 되면 NULL 유지(프론트에서 폴백 라벨 표시).
-    name_overrides: dict[str, str] = {}  # bd_mgt_sn → name_ko
+    # placeinfo.name_ko 보강: bld_nm이 NULL인 건물에 한해 building_key로 조회
+    name_overrides: dict[str, str] = {}  # building_key → name_ko
     missing = [
-        (r["bd_mgt_sn"], float(r["center_lat"]), float(r["center_lng"]))
+        (r["building_key"], float(r["center_lat"]), float(r["center_lng"]))
         for r in rows
-        if (not r["bld_nm"]) and r["bd_mgt_sn"] and r["center_lat"] is not None
+        if (not r["bld_nm"]) and r["building_key"] and r["center_lat"] is not None
     ]
     if missing:
         try:
             keys = [m[0] for m in missing]
             lats = [m[1] for m in missing]
             lngs = [m[2] for m in missing]
-            main_pool = await get_pool()
-            async with main_pool.acquire() as conn:
+            async with pool.acquire() as conn:
                 enrich_rows = await conn.fetch(
                     """
-                    SELECT q.key AS bd_mgt_sn, p.name_ko
+                    SELECT q.key AS building_key, p.name_ko
                     FROM unnest($1::text[], $2::float8[], $3::float8[]) AS q(key, lat, lng)
                     CROSS JOIN LATERAL (
                         SELECT name_ko
-                        FROM place_info
+                        FROM placeinfo
                         WHERE name_ko IS NOT NULL
                           AND ABS(lat - q.lat) < 0.0005
                           AND ABS(lng - q.lng) < 0.0005
@@ -121,15 +115,15 @@ async def get_buildings_chunk(
                 )
             for er in enrich_rows:
                 if er["name_ko"]:
-                    name_overrides[er["bd_mgt_sn"]] = er["name_ko"]
+                    name_overrides[er["building_key"]] = er["name_ko"]
         except Exception as e:
-            # enrichment 실패해도 핀 자체는 떠야 함 — bld_nm은 NULL로 유지(프론트 폴백)
-            print(f"[h3_buildings] place_info 이름 보강 실패 (계속 진행): {e}")
+            print(f"[h3_buildings] placeinfo 이름 보강 실패 (계속 진행): {e}")
 
     buildings = [
         BuildingDto(
-            ufid=r["ufid"],
-            bld_nm=r["bld_nm"] or None,
+            building_key=r["building_key"],
+            ufid=r["ufid"] or None,
+            bld_nm=name_overrides.get(r["building_key"]) or r["bld_nm"] or None,
             render_height=float(r["render_height"] or 0),
             h3_index_10=r["h3_index_10"],
             geom=json.loads(r["geom_json"]),

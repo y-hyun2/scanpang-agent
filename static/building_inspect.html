@@ -1,0 +1,954 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>건물 폴리곤 점검기</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet.draw/1.0.4/leaflet.draw.css"/>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;display:flex;height:100vh;background:#1a1a2e;color:#eee}
+
+#sidebar{width:340px;min-width:280px;background:#16213e;display:flex;flex-direction:column;overflow:hidden;border-right:1px solid #0f3460}
+
+#sb-header{padding:12px 16px;background:#0f3460;flex-shrink:0}
+#sb-header h1{font-size:14px;font-weight:700;color:#e94560}
+#sb-header p{font-size:11px;color:#aaa;margin-top:2px}
+
+#api-bar{padding:8px 12px;flex-shrink:0;border-bottom:1px solid #0f3460;display:flex;gap:6px;align-items:center}
+#api-url{flex:1;background:#0f3460;border:1px solid #1a4a80;color:#eee;padding:4px 7px;border-radius:4px;font-size:11px}
+
+/* 모드 탭 */
+#mode-tabs{display:flex;flex-shrink:0;border-bottom:1px solid #0f3460}
+.mtab{flex:1;padding:8px 4px;text-align:center;font-size:11px;font-weight:600;cursor:pointer;color:#666;border-bottom:2px solid transparent;transition:color .15s}
+.mtab.active{color:#e94560;border-color:#e94560}
+.mtab:hover:not(.active){color:#aaa}
+
+/* 모드 패널 */
+.mode-panel{display:none;flex-direction:column;flex:1;overflow:hidden}
+.mode-panel.active{display:flex}
+
+/* 기본 모드 */
+#panel-default{padding:10px 12px}
+.btn-row{display:flex;gap:6px;margin-bottom:6px}
+.btn{padding:7px 10px;border:none;border-radius:4px;font-size:12px;font-weight:600;cursor:pointer;transition:opacity .15s;white-space:nowrap}
+.btn:hover:not(:disabled){opacity:.82}
+.btn:disabled{opacity:.35;cursor:not-allowed}
+.btn-primary{background:#e94560;color:#fff;flex:1}
+.btn-secondary{background:#0f3460;color:#ccc;flex:1}
+.btn-green{background:#27ae60;color:#fff;flex:1}
+.btn-orange{background:#e67e22;color:#fff;flex:1}
+.btn-danger{background:#c0392b;color:#fff}
+.btn-sm{padding:4px 8px;font-size:11px}
+
+#stats-bar{padding:8px 12px;border-bottom:1px solid #0f3460;flex-shrink:0}
+.stat-row{display:flex;justify-content:space-between;font-size:11px;margin-bottom:3px}
+.stat-label{color:#aaa}.stat-val{font-weight:700;color:#e94560}
+
+/* 범례 */
+#legend{padding:8px 12px;border-bottom:1px solid #0f3460;flex-shrink:0}
+#legend h3{font-size:10px;color:#888;text-transform:uppercase;letter-spacing:.5px;margin-bottom:5px}
+.leg-row{display:flex;align-items:center;gap:6px;margin-bottom:3px;font-size:10px;color:#ccc}
+.leg-sw{width:16px;height:10px;border-radius:2px;flex-shrink:0}
+
+/* 필터 */
+#list-filters{padding:5px 12px;display:flex;gap:4px;flex-shrink:0;border-bottom:1px solid #0f3460}
+.fbtn{flex:1;padding:3px;font-size:10px;border:1px solid #0f3460;border-radius:3px;background:#0f3460;color:#888;cursor:pointer;text-align:center}
+.fbtn.active{background:#1a4a80;color:#eee;border-color:#3498db}
+
+/* 건물 목록 */
+#building-list{flex:1;overflow-y:auto}
+#building-list::-webkit-scrollbar{width:3px}
+#building-list::-webkit-scrollbar-thumb{background:#0f3460}
+.bld-item{padding:7px 12px;border-bottom:1px solid #0f3460;cursor:pointer;display:flex;align-items:center;gap:7px}
+.bld-item:hover{background:#0f3460}
+.bld-item.selected{background:#1a3a6e}
+.bld-dot{width:8px;height:8px;border-radius:2px;flex-shrink:0}
+.bld-info{flex:1;overflow:hidden}
+.bld-name{font-size:11px;font-weight:600;color:#ddd;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.bld-key{font-size:10px;color:#666;cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.bld-key:hover{color:#3498db;text-decoration:underline}
+.bld-meta{font-size:10px;color:#888;flex-shrink:0;text-align:right;line-height:1.4}
+
+/* 쌍 목록 (겹침/클러스터) */
+#pair-list{flex:1;overflow-y:auto}
+.pair-item{padding:8px 12px;border-bottom:1px solid #0f3460;cursor:pointer}
+.pair-item:hover{background:#0f3460}
+.pair-item.selected{background:#1a3a6e}
+.pair-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:4px}
+.pair-badge{font-size:10px;font-weight:700;padding:1px 6px;border-radius:3px}
+.pair-badge.overlap{background:#e74c3c;color:#fff}
+.pair-badge.cluster{background:#f39c12;color:#fff}
+.pair-names{font-size:11px;color:#ccc;line-height:1.5}
+.pair-actions{display:flex;gap:4px;margin-top:5px}
+
+/* 편집 패널 */
+#edit-info{padding:10px 12px;border-bottom:1px solid #0f3460;flex-shrink:0;font-size:11px;color:#aaa}
+#edit-info strong{color:#eee;display:block;margin-bottom:4px;font-size:12px}
+.edit-field{margin-bottom:6px}
+.edit-field label{display:block;font-size:10px;color:#888;margin-bottom:2px}
+.edit-field input{width:100%;background:#0f3460;border:1px solid #1a4a80;color:#eee;padding:4px 7px;border-radius:4px;font-size:11px}
+#edit-actions{padding:10px 12px;flex-shrink:0;border-top:1px solid #0f3460}
+
+/* 수동 추가 패널 */
+#add-panel{padding:10px 12px}
+.add-field{margin-bottom:8px}
+.add-field label{display:block;font-size:10px;color:#888;margin-bottom:2px}
+.add-field input{width:100%;background:#0f3460;border:1px solid #1a4a80;color:#eee;padding:5px 7px;border-radius:4px;font-size:11px}
+
+/* 지도 */
+#map{flex:1}
+
+/* 팝업 */
+.pop{font-size:12px;min-width:200px;line-height:1.7}
+.pop b{color:#333}
+.pop .pop-key{font-size:10px;color:#888;cursor:pointer}
+.pop .pop-key:hover{color:#3498db;text-decoration:underline}
+.pop .tag{display:inline-block;padding:1px 5px;border-radius:3px;font-size:10px;font-weight:700;margin-left:3px}
+.tag-measured{background:#27ae60;color:#fff}
+.tag-estimated{background:#e67e22;color:#fff}
+
+/* 상태바 */
+#status{position:absolute;bottom:20px;left:50%;transform:translateX(-50%);background:rgba(15,52,96,.93);color:#ccc;font-size:12px;padding:6px 14px;border-radius:20px;z-index:1000;pointer-events:none;display:none}
+.spinner{display:inline-block;width:10px;height:10px;border:2px solid #444;border-top-color:#3498db;border-radius:50%;animation:spin .6s linear infinite;margin-right:5px}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+.leaflet-container { background: transparent !important; }
+.pair-label { background: rgba(0,0,0,.7); color: #fff; border: none; font-size: 12px; font-weight: 700; padding: 2px 6px; border-radius: 3px; box-shadow: none; }
+</style>
+</head>
+<body>
+<div id="sidebar">
+  <div id="sb-header">
+    <h1>🏗 건물 폴리곤 점검기</h1>
+    <p>겹침 감지 · 중복 감지 · 편집 · 수동 추가</p>
+  </div>
+
+  <div id="api-bar">
+    <input id="api-url" type="text" value="http://localhost:8000"/>
+    <button class="btn btn-primary btn-sm" onclick="loadAll()">전체 불러오기</button>
+  </div>
+
+  <!-- 모드 탭 -->
+  <div id="mode-tabs">
+    <div class="mtab active" onclick="setMode('default')"  id="tab-default">📦 목록</div>
+    <div class="mtab"        onclick="setMode('overlap')"  id="tab-overlap">🔴 겹침</div>
+    <div class="mtab"        onclick="setMode('cluster')"  id="tab-cluster">🟡 중복</div>
+    <div class="mtab"        onclick="setMode('edit')"     id="tab-edit">✏️ 편집</div>
+    <div class="mtab"        onclick="setMode('add')"      id="tab-add">➕ 추가</div>
+  </div>
+
+  <!-- 기본 목록 패널 -->
+  <div class="mode-panel active" id="panel-default">
+    <div id="stats-bar">
+      <div class="stat-row"><span class="stat-label">총 건물</span><span class="stat-val" id="st-total">—</span></div>
+      <div class="stat-row"><span class="stat-label">실측 높이</span><span class="stat-val" id="st-measured">—</span></div>
+      <div class="stat-row"><span class="stat-label">의심(≤3m)</span><span class="stat-val" id="st-sus" style="color:#e74c3c">—</span></div>
+    </div>
+    <div id="legend">
+      <h3>높이 범례</h3>
+      <div class="leg-row"><div class="leg-sw" style="background:#999;border:1px dashed #666"></div>높이 없음</div>
+      <div class="leg-row"><div class="leg-sw" style="background:#e74c3c"></div>0–3 m (의심)</div>
+      <div class="leg-row"><div class="leg-sw" style="background:#e67e22"></div>3–8 m</div>
+      <div class="leg-row"><div class="leg-sw" style="background:#f1c40f"></div>8–20 m</div>
+      <div class="leg-row"><div class="leg-sw" style="background:#2ecc71"></div>20–50 m</div>
+      <div class="leg-row"><div class="leg-sw" style="background:#3498db"></div>50–100 m</div>
+      <div class="leg-row"><div class="leg-sw" style="background:#9b59b6"></div>100 m+</div>
+    </div>
+    <div id="list-filters">
+      <div class="fbtn active" onclick="setFilter('all')"  id="f-all">전체</div>
+      <div class="fbtn"        onclick="setFilter('sus')"  id="f-sus">🔴의심</div>
+      <div class="fbtn"        onclick="setFilter('nokey')" id="f-nokey">키없음</div>
+    </div>
+    <div id="building-list"></div>
+  </div>
+
+  <!-- 겹침 패널 -->
+  <div class="mode-panel" id="panel-overlap">
+    <div style="padding:10px 12px;flex-shrink:0;border-bottom:1px solid #0f3460">
+      <div class="btn-row">
+        <button class="btn btn-primary" onclick="loadOverlaps()">🔍 겹침 감지 (3%)</button>
+      </div>
+      <div style="font-size:11px;color:#aaa" id="overlap-stats">감지 전</div>
+    </div>
+    <div id="overlap-list" style="display:none;flex:1;overflow-y:auto"></div>
+  </div>
+
+  <!-- 중복 패널 -->
+  <div class="mode-panel" id="panel-cluster">
+    <div style="padding:10px 12px;flex-shrink:0;border-bottom:1px solid #0f3460">
+      <div class="btn-row">
+        <button class="btn btn-orange" onclick="loadClusters()">🔍 주소 중복 감지 (20m)</button>
+      </div>
+      <div style="font-size:11px;color:#aaa" id="cluster-stats">감지 전</div>
+    </div>
+    <div id="cluster-list" style="display:none"></div>
+  </div>
+
+  <!-- 편집 패널 -->
+  <div class="mode-panel" id="panel-edit">
+    <div id="edit-info">
+      <strong id="edit-bld-name">건물을 클릭하세요</strong>
+      <div id="edit-bld-key" style="font-size:10px;color:#666"></div>
+    <div id="edit-bld-addr" style="font-size:10px;color:#888;margin-top:3px">—</div>
+    </div>
+    <div style="padding:10px 12px;flex:1;overflow-y:auto">
+      <div class="edit-field"><label>건물명</label><input id="ef-bld-nm" type="text" placeholder="건물명"></div>
+      <div class="edit-field"><label>지상층수</label><input id="ef-grnd" type="number" placeholder="지상층수"></div>
+      <div class="edit-field"><label>지하층수</label><input id="ef-ugrnd" type="number" placeholder="지하층수"></div>
+      <div class="edit-field"><label>실제 높이(m)</label><input id="ef-height" type="number" step="0.1" placeholder="실제 높이"></div>
+    </div>
+    <div id="edit-actions">
+      <div class="btn-row">
+        <button class="btn btn-green btn-sm" id="btn-edit-poly" onclick="startEditPoly()" disabled>꼭짓점 편집</button>
+        <button class="btn btn-orange btn-sm" id="btn-move-poly" onclick="startMovePoly()" disabled>도형 이동</button>
+      </div>
+      <div class="btn-row">
+        <button class="btn btn-primary btn-sm" id="btn-save-edit" onclick="saveEdit()" disabled>저장</button>
+      </div>
+      <div class="btn-row" style="margin-top:4px">
+        <button class="btn btn-secondary btn-sm" onclick="cancelEdit()">취소</button>
+        <button class="btn btn-danger btn-sm" id="btn-del-edit" onclick="deleteSelected()" disabled>건물 삭제</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 수동 추가 패널 -->
+  <div class="mode-panel" id="panel-add">
+    <div id="add-panel">
+      <div class="add-field">
+        <label>주소 검색 (위치 찾기)</label>
+        <div style="display:flex;gap:4px">
+          <input id="add-addr-input" type="text" placeholder="예: 서울 중구 명동길 36" onkeydown="if(event.key==='Enter')geocodeAddr()">
+          <button class="btn btn-secondary btn-sm" onclick="geocodeAddr()">검색</button>
+        </div>
+      </div>
+      <div class="add-field"><label>건물명</label><input id="add-bld-nm" type="text" placeholder="건물명 (선택)"></div>
+      <div class="add-field"><label>지상층수</label><input id="add-grnd" type="number" placeholder="지상층수"></div>
+      <div class="add-field"><label>지하층수</label><input id="add-ugrnd" type="number" placeholder="지하층수"></div>
+      <div class="add-field"><label>실제 높이(m)</label><input id="add-height" type="number" step="0.1" placeholder="실제 높이"></div>
+      <div class="add-field"><label>bd_mgt_sn</label><input id="add-bd" type="text" placeholder="건물관리번호 (선택)"></div>
+      <div style="margin-top:4px;padding:6px;background:#0f3460;border-radius:4px;font-size:10px;color:#aaa" id="add-guide">
+        ① 주소 검색으로 위치 이동<br>② 아래 버튼으로 폴리곤 그리기<br>③ 그리기 완료 후 저장
+      </div>
+      <div class="btn-row" style="margin-top:8px">
+        <button class="btn btn-green" onclick="startDrawNew()">🖊 폴리곤 그리기</button>
+        <button class="btn btn-secondary" onclick="addPointOnly()">📍 포인트만 추가</button>
+      </div>
+      <button class="btn btn-primary" style="width:100%;margin-top:6px" id="btn-save-new" onclick="saveNew()" disabled>저장</button>
+    </div>
+  </div>
+</div>
+
+<div id="map-container" style="position:relative;flex:1">
+  <div id="kakao-map" style="position:absolute;inset:0;z-index:1"></div>
+  <div id="map"       style="position:absolute;inset:0;z-index:2;background:transparent"></div>
+</div>
+<div id="status"></div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet.draw/1.0.4/leaflet.draw.js"></script>
+<script>
+// ══════════════════════════════════════════════════════════
+// 지도 초기화
+// ══════════════════════════════════════════════════════════
+// Leaflet 먼저 초기화 (타일 없음 — 네이버가 배경)
+const map = L.map('map', {zoomControl:true, attributionControl:false, maxZoom:21})
+              .setView([37.5636, 126.9822], 17)
+
+let naverMap = null
+let _syncing = false
+
+// 네이버 zoom ↔ Leaflet zoom
+// 네이버 zoom 20 = Leaflet zoom 17 기준, 1:1 대응
+function leafletToNaver(z){ return Math.max(6, Math.min(21, z)) }
+
+async function initNaverMap(){
+  try{
+    const cfg = await fetch(`${apiBase()}/inspect/config`).then(r=>r.json())
+    if(!cfg.naver_map_client_id) throw new Error('NAVER_MAP_CLIENT_ID 미설정')
+
+    await new Promise((resolve, reject)=>{
+      const s = document.createElement('script')
+      s.src = `https://openapi.map.naver.com/openapi/v3/maps.js?ncpKeyId=${cfg.naver_map_client_id}`
+      s.onload = resolve; s.onerror = reject
+      document.head.appendChild(s)
+    })
+
+    const center = map.getCenter()
+    naverMap = new naver.maps.Map(document.getElementById('kakao-map'), {
+      center: new naver.maps.LatLng(center.lat, center.lng),
+      zoom:   leafletToNaver(map.getZoom()),
+      mapTypeId: naver.maps.MapTypeId.NORMAL,
+      zoomControl: false,
+      scaleControl: false,
+      logoControl: false,
+      mapDataControl: false,
+    })
+    naverMap.setOptions('draggable', false)
+    naverMap.setOptions('scrollWheel', false)
+    naverMap.setOptions('keyboardShortcuts', false)
+    naverMap.setOptions('pinchZoom', false)
+
+    // Leaflet → 네이버 동기화
+    function syncToNaver(){
+      if(_syncing || !naverMap) return
+      _syncing = true
+      const c = map.getCenter()
+      naverMap.setCenter(new naver.maps.LatLng(c.lat, c.lng))
+      naverMap.setZoom(leafletToNaver(map.getZoom()), false)
+      _syncing = false
+    }
+    map.on('move zoom', syncToNaver)
+
+    L.control.attribution({prefix:'© NAVER Corp.'}).addTo(map)
+    showStatus('네이버 지도 로드 완료')
+  }catch(e){
+    console.warn('네이버 지도 로드 실패, OSM fallback:', e.message)
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+      {attribution:'© OpenStreetMap', maxZoom:19}).addTo(map)
+  }
+}
+initNaverMap()
+
+const drawnItems = new L.FeatureGroup().addTo(map);
+let geoLayer    = null;   // 메인 buildings 레이어
+let hlLayer     = null;   // 하이라이트 레이어
+let editLayer   = null;   // 편집 중인 레이어
+let allFeatures = [];
+let currentMode = 'default';
+let selectedKey = null;
+let pendingNewGeom = null;  // 수동 추가 시 그린 폴리곤
+let pendingNewCenter = null;
+let drawHandler = null;
+let currentFilter = 'all';
+
+// ══════════════════════════════════════════════════════════
+// 유틸
+// ══════════════════════════════════════════════════════════
+function apiBase(){return document.getElementById('api-url').value.replace(/\/$/,'')}
+function hc(h){if(!h||h<=0)return'#999';if(h<=3)return'#e74c3c';if(h<=8)return'#e67e22';if(h<=20)return'#f1c40f';if(h<=50)return'#2ecc71';if(h<=100)return'#3498db';return'#9b59b6'}
+function hl(h){return(h&&h>0)?h.toFixed(1)+' m':'미상'}
+const USE={
+  '02000':'단독주택','03000':'공동주택','04000':'근린생활(1종)',
+  '05000':'근린생활(2종)','06000':'문화집회','07000':'판매',
+  '14000':'업무','15000':'숙박'
+}
+
+let stTimer=null
+function showStatus(msg,perm=false){
+  const el=document.getElementById('status')
+  el.innerHTML=msg;el.style.display='block'
+  clearTimeout(stTimer)
+  if(!perm)stTimer=setTimeout(()=>el.style.display='none',3500)
+}
+
+// ══════════════════════════════════════════════════════════
+// 모드 전환
+// ══════════════════════════════════════════════════════════
+function setMode(m){
+  currentMode=m
+  document.querySelectorAll('.mtab').forEach(t=>t.classList.remove('active'))
+  document.querySelectorAll('.mode-panel').forEach(p=>p.classList.remove('active'))
+  document.getElementById('tab-'+m).classList.add('active')
+  document.getElementById('panel-'+m).classList.add('active')
+  clearHighlight()
+  if(drawHandler){drawHandler.disable();drawHandler=null}
+  if(editLayer){map.removeLayer(editLayer);editLayer=null}
+  selectedKey=null
+  if(m==='edit') showStatus('건물 폴리곤을 클릭해 선택하세요')
+  if(m==='add')  showStatus('주소 검색 후 폴리곤을 그리세요')
+}
+
+// ══════════════════════════════════════════════════════════
+// 전체 불러오기
+// ══════════════════════════════════════════════════════════
+async function loadAll(){
+  showStatus('<span class="spinner"></span>전체 건물 불러오는 중…',true)
+  try{
+    const r=await fetch(`${apiBase()}/inspect/buildings`)
+    if(!r.ok){const e=await r.json().catch(()=>({}));alert('오류: '+(e.detail||r.statusText));return}
+    const data=await r.json()
+    allFeatures=data.features||[]
+    renderMainLayer()
+    renderBuildingList()
+    document.getElementById('st-total').textContent=allFeatures.length.toLocaleString()
+    document.getElementById('st-measured').textContent=allFeatures.filter(f=>f.properties.height>0).length
+    document.getElementById('st-sus').textContent=allFeatures.filter(f=>{const h=f.properties.render_height;return h>0&&h<=3}).length
+    if(allFeatures.length>0){
+      const l=L.geoJSON({type:'FeatureCollection',features:allFeatures})
+      map.fitBounds(l.getBounds(),{padding:[20,20]})
+    }
+    showStatus(`${allFeatures.length}개 건물 로드 완료`)
+  }catch(e){alert('서버 연결 실패: '+e.message)}
+}
+
+// ══════════════════════════════════════════════════════════
+// 메인 레이어
+// ══════════════════════════════════════════════════════════
+function renderMainLayer(){
+  if(geoLayer){map.removeLayer(geoLayer);geoLayer=null}
+  geoLayer=L.geoJSON({type:'FeatureCollection',features:allFeatures},{
+    style:f=>{const h=f.properties.render_height,c=hc(h);return{color:c,weight:1.2,fillColor:c,fillOpacity:.5,opacity:.9}},
+    onEachFeature:(f,layer)=>{
+      layer.bindPopup(()=>makePopup(f.properties),{maxWidth:300})
+      layer.on('click',()=>{
+        if(currentMode==='edit')selectForEdit(f,layer)
+        else highlightItem(f.properties.building_key)
+      })
+    }
+  }).addTo(map)
+}
+
+const _addrCache={}
+async function fetchAddr(lat,lng,domId){
+  const key=`${lat?.toFixed(5)},${lng?.toFixed(5)}`
+  if(_addrCache[key]!==undefined){
+    if(domId){const el=document.getElementById(domId);if(el)el.textContent=_addrCache[key]||'주소 없음'}
+    return
+  }
+  try{
+    const r=await fetch(`${apiBase()}/inspect/address?lat=${lat}&lng=${lng}`)
+    const d=await r.json()
+    const addr=d.road||d.jibun||'주소 없음'
+    _addrCache[key]=addr
+    if(domId){const el=document.getElementById(domId);if(el)el.textContent=addr}
+  }catch{
+    if(domId){const el=document.getElementById(domId);if(el)el.textContent='조회 실패'}
+  }
+}
+
+function makePopup(p){
+  const isEst=!p.height||p.height<=0
+  const tag=isEst?'<span class="tag tag-estimated">추정</span>':'<span class="tag tag-measured">실측</span>'
+  const addrId='addr-'+Math.random().toString(36).slice(2)
+  if(p.center_lat&&p.center_lng) setTimeout(()=>fetchAddr(p.center_lat,p.center_lng,addrId),0)
+  return`<div class="pop">
+    <b>${p.bld_nm||'(이름 없음)'}</b>${tag}<br>
+    <span class="pop-key" onclick="copyText('${p.building_key}')" title="클릭=복사">${p.building_key}</span><br><br>
+    📍 <b>주소</b> <span id="${addrId}" style="color:#888;font-size:11px">불러오는 중…</span><br>
+    📏 <b>높이</b> ${hl(p.render_height)}<br>
+    &nbsp;&nbsp;실측 ${p.height?p.height.toFixed(1)+'m':'—'} / 추정 ${p.estimated_height?p.estimated_height.toFixed(1)+'m':'—'}<br>
+    🏗 <b>층수</b> 지상 ${p.grnd_flr??'—'} / 지하 ${p.ugrnd_flr??'—'}<br>
+    🏷 <b>용도</b> ${USE[p.usability]||p.usability||'—'}
+  </div>`
+}
+
+function copyText(txt){
+  navigator.clipboard.writeText(txt).then(()=>showStatus('✓ 복사됨'))
+}
+
+// ══════════════════════════════════════════════════════════
+// 건물 목록
+// ══════════════════════════════════════════════════════════
+function setFilter(f){
+  currentFilter=f
+  document.querySelectorAll('.fbtn').forEach(b=>b.classList.remove('active'))
+  document.getElementById('f-'+f).classList.add('active')
+  renderBuildingList()
+}
+
+function renderBuildingList(){
+  let items=[...allFeatures].sort((a,b)=>(a.properties.render_height||0)-(b.properties.render_height||0))
+  if(currentFilter==='sus')items=items.filter(f=>{const h=f.properties.render_height;return h>0&&h<=3})
+  if(currentFilter==='nokey')items=items.filter(f=>!f.properties.building_key)
+  const list=document.getElementById('building-list');list.innerHTML=''
+  items.forEach(f=>{
+    const p=f.properties,h=p.render_height||0,c=hc(h)
+    const div=document.createElement('div');div.className='bld-item';div.dataset.key=p.building_key
+    div.innerHTML=`<div class="bld-dot" style="background:${c}"></div>
+      <div class="bld-info">
+        <div class="bld-name">${p.bld_nm||'(이름 없음)'}</div>
+        <div class="bld-key" onclick="copyText('${p.building_key}');event.stopPropagation()" title="클릭=복사">${p.building_key||'—'}</div>
+      </div>
+      <div class="bld-meta">${hl(h)}</div>`
+    div.addEventListener('click',()=>flyToFeature(f))
+    list.appendChild(div)
+  })
+}
+
+function highlightItem(key){
+  document.querySelectorAll('.bld-item').forEach(el=>el.classList.toggle('selected',el.dataset.key===key))
+  const el=document.querySelector(`.bld-item[data-key="${key}"]`)
+  if(el)el.scrollIntoView({block:'nearest'})
+}
+
+function flyToFeature(f){
+  if(!geoLayer)return
+  geoLayer.eachLayer(l=>{
+    if(l.feature?.properties?.building_key===f.properties.building_key){
+      const b=l.getBounds?.();
+      if(b){map.flyToBounds(b,{maxZoom:19,duration:.4});setTimeout(()=>l.openPopup(),450)}
+      highlightItem(f.properties.building_key)
+    }
+  })
+}
+
+// ══════════════════════════════════════════════════════════
+// 주소 배치 조회 헬퍼
+// ══════════════════════════════════════════════════════════
+async function fetchAddrMap(pairs){
+  // 모든 쌍의 좌표를 병렬로 조회해 building_key → 주소 맵 반환
+  const todo = []
+  pairs.forEach(p => {
+    if(p.lat_a && p.lng_a) todo.push({key: p.key_a, lat: p.lat_a, lng: p.lng_a})
+    if(p.lat_b && p.lng_b) todo.push({key: p.key_b, lat: p.lat_b, lng: p.lng_b})
+  })
+  // 중복 제거
+  const seen = new Set()
+  const unique = todo.filter(t => { const k=t.key; if(seen.has(k))return false; seen.add(k); return true })
+  // 병렬 조회 (캐시 활용)
+  await Promise.all(unique.map(t => fetchAddr(t.lat, t.lng, null)))
+  // building_key → 주소 맵
+  const map_ = {}
+  pairs.forEach(p => {
+    const cacheKeyA = `${p.lat_a?.toFixed(5)},${p.lng_a?.toFixed(5)}`
+    const cacheKeyB = `${p.lat_b?.toFixed(5)},${p.lng_b?.toFixed(5)}`
+    map_[p.key_a] = _addrCache[cacheKeyA] || ''
+    map_[p.key_b] = _addrCache[cacheKeyB] || ''
+  })
+  return map_
+}
+
+// ══════════════════════════════════════════════════════════
+// 겹침 감지
+// ══════════════════════════════════════════════════════════
+let overlapPairs=[]
+
+async function loadOverlaps(){
+  showStatus('<span class="spinner"></span>겹침 분석 중…',true)
+  try{
+    const r=await fetch(`${apiBase()}/inspect/overlaps`)
+    const data=await r.json()
+    overlapPairs=data.pairs||[]
+    showStatus('<span class="spinner"></span>주소 조회 중…',true)
+    const addrMap = await fetchAddrMap(overlapPairs)
+    document.getElementById('overlap-stats').textContent=`${overlapPairs.length}쌍 감지됨`
+    renderPairList('overlap-list', overlapPairs, 'overlap', addrMap)
+    document.getElementById('overlap-list').style.display='block'
+    showStatus(`겹침 ${overlapPairs.length}쌍`)
+  }catch(e){alert('실패: '+e.message)}
+}
+
+// ══════════════════════════════════════════════════════════
+// 클러스터 감지 (주소 완전 일치 쌍만)
+// ══════════════════════════════════════════════════════════
+let clusterPairs=[]
+
+async function loadClusters(){
+  showStatus('<span class="spinner"></span>주소 중복 분석 중…',true)
+  try{
+    const r=await fetch(`${apiBase()}/inspect/clusters`)
+    const data=await r.json()
+    const allPairs=data.pairs||[]
+    showStatus('<span class="spinner"></span>주소 조회 중…',true)
+    const addrMap = await fetchAddrMap(allPairs)
+    // 주소 완전 일치 쌍만 필터
+    clusterPairs = allPairs.filter(p =>
+      addrMap[p.key_a] && addrMap[p.key_b] &&
+      addrMap[p.key_a] === addrMap[p.key_b]
+    )
+    document.getElementById('cluster-stats').textContent=
+      `${clusterPairs.length}쌍 (주소 일치) / 전체 근접 ${allPairs.length}쌍`
+    renderPairList('cluster-list', clusterPairs, 'cluster', addrMap)
+    document.getElementById('cluster-list').style.display='block'
+    showStatus(`주소 일치 ${clusterPairs.length}쌍`)
+  }catch(e){alert('실패: '+e.message)}
+}
+
+// ══════════════════════════════════════════════════════════
+// 공통 쌍 목록 렌더링
+// ══════════════════════════════════════════════════════════
+function renderPairList(listId, pairs, type, addrMap={}){
+  const list=document.getElementById(listId);list.innerHTML=''
+  if(!pairs.length){
+    list.innerHTML='<div style="padding:16px;color:#666;font-size:12px;text-align:center">감지된 쌍 없음</div>'
+    return
+  }
+  pairs.forEach((p,i)=>{
+    const badge=type==='overlap'
+      ?`<span class="pair-badge overlap">${p.overlap_pct}% 겹침</span>`
+      :`<span class="pair-badge cluster">주소 일치</span>`
+    const addrA = addrMap[p.key_a] || ''
+    const addrB = addrMap[p.key_b] || ''
+    const div=document.createElement('div');div.className='pair-item'
+    div.innerHTML=`<div class="pair-header">
+        <span style="font-size:11px;color:#aaa">#${i+1}</span>${badge}
+      </div>
+      <div class="pair-names">
+        🅰 <b>${p.name_a||'(이름없음)'}</b> <span style="font-size:10px;color:#666">${hl(p.height_a)}</span><br>
+        <span style="font-size:10px;color:#888;padding-left:16px">${addrA||'주소 없음'}</span><br>
+        🅱 <b>${p.name_b||'(이름없음)'}</b> <span style="font-size:10px;color:#666">${hl(p.height_b)}</span><br>
+        <span style="font-size:10px;color:#888;padding-left:16px">${addrB||'주소 없음'}</span>
+      </div>
+      <div class="pair-actions">
+        <button class="btn btn-danger btn-sm" onclick="deleteBuilding('${p.key_a}',this);event.stopPropagation()">🅰 삭제</button>
+        <button class="btn btn-danger btn-sm" onclick="deleteBuilding('${p.key_b}',this);event.stopPropagation()">🅱 삭제</button>
+        ${type==='cluster'?`<button class="btn btn-green btn-sm" onclick="mergeBuildings('${p.key_a}','${p.key_b}',this);event.stopPropagation()">병합</button>`:''}
+      </div>`
+    div.addEventListener('click',()=>zoomToPair(p))
+    list.appendChild(div)
+  })
+}
+
+function zoomToPair(p){
+  clearHighlight()
+  const layers = []
+  if(p.geom_a){
+    const la = L.geoJSON({type:'Feature',geometry:p.geom_a,properties:{}},{
+      style:{color:'#e74c3c',weight:3,fillColor:'#e74c3c',fillOpacity:.35}
+    })
+    la.bindTooltip('🅰 ' + (p.name_a||'A'), {permanent:true, direction:'center', className:'pair-label'})
+    layers.push(la)
+  }
+  if(p.geom_b){
+    const lb = L.geoJSON({type:'Feature',geometry:p.geom_b,properties:{}},{
+      style:{color:'#3498db',weight:3,fillColor:'#3498db',fillOpacity:.35}
+    })
+    lb.bindTooltip('🅱 ' + (p.name_b||'B'), {permanent:true, direction:'center', className:'pair-label'})
+    layers.push(lb)
+  }
+  if(!layers.length) return
+  hlLayer = L.layerGroup(layers).addTo(map)
+  const bounds = L.latLngBounds(layers.map(l=>l.getBounds()))
+  map.fitBounds(bounds, {padding:[40,40], maxZoom:19})
+}
+
+function clearHighlight(){
+  if(hlLayer){map.removeLayer(hlLayer);hlLayer=null}
+}
+
+// ══════════════════════════════════════════════════════════
+// 삭제
+// ══════════════════════════════════════════════════════════
+async function deleteBuilding(key, btn){
+  if(!confirm(`building_key: ${key}\n\n정말 삭제하시겠습니까?`))return
+  btn.disabled=true;btn.textContent='삭제 중…'
+  try{
+    const r=await fetch(`${apiBase()}/inspect/building/${encodeURIComponent(key)}`,{method:'DELETE'})
+    if(!r.ok){const e=await r.json().catch(()=>({}));alert('삭제 실패: '+(e.detail||r.statusText));btn.disabled=false;return}
+    showStatus(`✓ ${key} 삭제됨`)
+    allFeatures=allFeatures.filter(f=>f.properties.building_key!==key)
+    renderMainLayer()
+    renderBuildingList()
+    btn.closest('.pair-item').style.opacity='.4'
+  }catch(e){alert('실패: '+e.message);btn.disabled=false}
+}
+
+async function deleteSelected(){
+  if(!selectedKey){
+    alert('먼저 건물 폴리곤을 클릭해 선택하세요.')
+    return
+  }
+  if(!confirm(`building_key: ${selectedKey}\n\n정말 삭제하시겠습니까?`)) return
+
+  const btn = document.getElementById('btn-del-edit')
+  btn.disabled = true
+  btn.textContent = '삭제 중…'
+
+  try{
+    const r = await fetch(`${apiBase()}/inspect/building/${encodeURIComponent(selectedKey)}`, {method:'DELETE'})
+    if(!r.ok){
+      const e = await r.json().catch(()=>({}))
+      alert('삭제 실패: ' + (e.detail || r.statusText))
+      return
+    }
+    showStatus(`✓ ${selectedKey} 삭제됨`)
+    allFeatures = allFeatures.filter(f => f.properties.building_key !== selectedKey)
+    cancelEdit()
+    renderMainLayer()
+    renderBuildingList()
+  }catch(e){
+    alert('오류: ' + e.message)
+  }finally{
+    btn.disabled = false
+    btn.textContent = '건물 삭제'
+  }
+}
+
+// ══════════════════════════════════════════════════════════
+// 병합
+// ══════════════════════════════════════════════════════════
+async function mergeBuildings(keyA, keyB, btn){
+  const keep=prompt(`병합: 유지할 건물 key를 입력하세요\n🅰 ${keyA}\n🅱 ${keyB}`, keyA)
+  if(!keep)return
+  const del=keep===keyA?keyB:keyA
+  btn.disabled=true;btn.textContent='병합 중…'
+  try{
+    const r=await fetch(`${apiBase()}/inspect/merge`,{
+      method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({keep,delete:[del]})
+    })
+    if(!r.ok){const e=await r.json().catch(()=>({}));alert('병합 실패: '+(e.detail||r.statusText));btn.disabled=false;return}
+    showStatus(`✓ 병합 완료 → ${keep}`)
+    allFeatures=allFeatures.filter(f=>f.properties.building_key!==del)
+    renderMainLayer(); renderBuildingList()
+    btn.closest('.pair-item').style.opacity='.4'
+    await loadAll()
+  }catch(e){alert('실패: '+e.message);btn.disabled=false}
+}
+
+// ══════════════════════════════════════════════════════════
+// 편집 모드
+// ══════════════════════════════════════════════════════════
+let selectedFeature=null, selectedLeafletLayer=null, editingDrawLayer=null
+
+function selectForEdit(feature, layer){
+  cancelEdit()
+  selectedFeature=feature
+  selectedLeafletLayer=layer
+  selectedKey=feature.properties.building_key
+  const p=feature.properties
+  document.getElementById('edit-bld-name').textContent=p.bld_nm||'(이름 없음)'
+  document.getElementById('edit-bld-key').textContent=p.building_key
+  const addrEl = document.getElementById('edit-bld-addr')
+  addrEl.textContent='주소 불러오는 중…'
+  if(p.center_lat && p.center_lng){
+    fetchAddr(p.center_lat, p.center_lng, null).then(()=>{
+      const key=`${p.center_lat?.toFixed(5)},${p.center_lng?.toFixed(5)}`
+      addrEl.textContent = _addrCache[key] || '주소 없음'
+    })
+  } else {
+    addrEl.textContent = '좌표 없음'
+  }
+  document.getElementById('ef-bld-nm').value=p.bld_nm||''
+  document.getElementById('ef-grnd').value=p.grnd_flr||''
+  document.getElementById('ef-ugrnd').value=p.ugrnd_flr||''
+  document.getElementById('ef-height').value=p.height||''
+  document.getElementById('btn-edit-poly').disabled=false
+  document.getElementById('btn-move-poly').disabled=false
+  document.getElementById('btn-save-edit').disabled=false
+  document.getElementById('btn-del-edit').disabled=false
+  // 선택 하이라이트
+  layer.setStyle({color:'#f39c12',weight:3})
+  showStatus(`선택됨: ${p.bld_nm||p.building_key}`)
+}
+
+function startEditPoly(){
+  if(!selectedFeature) return
+  drawnItems.clearLayers()
+
+  const style = {color:'#f39c12', weight:2.5, fillOpacity:.25}
+  const geom  = selectedFeature.geometry
+
+  // MultiPolygon → 개별 L.Polygon으로 분해해야 .editing이 동작
+  const rings = []
+  if(geom.type === 'MultiPolygon'){
+    geom.coordinates.forEach(poly => rings.push(poly))
+  } else if(geom.type === 'Polygon'){
+    rings.push(geom.coordinates)
+  }
+
+  rings.forEach(coords => {
+    // GeoJSON [lng,lat] → Leaflet [lat,lng]
+    const latlngs = coords.map(ring => ring.map(c => [c[1], c[0]]))
+    const poly = L.polygon(latlngs, style)
+    drawnItems.addLayer(poly)
+  })
+
+  // 각 Polygon의 꼭짓점 편집 활성화
+  drawnItems.eachLayer(l => { if(l.editing) l.editing.enable() })
+
+  map.dragging.disable()
+  showStatus('꼭짓점을 드래그해 모양 수정 → 저장 버튼')
+}
+
+async function saveEdit(){
+  if(!selectedKey)return
+  const body={
+    bld_nm: document.getElementById('ef-bld-nm').value||null,
+    grnd_flr: parseInt(document.getElementById('ef-grnd').value)||null,
+    ugrnd_flr: parseInt(document.getElementById('ef-ugrnd').value)||null,
+    height: parseFloat(document.getElementById('ef-height').value)||null,
+  }
+  // 편집된 폴리곤 geometry 추출
+  const editedLayers = drawnItems.getLayers()
+  if(editedLayers.length > 0){
+    // MultiPolygon: 여러 레이어면 coords 배열로 합침
+    if(editedLayers.length === 1){
+      body.geojson = editedLayers[0].toGeoJSON().geometry
+    } else {
+      body.geojson = {
+        type: 'MultiPolygon',
+        coordinates: editedLayers.map(l => {
+          const g = l.toGeoJSON().geometry
+          return g.type === 'Polygon' ? [g.coordinates] : g.coordinates
+        }).flat()
+      }
+    }
+  } else {
+    body.geojson = selectedFeature.geometry
+  }
+  try{
+    const r=await fetch(`${apiBase()}/inspect/building/${encodeURIComponent(selectedKey)}`,{
+      method:'PUT',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify(body)
+    })
+    if(!r.ok){const e=await r.json().catch(()=>({}));alert('저장 실패: '+(e.detail||r.statusText));return}
+    map.dragging.enable()
+    showStatus('✓ 저장 완료')
+    await loadAll()
+    cancelEdit()
+  }catch(e){alert('실패: '+e.message)}
+}
+
+// ── 좌표 전체 이동 유틸 ──────────────────────────────────────────────────────
+function translateLatLngs(latlngs, dlat, dlng){
+  if(latlngs[0] instanceof L.LatLng)
+    return latlngs.map(ll => L.latLng(ll.lat + dlat, ll.lng + dlng))
+  return latlngs.map(ring => translateLatLngs(ring, dlat, dlng))
+}
+
+let _moveHandlers = []   // 이동 모드 이벤트 핸들러 참조 (정리용)
+
+function startMovePoly(){
+  if(!selectedFeature) return
+  // 꼭짓점 편집 모드 해제 후 이동 모드 진입
+  drawnItems.eachLayer(l => { if(l.editing) l.editing.disable() })
+
+  drawnItems.clearLayers()
+  const style = {color:'#e67e22', weight:2.5, fillOpacity:.25}
+  const geom  = selectedFeature.geometry
+  const rings = geom.type === 'MultiPolygon' ? geom.coordinates : [geom.coordinates]
+
+  rings.forEach(coords => {
+    const latlngs = coords.map(ring => ring.map(c => [c[1], c[0]]))
+    drawnItems.addLayer(L.polygon(latlngs, style))
+  })
+
+  map.dragging.disable()
+  document.getElementById('btn-move-poly').textContent = '이동 중…'
+
+  // 드래그 구현
+  let dragStart = null, origLatLngs = []
+
+  const onMouseDown = e => {
+    dragStart = e.latlng
+    origLatLngs = drawnItems.getLayers().map(l => l.getLatLngs())
+    L.DomEvent.stopPropagation(e)
+  }
+  const onMouseMove = e => {
+    if(!dragStart) return
+    const dlat = e.latlng.lat - dragStart.lat
+    const dlng = e.latlng.lng - dragStart.lng
+    drawnItems.getLayers().forEach((l, i) => {
+      l.setLatLngs(translateLatLngs(origLatLngs[i], dlat, dlng))
+    })
+  }
+  const onMouseUp = () => { dragStart = null }
+
+  drawnItems.eachLayer(l => l.on('mousedown', onMouseDown))
+  map.on('mousemove', onMouseMove)
+  map.on('mouseup',   onMouseUp)
+
+  _moveHandlers = [{onMouseMove, onMouseUp}]
+  showStatus('폴리곤을 클릭·드래그해 이동 → 저장 버튼')
+}
+
+function cancelEdit(){
+  // 이동 모드 핸들러 정리
+  _moveHandlers.forEach(h => {
+    map.off('mousemove', h.onMouseMove)
+    map.off('mouseup',   h.onMouseUp)
+  })
+  _moveHandlers = []
+  document.getElementById('btn-move-poly').textContent = '도형 이동'
+  map.dragging.enable()
+  if(selectedLeafletLayer)selectedLeafletLayer.setStyle(null)
+  drawnItems.clearLayers()
+  selectedFeature=null;selectedLeafletLayer=null;selectedKey=null
+  document.getElementById('edit-bld-name').textContent='건물을 클릭하세요'
+  document.getElementById('edit-bld-key').textContent=''
+  document.getElementById('btn-edit-poly').disabled=true
+  document.getElementById('btn-move-poly').disabled=true
+  document.getElementById('btn-save-edit').disabled=true
+  document.getElementById('btn-del-edit').disabled=true
+  renderMainLayer()
+}
+
+// ══════════════════════════════════════════════════════════
+// 수동 추가
+// ══════════════════════════════════════════════════════════
+async function geocodeAddr(){
+  const q=document.getElementById('add-addr-input').value.trim()
+  if(!q)return
+  try{
+    const r=await fetch(`${apiBase()}/inspect/geocode?q=${encodeURIComponent(q)}`)
+    const data=await r.json()
+    if(!data.lat){alert('주소를 찾을 수 없습니다.');return}
+    map.setView([data.lat,data.lng],19)
+    pendingNewCenter={lat:data.lat,lng:data.lng}
+    showStatus(`📍 ${data.address} — 폴리곤을 그려주세요`)
+  }catch(e){alert('실패: '+e.message)}
+}
+
+function startDrawNew(){
+  if(drawHandler){drawHandler.disable();drawHandler=null}
+  drawnItems.clearLayers()
+  drawHandler=new L.Draw.Polygon(map,{
+    shapeOptions:{color:'#27ae60',weight:2,fillOpacity:.2}
+  })
+  drawHandler.enable()
+  showStatus('지도에서 폴리곤을 그리세요 (클릭으로 꼭짓점 추가, 더블클릭으로 완료)')
+  map.once(L.Draw.Event.CREATED,e=>{
+    drawnItems.addLayer(e.layer)
+    const geojson=e.layer.toGeoJSON()
+    pendingNewGeom=geojson.geometry
+    const c=e.layer.getBounds().getCenter()
+    pendingNewCenter={lat:c.lat,lng:c.lng}
+    document.getElementById('btn-save-new').disabled=false
+    showStatus('폴리곤 그리기 완료 — 정보 입력 후 저장하세요')
+  })
+}
+
+async function addPointOnly(){
+  if(!pendingNewCenter){alert('주소 검색으로 위치를 먼저 찾아주세요.');return}
+  pendingNewGeom=null
+  document.getElementById('btn-save-new').disabled=false
+  showStatus(`📍 포인트만 추가 (${pendingNewCenter.lat.toFixed(5)}, ${pendingNewCenter.lng.toFixed(5)})`)
+}
+
+async function saveNew(){
+  if(!pendingNewCenter){alert('위치 정보가 없습니다.');return}
+  const body={
+    center_lat: pendingNewCenter.lat,
+    center_lng: pendingNewCenter.lng,
+    geojson: pendingNewGeom||null,
+    bld_nm:  document.getElementById('add-bld-nm').value||null,
+    grnd_flr:parseInt(document.getElementById('add-grnd').value)||null,
+    ugrnd_flr:parseInt(document.getElementById('add-ugrnd').value)||null,
+    height:  parseFloat(document.getElementById('add-height').value)||null,
+    bd_mgt_sn:document.getElementById('add-bd').value||null,
+  }
+  try{
+    const r=await fetch(`${apiBase()}/inspect/building`,{
+      method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify(body)
+    })
+    if(!r.ok){const e=await r.json().catch(()=>({}));alert('추가 실패: '+(e.detail||r.statusText));return}
+    const data=await r.json()
+    showStatus(`✓ 추가됨: ${data.created}`)
+    drawnItems.clearLayers();pendingNewGeom=null;pendingNewCenter=null
+    document.getElementById('btn-save-new').disabled=true
+    await loadAll()
+  }catch(e){alert('실패: '+e.message)}
+}
+
+// ══════════════════════════════════════════════════════════
+// 현위치
+// ══════════════════════════════════════════════════════════
+const locBtn=L.control({position:'bottomright'})
+locBtn.onAdd=()=>{
+  const b=L.DomUtil.create('button')
+  b.innerHTML='📍';b.title='현재 위치'
+  b.style.cssText='font-size:18px;padding:5px 7px;background:#16213e;border:1px solid #0f3460;color:#fff;border-radius:6px;cursor:pointer'
+  b.onclick=()=>navigator.geolocation.getCurrentPosition(p=>map.setView([p.coords.latitude,p.coords.longitude],18))
+  return b
+}
+locBtn.addTo(map)
+
+showStatus('전체 불러오기 버튼을 눌러 시작하세요')
+</script>
+</body>
+</html>

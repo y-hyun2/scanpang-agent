@@ -52,19 +52,19 @@ def _is_social_url(url: str) -> bool:
     return any(p in lower for p in _SOCIAL_URL_PATTERNS)
 
 
-async def _fetch_building(ufid: str) -> dict | None:
-    """Supabase buildings 테이블에서 ufid로 건물 메타 + 폴리곤 좌표 조회."""
+async def _fetch_building(building_key: str) -> dict | None:
+    """building 테이블에서 building_key로 건물 메타 + 폴리곤 좌표 조회."""
     pool = await get_pool()
     async with pool.acquire() as conn:
         row = await conn.fetchrow(
             """
-            SELECT ufid, bld_nm, grnd_flr, ugrnd_flr, height, usability,
+            SELECT building_key, ufid, bld_nm, grnd_flr, ugrnd_flr, height, usability,
                    center_lat, center_lng,
                    ST_AsGeoJSON(geom)::json -> 'coordinates' -> 0 AS polygon_coords
-            FROM buildings
-            WHERE ufid = $1
+            FROM building
+            WHERE building_key = $1
             """,
-            ufid,
+            building_key,
         )
     return dict(row) if row else None
 
@@ -238,20 +238,20 @@ def _merge_naver_govt(
     return result
 
 
-async def process_one_building(ufid: str) -> dict:
+async def process_one_building(building_key: str) -> dict:
     """
-    ufid 하나에 대해 전체 자동화 파이프라인을 실행한다.
+    building_key 하나에 대해 전체 자동화 파이프라인을 실행한다.
 
-    단계: VWorld 조회 → Kakao 기본정보 → 반경 매장수집 → 쿼리빌드
+    단계: building 조회 → Kakao 기본정보 → 반경 매장수집 → 쿼리빌드
           → 검색수집 → LLM파싱 → 정부DB → 교차검증 → Supabase upsert
 
     Returns:
-        {"ufid": str, "name_ko": str, "status": "ok"|"partial"|"error",
+        {"building_key": str, "name_ko": str, "status": "ok"|"partial"|"error",
          "confirmed_count": int, "coverage_rate": float, "error": str|None}
     """
-    print(f"\n[pipeline] ===== {ufid} 처리 시작 =====")
+    print(f"\n[pipeline] ===== {building_key} 처리 시작 =====")
     result = {
-        "ufid":            ufid,
+        "building_key":    building_key,
         "name_ko":         "",
         "status":          "error",
         "confirmed_count": 0,
@@ -259,10 +259,10 @@ async def process_one_building(ufid: str) -> dict:
         "error":           None,
     }
 
-    # ── 1) Supabase buildings 테이블에서 건물 메타 + 폴리곤 조회 ─────────────
-    building = await _fetch_building(ufid)
+    # ── 1) building 테이블에서 건물 메타 + 폴리곤 조회 ───────────────────────
+    building = await _fetch_building(building_key)
     if not building:
-        result["error"] = f"ufid {ufid} not found in buildings table"
+        result["error"] = f"building_key {building_key} not found in building table"
         print(f"[pipeline] {result['error']}")
         return result
 
@@ -450,12 +450,11 @@ async def process_one_building(ufid: str) -> dict:
     kakao_stores: list[dict] = []
     if not floor_info_locked:
         try:
-            # asyncpg가 json 표현식 결과를 문자열로 반환하는 경우 대비
             polygon_coords = building.get("polygon_coords") or []
             if isinstance(polygon_coords, str):
                 polygon_coords = json.loads(polygon_coords)
             kakao_stores = await collect_stores_at_building(
-                ufid=ufid,
+                ufid=building_key,
                 bld_polygon_coords=polygon_coords,
                 bld_road_address=addr,
                 bld_name=bld_nm,
@@ -540,14 +539,14 @@ async def process_one_building(ufid: str) -> dict:
         async with pool.acquire() as conn:
             await conn.execute(
                 """
-                INSERT INTO place_info
-                    (ufid, name_ko, lat, lng, addr, phone, category,
+                INSERT INTO placeinfo
+                    (building_key, name_ko, lat, lng, addr, phone, category,
                      floor_info, coverage_rate, last_updated, source,
                      image_url, homepage, open_hours, closed_days,
                      parking_info, admission_fee, facilities)
                 VALUES ($1,$2,$3,$4,$5,$6,$7,$8::jsonb,$9,$10,$11,
                         $12,$13,$14,$15,$16,$17,$18::jsonb)
-                ON CONFLICT (ufid) DO UPDATE SET
+                ON CONFLICT (building_key) DO UPDATE SET
                     name_ko       = EXCLUDED.name_ko,
                     addr          = EXCLUDED.addr,
                     phone         = EXCLUDED.phone,
@@ -564,7 +563,7 @@ async def process_one_building(ufid: str) -> dict:
                     admission_fee = EXCLUDED.admission_fee,
                     facilities    = EXCLUDED.facilities
                 """,
-                ufid, name_ko, lat, lng, addr, phone, category,
+                building_key, name_ko, lat, lng, addr, phone, category,
                 json.dumps(floor_info_list, ensure_ascii=False),
                 result["coverage_rate"],
                 datetime.now(timezone.utc),
@@ -574,14 +573,12 @@ async def process_one_building(ufid: str) -> dict:
                 parking_info or None, admission_fee or None,
                 json.dumps(naver_facilities, ensure_ascii=False) if naver_facilities else None,
             )
-        print(f"[pipeline] Supabase upsert 완료: {ufid}")
-        # floor_info가 어떤 소스로든 채워졌으면 성공으로 간주.
-        # floor_info_locked일 때 govt_stores가 비어있어도 1·2순위로 채워졌기 때문에 ok.
+        print(f"[pipeline] Supabase upsert 완료: {building_key}")
         result["status"] = "ok" if floor_info_list else "partial"
     except Exception as e:
         result["error"] = f"Supabase upsert 실패: {e}"
         print(f"[pipeline] {result['error']}")
         result["status"] = "partial"
 
-    print(f"[pipeline] ===== {ufid} 완료 status={result['status']} =====\n")
+    print(f"[pipeline] ===== {building_key} 완료 status={result['status']} =====\n")
     return result
