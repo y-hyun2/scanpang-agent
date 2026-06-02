@@ -72,7 +72,7 @@ async def fetch_prayer_times(lat: float, lng: float, date: str = "") -> dict:
     if cache_key in _prayer_time_cache:
         return {**_prayer_time_cache[cache_key], **_compute_next_prayer(_prayer_time_cache[cache_key])}
 
-    url = f"http://api.aladhan.com/v1/timings/{date}"
+    url = f"https://api.aladhan.com/v1/timings/{date}"
     params = {"latitude": lat, "longitude": lng, "method": 3}
 
     try:
@@ -110,7 +110,7 @@ async def fetch_qibla_direction(lat: float, lng: float) -> dict:
     Aladhan Qibla API 호출.
     Returns: {"direction": 232.07, "lat": ..., "lng": ...}
     """
-    url = f"http://api.aladhan.com/v1/qibla/{lat}/{lng}"
+    url = f"https://api.aladhan.com/v1/qibla/{lat}/{lng}"
     try:
         async with httpx.AsyncClient(timeout=5.0) as client:
             resp = await client.get(url)
