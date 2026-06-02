@@ -74,12 +74,13 @@ def select_best_poi(pois: list, user_lat, user_lng, keyword: str = "") -> int:
     return min(cand, key=_dist)
 
 
-# ── Step 0: 의도 파악 + 키워드 추출 ───────────────────────────────────────────
-INTENT_PROMPT = """Extract navigation intent from the user's message. Return valid JSON only, no explanation.
+# ── Step 0: 목적지 키워드 + 언어 추출 ─────────────────────────────────────────
+# (specific/category 의도 분류는 제거됨 — POI 선택은 select_best_poi 가, 단일확인/목록
+#  UX 구분은 이름매칭 여부로 코드 derive)
+KEYWORD_PROMPT = """Extract the destination keyword and language from the user's navigation message. Return valid JSON only, no explanation.
 
 {
   "keyword": "<place name or category keyword only, no filler words>",
-  "intent": "specific_place" or "category_search",
   "language": "ko" or "en" or "ar"
 }
 
@@ -90,13 +91,19 @@ Keyword rules:
 - For category searches (할랄 식당, 편의점, 카페 등), keep the category keyword as-is.
 
 Examples:
-- "명동성당 어떻게 가?" → {"keyword": "명동대성당", "intent": "specific_place", "language": "ko"}
-- "캄풍쿠 어떻게 가?" → {"keyword": "캄풍쿠", "intent": "specific_place", "language": "ko"}
-- "주변 할랄 식당 알려줘" → {"keyword": "할랄 식당", "intent": "category_search", "language": "ko"}
-- "How do I get to Kampungku?" → {"keyword": "Kampungku", "intent": "specific_place", "language": "en"}
-- "How to get to Myeongdong Cathedral?" → {"keyword": "명동대성당", "intent": "specific_place", "language": "en"}
-- "مطعم حلال قريب" → {"keyword": "할랄 식당", "intent": "category_search", "language": "ar"}
+- "명동성당 어떻게 가?" → {"keyword": "명동대성당", "language": "ko"}
+- "캄풍쿠 어떻게 가?" → {"keyword": "캄풍쿠", "language": "ko"}
+- "주변 할랄 식당 알려줘" → {"keyword": "할랄 식당", "language": "ko"}
+- "How do I get to Kampungku?" → {"keyword": "Kampungku", "language": "en"}
+- "مطعم حلال قريب" → {"keyword": "할랄 식당", "language": "ar"}
 """
+
+
+def _is_name_match(name: str, keyword: str) -> bool:
+    """후보 이름과 키워드가 매칭되면 specific_place(단일 확인), 아니면 category(목록)로 판단."""
+    n = "".join((name or "").split()).lower()
+    k = "".join((keyword or "").split()).lower()
+    return bool(k) and (k == n or k in n or n in k)
 
 # ── Step 1 (specific_place): 후보 POI 1개 선택은 select_best_poi()로 코드 처리 ──
 
@@ -176,40 +183,34 @@ async def run_route_search(req: NavRequest, user_id: str = "", language_override
     사용자가 앱에서 확인/선택 후 /navigation/route 호출.
     (이전 이름: run_search_agent — 시설 검색 search_agent 와 구분 위해 개명)
     """
-    # Step 0: 키워드 + 의도 + 언어 추출
-    intent_content = await call_llm(
+    # Step 0: 목적지 키워드 + 언어 추출 (의도 분류 제거)
+    kw_content = await call_llm(
         user_id=user_id,
-        purpose="nav_intent",
+        purpose="nav_keyword",
         messages=[
-            {"role": "system", "content": INTENT_PROMPT},
+            {"role": "system", "content": KEYWORD_PROMPT},
             {"role": "user", "content": req.message},
         ],
         model="gpt-5.4-mini",
         temperature=0,
     )
     try:
-        raw = re.sub(r"^```(?:json)?\s*|\s*```$", "", intent_content)
-        intent = json.loads(raw)
+        raw = re.sub(r"^```(?:json)?\s*|\s*```$", "", kw_content)
+        parsed = json.loads(raw)
     except json.JSONDecodeError:
-        intent = {"keyword": req.message, "intent": "specific_place", "language": "ko"}
+        parsed = {"keyword": req.message, "language": "ko"}
 
-    keyword = intent.get("keyword", req.message)
-    intent_type = intent.get("intent", "specific_place")
-    language = language_override or intent.get("language", "ko")
+    keyword = parsed.get("keyword", req.message)
+    language = language_override or parsed.get("language", "ko")
 
     # Step 1: POI 검색 (5km → 전국 fallback)
     pois = await search_poi(keyword, req.lat, req.lng)
     if not pois:
         msg = "목적지를 찾지 못했어요. 다시 말씀해주세요." if language == "ko" else "Sorry, I couldn't find that destination. Please try again."
-        return {"speech": msg, "candidates": [], "intent": intent_type, "language": language}
+        return {"speech": msg, "candidates": [], "intent": "specific_place", "language": language}
 
-    # Step 2: 후보 목록 구성 + 추천 선택
-    recommended_idx = 0
-
-    if intent_type == "specific_place" and len(pois) > 1:
-        # 거리+이름매칭+부속(주차장 등)필터로 코드 선택 (LLM 불필요 → 정확·무료·빠름)
-        recommended_idx = select_best_poi(pois, req.lat, req.lng, keyword)
-    # category_search: 거리순 첫 번째(가장 가까운 곳)를 recommended로 표시
+    # Step 2: 후보 목록 구성 + 추천 선택 (거리+이름매칭+부속필터 — 항상 코드 랭킹)
+    recommended_idx = select_best_poi(pois, req.lat, req.lng, keyword) if len(pois) > 1 else 0
 
     candidates = [
         {
@@ -225,6 +226,8 @@ async def run_route_search(req: NavRequest, user_id: str = "", language_override
 
     # 확인 요청 speech 생성
     rec = candidates[recommended_idx]
+    # 이름매칭이면 단일 확인(specific), 아니면 목록 선택(category) — 코드로 derive
+    intent_type = "specific_place" if _is_name_match(rec["name"], keyword) else "category_search"
     if language == "ko":
         if intent_type == "specific_place":
             speech = f"'{rec['name']}' 찾았어요. {rec['address']}. 이 곳으로 안내할까요?"

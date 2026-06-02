@@ -25,68 +25,52 @@ from dotenv import load_dotenv
 load_dotenv()
 
 from tools.llm_client import call_llm
-from agents.navigation_agent import INTENT_PROMPT, select_best_poi
+from agents.navigation_agent import KEYWORD_PROMPT, select_best_poi
 
 
 def _norm(s: str) -> str:
     return "".join((s or "").split()).lower()
 
 
-# ── #6 nav 의도추출 ───────────────────────────────────────────────────────────
+# ── #6 nav 키워드/언어 추출 ──────────────────────────────────────────────────
 
-async def eval_intent(path: str, model: str, verbose: bool) -> None:
+async def eval_keyword(path: str, model: str, verbose: bool) -> None:
     cases = [json.loads(l) for l in open(path, encoding="utf-8") if l.strip()]
-    INTENTS = ["specific_place", "category_search"]
-    cm = {a: {b: 0 for b in INTENTS} for a in INTENTS}
-    intent_ok = lang_ok = kw_ok = 0
+    lang_ok = kw_ok = 0
     wrong = []
 
     for c in cases:
         try:
             content = await call_llm(
-                user_id="", purpose="nav_intent", model=model, record=False,
+                user_id="", purpose="nav_keyword", model=model, record=False,
                 temperature=0,
-                messages=[{"role": "system", "content": INTENT_PROMPT},
+                messages=[{"role": "system", "content": KEYWORD_PROMPT},
                           {"role": "user", "content": c["message"]}],
             )
             raw = re.sub(r"^```(?:json)?\s*|\s*```$", "", content.strip())
             d = json.loads(raw)
         except Exception as e:
-            d = {"keyword": "", "intent": "specific_place", "language": ""}
+            d = {"keyword": "", "language": ""}
             if verbose:
                 print(f"  ERR [{c['id']}]: {e}")
 
-        pi, pl, pk = d.get("intent", ""), d.get("language", ""), d.get("keyword", "")
-        ei, el, ek = c["expected_intent"], c["expected_language"], c["expected_keyword"]
-        if pi in cm and ei in cm:
-            cm[ei][pi] += 1
-        i_ok, l_ok, k_ok = (pi == ei), (pl == el), (_norm(pk) == _norm(ek))
-        intent_ok += i_ok; lang_ok += l_ok; kw_ok += k_ok
-        if verbose and not (i_ok and l_ok and k_ok):
-            wrong.append((c["id"], c["message"], (pi, pl, pk), (ei, el, ek)))
+        pl, pk = d.get("language", ""), d.get("keyword", "")
+        el, ek = c["expected_language"], c["expected_keyword"]
+        l_ok, k_ok = (pl == el), (_norm(pk) == _norm(ek))
+        lang_ok += l_ok; kw_ok += k_ok
+        if verbose and not (l_ok and k_ok):
+            wrong.append((c["id"], c["message"], (pl, pk), (el, ek)))
 
     n = len(cases)
-    # intent macro F1 (2-class)
-    f1s = []
-    for a in INTENTS:
-        tp = cm[a][a]
-        fp = sum(cm[o][a] for o in INTENTS if o != a)
-        fn = sum(cm[a][o] for o in INTENTS if o != a)
-        prec = tp / (tp + fp) if tp + fp else 0.0
-        rec = tp / (tp + fn) if tp + fn else 0.0
-        f1s.append(2 * prec * rec / (prec + rec) if prec + rec else 0.0)
-
-    print(f"\n=== #6 nav 의도추출 (모델: {model}, n={n}) ===")
-    print(f"  Intent Accuracy : {intent_ok/n*100:.1f}%  ({intent_ok}/{n})")
-    print(f"  Intent Macro F1 : {sum(f1s)/len(f1s):.3f}")
+    print(f"\n=== #6 nav 키워드/언어 추출 (모델: {model}, n={n}) ===")
     print(f"  Language Accuracy: {lang_ok/n*100:.1f}%  ({lang_ok}/{n})")
     print(f"  Keyword Match    : {kw_ok/n*100:.1f}%  ({kw_ok}/{n})  (정규화 일치, 확장/번역 변동 있음)")
     if verbose and wrong:
         print(f"\n  [틀린 케이스 {len(wrong)}]")
         for cid, msg, pred, exp in wrong:
             print(f"   [{cid}] {msg}")
-            print(f"     예측 intent/lang/kw: {pred}")
-            print(f"     정답 intent/lang/kw: {exp}")
+            print(f"     예측 lang/kw: {pred}")
+            print(f"     정답 lang/kw: {exp}")
 
 
 # ── #7 POI 선택 ───────────────────────────────────────────────────────────────
@@ -124,7 +108,7 @@ def main() -> None:
     args = parser.parse_args()
 
     async def run():
-        await eval_intent(args.intent_dataset, args.model, args.verbose)
+        await eval_keyword(args.intent_dataset, args.model, args.verbose)
         eval_poi(args.poi_dataset, args.verbose)
 
     asyncio.run(run())
