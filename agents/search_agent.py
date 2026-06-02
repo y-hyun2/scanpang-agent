@@ -94,14 +94,14 @@ Keep responses natural and friendly for TTS. No markdown formatting.
 """
 
 
-async def _extract_category_and_language(message: str, user_id: str = "") -> tuple[str, str, str]:
+async def _extract_category_and_language(message: str, user_id: str = "", model: str = "gpt-5.4-mini") -> tuple[str, str, str]:
     """사용자 메시지 → (category, language, brand_keyword) 튜플.
     brand_keyword 가 비어있지 않으면 호출자는 카테고리 검색 대신 키워드 검색을 사용해야 한다.
     """
     content = await call_llm(
         user_id=user_id,
         purpose="conv_category",
-        model="gpt-5.4-mini",
+        model=model,
         temperature=0,
         messages=[
             {"role": "system", "content": CATEGORY_EXTRACT_PROMPT},

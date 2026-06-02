@@ -1,0 +1,30 @@
+{"id": "cat_01", "message": "주변 카페 추천", "expected_category": "cafe", "expected_language": "ko", "expected_brand": ""}
+{"id": "cat_02", "message": "근처에 스타벅스 있나?", "expected_category": "cafe", "expected_language": "ko", "expected_brand": "스타벅스"}
+{"id": "cat_03", "message": "중식당 추천좀", "expected_category": "restaurant", "expected_language": "ko", "expected_brand": "중식당"}
+{"id": "cat_04", "message": "근처 술집 뭐 있어?", "expected_category": "restaurant", "expected_language": "ko", "expected_brand": "술집"}
+{"id": "cat_05", "message": "약국 어디 있어?", "expected_category": "pharmacy", "expected_language": "ko", "expected_brand": ""}
+{"id": "cat_06", "message": "근처 ATM 찾아줘", "expected_category": "atm", "expected_language": "ko", "expected_brand": ""}
+{"id": "cat_07", "message": "편의점 어디야?", "expected_category": "convenience_store", "expected_language": "ko", "expected_brand": ""}
+{"id": "cat_08", "message": "올리브영 어디", "expected_category": "shopping", "expected_language": "ko", "expected_brand": "올리브영"}
+{"id": "cat_09", "message": "화장실 어디 있어?", "expected_category": "restroom", "expected_language": "ko", "expected_brand": ""}
+{"id": "cat_10", "message": "환전소 알려줘", "expected_category": "exchange", "expected_language": "ko", "expected_brand": ""}
+{"id": "cat_11", "message": "지하철역 어디야?", "expected_category": "subway", "expected_language": "ko", "expected_brand": ""}
+{"id": "cat_12", "message": "주차장 찾아줘", "expected_category": "parking", "expected_language": "ko", "expected_brand": ""}
+{"id": "cat_13", "message": "근처 병원", "expected_category": "hospital", "expected_language": "ko", "expected_brand": ""}
+{"id": "cat_14", "message": "은행 어디 있어?", "expected_category": "bank", "expected_language": "ko", "expected_brand": ""}
+{"id": "cat_15", "message": "짐 보관함 어디", "expected_category": "locker", "expected_language": "ko", "expected_brand": ""}
+{"id": "cat_16", "message": "할랄 식당 알려줘", "expected_category": "halal_restaurant", "expected_language": "ko", "expected_brand": ""}
+{"id": "cat_17", "message": "무슬림 음식 어디서 먹어?", "expected_category": "halal_restaurant", "expected_language": "ko", "expected_brand": ""}
+{"id": "cat_18", "message": "기도실 어디 있어?", "expected_category": "prayer_room", "expected_language": "ko", "expected_brand": ""}
+{"id": "cat_19", "message": "근처 베이커리 추천", "expected_category": "cafe", "expected_language": "ko", "expected_brand": "베이커리"}
+{"id": "cat_20", "message": "맛집 뭐 있어?", "expected_category": "restaurant", "expected_language": "ko", "expected_brand": "맛집"}
+{"id": "cat_21", "message": "Where is the nearest pharmacy?", "expected_category": "pharmacy", "expected_language": "en", "expected_brand": ""}
+{"id": "cat_22", "message": "Find Starbucks", "expected_category": "cafe", "expected_language": "en", "expected_brand": "Starbucks"}
+{"id": "cat_23", "message": "Where can I exchange money?", "expected_category": "exchange", "expected_language": "en", "expected_brand": ""}
+{"id": "cat_24", "message": "nearest toilet", "expected_category": "restroom", "expected_language": "en", "expected_brand": ""}
+{"id": "cat_25", "message": "أين أقرب مطعم حلال؟", "expected_category": "halal_restaurant", "expected_language": "ar", "expected_brand": ""}
+{"id": "cat_26", "message": "أين أقرب صيدلية؟", "expected_category": "pharmacy", "expected_language": "ar", "expected_brand": ""}
+{"id": "cat_27", "message": "근처 호텔 있어?", "expected_category": "accommodation", "expected_language": "ko", "expected_brand": ""}
+{"id": "cat_28", "message": "GS25 어디", "expected_category": "convenience_store", "expected_language": "ko", "expected_brand": "GS25"}
+{"id": "cat_29", "message": "근처 박물관 있어?", "expected_category": "cultural", "expected_language": "ko", "expected_brand": ""}
+{"id": "cat_30", "message": "라멘집 추천", "expected_category": "restaurant", "expected_language": "ko", "expected_brand": "라멘"}
