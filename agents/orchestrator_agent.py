@@ -46,6 +46,7 @@ class OrchestratorState(TypedDict):
     selected_agent: Literal["place", "navigation", "nav_guide", "halal", "convenience", "smalltalk"]
     sub_category: str             # halal/convenience 세부 카테고리 — sub-agent _extract 우회용
     nav_context: dict             # AR 길안내 중 frontend 가 전달하는 현재 상태 (있으면 nav_guide 라우팅 후보)
+    focus: dict                   # 화면에 보이는 핀 1개 {type:building|store, id, name} — '이 건물/매장' 지시어 해소용
     sub_agent_response: dict
     final_speech: str
     source_agent: str
@@ -271,6 +272,7 @@ async def _call_place_node(state: OrchestratorState) -> dict:
         lng=state["user_lng"],
         language=state.get("language", "ko"),
         user_id=state.get("user_id", ""),
+        focus=state.get("focus") or None,
     )
     return {"sub_agent_response": result}
 
@@ -420,6 +422,7 @@ async def run_orchestrator(
     language: str = "ko",
     session_id: Optional[str] = None,
     nav_context: Optional[dict] = None,
+    focus: Optional[dict] = None,
     user_id: str = "",
 ) -> dict:
     """
@@ -461,6 +464,7 @@ async def run_orchestrator(
         "resolved_message": message,
         "sub_category":    "",
         "nav_context":     nav_context or {},
+        "focus":           focus or {},
         "sub_agent_response": {},
         "final_speech":    "",
         "source_agent":    "",

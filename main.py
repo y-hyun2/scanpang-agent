@@ -165,6 +165,13 @@ class NavContext(BaseModel):
     remaining_time_min: int = 0     # ETA
 
 
+class FocusContext(BaseModel):
+    """화면에 보이는 핀 1개 — '이 건물/매장' 지시어 해소용. 프론트가 핀 1개일 때만 전달."""
+    type: str = "building"   # "building" | "store"
+    id: str = ""             # building_key(건물) 또는 place_id(매장)
+    name: str = ""
+
+
 class AgentChatRequest(BaseModel):
     message: str
     lat: float
@@ -173,6 +180,7 @@ class AgentChatRequest(BaseModel):
     language: str = "ko"
     session_id: Optional[str] = None
     nav_context: Optional[NavContext] = None
+    focus: Optional[FocusContext] = None
 
 
 class AgentChatResponse(BaseModel):
@@ -549,6 +557,7 @@ async def ar_agent_chat(req: AgentChatRequest, user_id: str = Depends(get_curren
         language=req.language,
         session_id=req.session_id,
         nav_context=req.nav_context.model_dump() if req.nav_context else None,
+        focus=req.focus.model_dump() if req.focus else None,
         user_id=user_id,
     )
     return result

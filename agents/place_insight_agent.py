@@ -403,6 +403,47 @@ async def _ground_place_facts(name: str) -> tuple[str, dict]:
     return block, src
 
 
+async def _fetch_store_brief(place_id: str) -> dict:
+    """storedetails 에서 매장 기본정보(카테고리/영업시간) 조회. focus(매장 핀)용."""
+    try:
+        pool = await get_pool()
+        async with pool.acquire() as conn:
+            row = await conn.fetchrow(
+                "SELECT * FROM storedetails WHERE place_id = $1 LIMIT 1", place_id
+            )
+        return dict(row) if row else {}
+    except Exception as e:
+        print(f"[place_chat] storedetails 조회 실패: {e}")
+        return {}
+
+
+async def _build_focus_block(focus: dict) -> str:
+    """화면에 보이는 핀 1개(focus) → '사용자가 지금 보는 건물/매장' 컨텍스트 블록.
+    focus = {type: 'building'|'store', id, name}. DB 정보는 best-effort 보강."""
+    fname = (focus.get("name") or "").strip()
+    if not fname:
+        return ""
+    ftype = focus.get("type", "")
+    fid = (focus.get("id") or "").strip()
+    details: dict = {}
+    if ftype == "building" and fid:
+        details = await _fetch_place_info(fid)
+    elif ftype == "store" and fid:
+        details = await _fetch_store_brief(fid)
+
+    extra = []
+    if details.get("category"):   extra.append(f"카테고리: {details['category']}")
+    if details.get("open_hours"): extra.append(f"영업시간: {details['open_hours']}")
+    kind = "건물" if ftype == "building" else "매장"
+    return (
+        f"[사용자가 지금 화면에서 보고 있는 {kind}] {fname}"
+        + (f" ({', '.join(extra)})" if extra else "")
+        + f"\n사용자가 '이 {kind}' 또는 지시어로 물으면 바로 이 곳을 가리킨다. 이 곳을 설명하라. "
+          "위 DB 정보(영업시간/카테고리)는 그대로 쓰고, 특징·배경은 일반지식으로 보강하되 "
+          "가짜 구체수치(요금/시간/평점)는 만들지 말 것.\n\n"
+    )
+
+
 async def run_place_chat_agent(
     message: str,
     lat: float,
@@ -410,8 +451,10 @@ async def run_place_chat_agent(
     language: str = "ko",
     user_id: str = "",
     model: str = "gpt-5.4-mini",
+    focus: dict | None = None,
 ) -> dict:
     """관광지/랜드마크/지역 정보 응답 — orchestrator chat 전용 진입점.
+    focus(화면의 핀 1개)가 오면 '이 건물/매장'을 그 핀으로 특정해 설명한다.
 
     Returns:
         {"speech": str, "raw": dict}
@@ -419,16 +462,19 @@ async def run_place_chat_agent(
     lang_map = {"ko": "Korean", "en": "English", "ar": "Arabic", "ja": "Japanese", "zh": "Chinese"}
     response_lang_label = lang_map.get(language, language)
 
+    # 화면에 보이는 핀 1개 → '이 건물/매장' 지시어 해소용 컨텍스트
+    focus_block = await _build_focus_block(focus) if focus else ""
+
     # 사실 수치(요금/시간) 질의면 출처(TourAPI→store_details)에서 검증 데이터 확보 → 주입
     grounded_block, source = "", {}
     if _FACT_RE.search(message or ""):
-        name = await _extract_landmark_name(message, model)
+        name = (focus.get("name") if focus else "") or await _extract_landmark_name(message, model)
         if name:
             grounded_block, source = await _ground_place_facts(name)
 
     system_prompt = f"{_PLACE_CHAT_SYSTEM} Always respond in {response_lang_label}."
     user_prompt   = (
-        f"{grounded_block}User location: lat={lat}, lng={lng}\nUser question: {message}"
+        f"{focus_block}{grounded_block}User location: lat={lat}, lng={lng}\nUser question: {message}"
     )
 
     try:
