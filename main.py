@@ -26,7 +26,10 @@ from schemas.user import (
     RecentlyViewedUpdateRequest,
     InquirySubmitRequest, InquirySubmitResponse,
 )
-from tools.open_hours_parser import is_open_now_combined as _is_open_now_combined
+from tools.open_hours_parser import (
+    is_open_now_combined as _is_open_now_combined,
+    schedule_from_store_hours as _schedule_from_store_hours,
+)
 from tools.translation import translate_fields
 import asyncio
 import json as _json
@@ -263,6 +266,38 @@ async def place_query_stream(req: PlaceRequest, user_id: str = Depends(get_curre
     return StreamingResponse(generate(), media_type="text/event-stream", headers=_SSE_HEADERS)
 
 
+async def _schedule_for_store(store_id: str) -> dict | None:
+    """store_hours 테이블에서 매장의 영업시간 schedule(dict) 조회. 행 없으면 None."""
+    if not store_id:
+        return None
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        rows = await conn.fetch(
+            "SELECT day_of_week, open_time, close_time "
+            "FROM store_hours WHERE store_id = $1",
+            store_id,
+        )
+    return _schedule_from_store_hours(rows) if rows else None
+
+
+async def _schedules_for_stores(store_ids: list[str]) -> dict[str, dict]:
+    """여러 매장의 schedule 일괄 조회 — 리스트 엔드포인트 N+1 방지."""
+    ids = [s for s in {sid for sid in store_ids if sid}]
+    if not ids:
+        return {}
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        rows = await conn.fetch(
+            "SELECT store_id, day_of_week, open_time, close_time "
+            "FROM store_hours WHERE store_id = ANY($1)",
+            ids,
+        )
+    by: dict[str, list] = {}
+    for r in rows:
+        by.setdefault(r["store_id"], []).append(r)
+    return {sid: _schedule_from_store_hours(rs) for sid, rs in by.items()}
+
+
 @app.post("/place/store")
 async def place_store(req: StoreRequest, user_id: str = Depends(get_current_user_id)):
     """
@@ -275,7 +310,9 @@ async def place_store(req: StoreRequest, user_id: str = Depends(get_current_user
     )
     if isinstance(detail, dict):
         details = detail.get("details") or {}
-        schedule = details.get("schedule") if isinstance(details, dict) else None
+        # store_hours(정규화 결과) 우선 → 없으면 details.schedule → 텍스트 fallback
+        schedule = await _schedule_for_store(detail.get("id")) \
+            or (details.get("schedule") if isinstance(details, dict) else None)
         detail["is_open_now"] = _is_open_now_combined(
             detail.get("open_hours") or "", schedule,
         )
@@ -305,7 +342,8 @@ async def place_store_stream(req: StoreRequest, user_id: str = Depends(get_curre
                     )
                     if isinstance(detail, dict):
                         details = detail.get("details") or {}
-                        schedule = details.get("schedule") if isinstance(details, dict) else None
+                        schedule = await _schedule_for_store(detail.get("id")) \
+                            or (details.get("schedule") if isinstance(details, dict) else None)
                         detail["is_open_now"] = _is_open_now_combined(
                             detail.get("open_hours") or "", schedule,
                         )
@@ -858,6 +896,9 @@ async def place_search(req: SearchRequest):
             req.language,     # $7 — translations[language] 매칭용
         )
 
+    # store_hours(정규화 영업시간) 일괄 조회 — is_open_now 판정용
+    _schedules = await _schedules_for_stores([r["id"] for r in rows])
+
     results: list[SearchResultItem] = []
     for r in rows:
         raw_imgs = r["image_urls"]
@@ -870,10 +911,10 @@ async def place_search(req: SearchRequest):
             except (ValueError, TypeError):
                 first_img = None
 
-        # details JSONB → schedule 추출 (정규화된 구조 있으면 그걸로 is_open_now 정확 판정)
+        # store_hours 우선 → 없으면 details.schedule 로 is_open_now 판정
+        schedule = _schedules.get(r["id"])
         raw_details = r["details"]
-        schedule = None
-        if raw_details:
+        if schedule is None and raw_details:
             try:
                 d = raw_details if isinstance(raw_details, dict) else _json.loads(raw_details)
                 if isinstance(d, dict):
@@ -1776,7 +1817,10 @@ async def place_detail(req: PlaceDetailRequest):
         place_url=row["place_url"],
         open_hours=t.get("open_hours") or row["open_hours"],
         closed_days=t.get("closed_days") or row["closed_days"],
-        is_open_now=_is_open_now_combined(row["open_hours"], details.get("schedule")),
+        is_open_now=_is_open_now_combined(
+            row["open_hours"],
+            await _schedule_for_store(row["id"]) or details.get("schedule"),
+        ),
         image_urls=image_urls,
         details=details,
         source=row["source"],

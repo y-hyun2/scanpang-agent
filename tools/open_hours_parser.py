@@ -97,6 +97,103 @@ def is_open_now_struct(schedule: dict, now: Optional[datetime] = None) -> Option
     return False
 
 
+def _decode_open_close(open_time: str, close_time: str) -> list[list[str]]:
+    """store_hours 의 open_time/close_time 텍스트 → [[start,end], ...] 구간 리스트.
+
+    단일 구간:    open="11:00", close="20:00"        → [["11:00","20:00"]]
+    브레이크 2구간: open="11:00-15:00", close="16:00-20:00"
+                                                     → [["11:00","15:00"],["16:00","20:00"]]
+    자정 넘김:     close="26:00" 그대로 (is_open_now_struct 가 24+ 처리)
+    """
+    ot = (open_time or "").strip()
+    ct = (close_time or "").strip()
+    if "-" in ot:  # 브레이크로 2구간 — open_time=1구간, close_time=2구간
+        out: list[list[str]] = []
+        a = ot.split("-", 1)
+        out.append([a[0].strip(), a[1].strip()])
+        if "-" in ct:
+            b = ct.split("-", 1)
+            out.append([b[0].strip(), b[1].strip()])
+        return out
+    if ot and ct:
+        return [[ot, ct]]
+    return []
+
+
+def _fmt_hhmm(s: str) -> str:
+    """'26:00' → '익일 02:00', 그 외는 그대로. 표시용."""
+    s = (s or "").strip()
+    p = _parse_hhmm(s)
+    if p is not None and p >= 24 * 60:
+        h, m = divmod(p - 24 * 60, 60)
+        return f"익일 {h:02d}:{m:02d}"
+    return s
+
+
+def format_schedule_text(rows) -> str:
+    """store_hours 행들 → 사람이 읽는 영업시간 문자열(표시·챗봇용).
+
+    동일 영업시간 연속 요일은 묶는다.
+    예: '월~금 11:00-14:00, 17:00-18:30 / 토~일 휴무'
+        '월~일 17:00-익일 02:00 (L.O 익일 01:00)'
+    """
+    by_dow: dict[int, object] = {}
+    for r in rows:
+        dow = r["day_of_week"]
+        if dow is not None and 0 <= dow <= 6:
+            by_dow[dow] = r
+    if not by_dow:
+        return ""
+
+    # 요일별 영업시간 문자열(라벨 제외) 생성
+    day_segs: list[str] = []
+    for dow in range(7):
+        r = by_dow.get(dow)
+        if r is None:
+            day_segs.append("휴무")
+            continue
+        intervals = _decode_open_close(r["open_time"], r["close_time"])
+        seg = ", ".join(f"{_fmt_hhmm(s)}-{_fmt_hhmm(e)}" for s, e in intervals) or "휴무"
+        try:
+            lo = r["last_order"]
+        except (KeyError, IndexError):
+            lo = None
+        if lo:
+            lo_disp = ", ".join(_fmt_hhmm(x.strip()) for x in str(lo).split(",") if x.strip())
+            seg += f" (L.O {lo_disp})"
+        day_segs.append(seg)
+
+    # 연속 동일 요일 묶기
+    parts: list[str] = []
+    i = 0
+    while i < 7:
+        j = i
+        while j + 1 < 7 and day_segs[j + 1] == day_segs[i]:
+            j += 1
+        label = _DAY_NAMES[i] if i == j else f"{_DAY_NAMES[i]}~{_DAY_NAMES[j]}"
+        parts.append(f"{label} {day_segs[i]}")
+        i = j + 1
+    return " / ".join(parts)
+
+
+def schedule_from_store_hours(rows) -> dict:
+    """store_hours 행들 → is_open_now_struct 용 schedule dict.
+
+    rows: [{day_of_week, open_time, close_time}, ...] (asyncpg Record 또는 dict).
+          PK 가 (store_id, day_of_week) 라 요일당 1행이지만 방어적으로 누적한다.
+          행이 없는 요일은 빈 배열(=휴무).
+    """
+    weekly: dict[str, list] = {d: [] for d in _DAYS_EN}
+    for r in rows:
+        dow = r["day_of_week"]
+        if dow is None or not (0 <= dow <= 6):
+            continue
+        weekly[_DAYS_EN[dow]].extend(
+            _decode_open_close(r["open_time"], r["close_time"])
+        )
+    return {"weekly": weekly, "always_open": False}
+
+
 def is_open_now_combined(
     open_hours: Optional[str],
     schedule: Optional[dict],

@@ -145,15 +145,15 @@ async def _fetch_nearby_buildings(lat: float, lng: float) -> list[dict]:
             rows = await conn.fetch(
                 """
                 SELECT
-                    b.ufid,
+                    b.building_key,
                     b.bld_nm,
                     ST_Y(ST_Centroid(b.geom)) AS lat,
                     ST_X(ST_Centroid(b.geom)) AS lng,
                     p.name_ko,
                     p.category,
                     p.floor_info
-                FROM buildings b
-                LEFT JOIN place_info p ON b.ufid = p.ufid
+                FROM building b
+                LEFT JOIN placeinfo p ON b.building_key = p.building_key
                 WHERE b.h3_index_10 = ANY($1::varchar[])
                   AND b.bld_nm IS NOT NULL
                 LIMIT 20
@@ -163,7 +163,8 @@ async def _fetch_nearby_buildings(lat: float, lng: float) -> list[dict]:
 
         return [
             {
-                "ufid": r["ufid"],
+                # 클라 식별자 ufid 필드에 building_key 값 (storedetails.place_id 일치)
+                "ufid": r["building_key"],
                 "bld_nm": r["name_ko"] or r["bld_nm"] or "",
                 "category": r["category"] or "",
                 "floor_info": r["floor_info"] or [],

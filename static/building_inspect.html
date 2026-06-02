@@ -137,6 +137,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;display:
     <div class="mtab"        onclick="setMode('cluster')"  id="tab-cluster">🟡 중복</div>
     <div class="mtab"        onclick="setMode('edit')"     id="tab-edit">✏️ 편집</div>
     <div class="mtab"        onclick="setMode('add')"      id="tab-add">➕ 추가</div>
+    <div class="mtab"        onclick="setMode('exclusion')" id="tab-exclusion">🚫 제외</div>
   </div>
 
   <!-- 기본 목록 패널 -->
@@ -238,6 +239,18 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;display:
       </div>
       <button class="btn btn-primary" style="width:100%;margin-top:6px" id="btn-save-new" onclick="saveNew()" disabled>저장</button>
     </div>
+  </div>
+
+  <!-- 제외 목록 (수기 삭제 기록) -->
+  <div class="mode-panel" id="panel-exclusion">
+    <div style="padding:8px 10px;border-bottom:1px solid #1a4a80">
+      <button class="btn btn-secondary btn-sm" onclick="loadExclusion()">🔄 새로고침</button>
+      <span style="font-size:11px;color:#aaa;margin-left:6px" id="exclusion-stats">—</span>
+      <div style="font-size:10px;color:#888;margin-top:5px">
+        VWorld 재수집 시 스킵되는 건물입니다. <b>해제</b>하면 다음 수집 때 다시 적재될 수 있어요.
+      </div>
+    </div>
+    <div id="exclusion-list" style="flex:1;overflow-y:auto"></div>
   </div>
 </div>
 
@@ -359,6 +372,51 @@ function setMode(m){
   selectedKey=null
   if(m==='edit') showStatus('건물 폴리곤을 클릭해 선택하세요')
   if(m==='add')  showStatus('주소 검색 후 폴리곤을 그리세요')
+  if(m==='exclusion') loadExclusion()
+}
+
+// ══════════════════════════════════════════════════════════
+// 제외 목록 (수기 삭제 기록)
+// ══════════════════════════════════════════════════════════
+function esc(s){return (s==null?'':String(s)).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]))}
+
+async function loadExclusion(){
+  const list=document.getElementById('exclusion-list')
+  list.innerHTML='<div style="padding:16px;color:#666;font-size:12px;text-align:center"><span class="spinner"></span>불러오는 중…</div>'
+  try{
+    const r=await fetch(`${apiBase()}/inspect/exclusion`)
+    if(!r.ok){const e=await r.json().catch(()=>({}));alert('오류: '+(e.detail||r.statusText));return}
+    const data=await r.json()
+    document.getElementById('exclusion-stats').textContent=`${data.count}개 제외됨`
+    list.innerHTML=''
+    if(!data.items.length){
+      list.innerHTML='<div style="padding:16px;color:#666;font-size:12px;text-align:center">제외된 건물 없음</div>'
+      return
+    }
+    for(const it of data.items){
+      const div=document.createElement('div')
+      div.style.cssText='padding:8px 10px;border-bottom:1px solid #16335c;font-size:11px'
+      const when=it.created_at?it.created_at.slice(0,10):''
+      div.innerHTML=`<div style="display:flex;justify-content:space-between;align-items:center;gap:6px">
+          <div style="min-width:0">
+            <div style="color:#eee;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(it.bld_nm)||'(이름없음)'}</div>
+            <div style="color:#666;font-size:10px">${esc(it.building_key)}</div>
+            <div style="color:#888;font-size:10px;margin-top:2px">${esc(it.reason)||''} · ${when}</div>
+          </div>
+          <button class="btn btn-secondary btn-sm" style="flex:none" onclick="removeExclusion('${esc(it.building_key)}')">해제</button>
+        </div>`
+      list.appendChild(div)
+    }
+  }catch(e){alert('네트워크 오류: '+e)}
+}
+
+async function removeExclusion(key){
+  if(!confirm('이 건물을 제외 목록에서 해제할까요?\n다음 VWorld 재수집 때 다시 적재될 수 있습니다.'))return
+  try{
+    const r=await fetch(`${apiBase()}/inspect/exclusion/${encodeURIComponent(key)}`,{method:'DELETE'})
+    if(!r.ok){const e=await r.json().catch(()=>({}));alert('오류: '+(e.detail||r.statusText));return}
+    loadExclusion()
+  }catch(e){alert('네트워크 오류: '+e)}
 }
 
 // ══════════════════════════════════════════════════════════

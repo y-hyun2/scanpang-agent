@@ -122,7 +122,9 @@ async def get_buildings_chunk(
     buildings = [
         BuildingDto(
             building_key=r["building_key"],
-            ufid=r["ufid"] or None,
+            # 클라 식별자(ufid 필드)에 building_key 값을 싣는다.
+            # storedetails.place_id == building_key 라 AR 마커 매장 매칭이 맞음.
+            ufid=r["building_key"],
             bld_nm=name_overrides.get(r["building_key"]) or r["bld_nm"] or None,
             render_height=float(r["render_height"] or 0),
             h3_index_10=r["h3_index_10"],

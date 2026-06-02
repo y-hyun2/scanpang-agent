@@ -257,6 +257,16 @@ async def delete_building(building_key: str):
             )
             await conn.execute("DELETE FROM storedetails WHERE place_id = $1", building_key)
             await conn.execute("DELETE FROM placeinfo WHERE building_key = $1", building_key)
+            # VWorld 재수집 시 되살아나지 않도록 제외 목록에 기록 (삭제 직전, bld_nm 보존)
+            await conn.execute(
+                """
+                INSERT INTO building_exclusion (building_key, bld_nm, reason)
+                SELECT building_key, bld_nm, '점검기 수기 삭제'
+                FROM building WHERE building_key = $1
+                ON CONFLICT (building_key) DO NOTHING
+                """,
+                building_key,
+            )
             result = await conn.execute(
                 "DELETE FROM building WHERE building_key = $1", building_key
             )
@@ -428,6 +438,16 @@ async def merge_buildings(req: MergeRequest):
             """,
             union_row["merged_geom"], c_lat, c_lng, h3_idx, req.keep,
         )
+        # 병합 흡수된 건물은 제외 목록에 기록 (재수집 시 분리 건물로 되살아남 방지)
+        await conn.execute(
+            """
+            INSERT INTO building_exclusion (building_key, bld_nm, reason)
+            SELECT building_key, bld_nm, $2
+            FROM building WHERE building_key = ANY($1::text[])
+            ON CONFLICT (building_key) DO NOTHING
+            """,
+            req.delete, f"점검기 병합(keep={req.keep})",
+        )
         # delete 목록 삭제
         await conn.execute(
             "DELETE FROM building WHERE building_key = ANY($1::text[])",
@@ -436,6 +456,47 @@ async def merge_buildings(req: MergeRequest):
 
     return {"merged_into": req.keep, "deleted": req.delete,
             "center_lat": c_lat, "center_lng": c_lng}
+
+
+# ── 제외 목록 (수기 삭제 기록) 관리 ────────────────────────────────────────────
+
+@router.get("/exclusion")
+async def list_exclusion():
+    """building_exclusion 전체 조회 (최근 등록순). VWorld 재수집 시 스킵되는 건물 목록."""
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        rows = await conn.fetch(
+            """
+            SELECT building_key, bld_nm, reason, created_at
+            FROM building_exclusion
+            ORDER BY created_at DESC
+            """
+        )
+    return {
+        "count": len(rows),
+        "items": [
+            {
+                "building_key": r["building_key"],
+                "bld_nm":       r["bld_nm"],
+                "reason":       r["reason"],
+                "created_at":   r["created_at"].isoformat() if r["created_at"] else None,
+            }
+            for r in rows
+        ],
+    }
+
+
+@router.delete("/exclusion/{building_key}")
+async def remove_exclusion(building_key: str):
+    """제외 목록에서 제거 → 다음 VWorld 재수집 때 다시 적재될 수 있게 해제(되살리기)."""
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        result = await conn.execute(
+            "DELETE FROM building_exclusion WHERE building_key = $1", building_key
+        )
+    if int(result.split()[-1]) == 0:
+        raise HTTPException(404, f"building_exclusion 에 '{building_key}' 없음")
+    return {"removed": building_key}
 
 
 # ── Kakao 역지오코딩 ───────────────────────────────────────────────────────────

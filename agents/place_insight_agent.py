@@ -363,30 +363,38 @@ async def _ground_place_facts(name: str) -> tuple[str, dict]:
                    "admission_fee": info.get("admission_fee", ""),
                    "open_hours": info.get("open_hours", "")}
 
-    # 2) store_details fallback
+    # 2) storedetails fallback (영업시간은 store_hours 정규화 테이블에서)
     if not facts:
         try:
+            from tools.open_hours_parser import format_schedule_text
             pool = await get_pool()
             async with pool.acquire() as conn:
                 row = await conn.fetchrow(
-                    "SELECT details, homepage, place_url, open_hours "
-                    "FROM store_details WHERE store_name ILIKE $1 LIMIT 1",
+                    "SELECT id, details, homepage, place_url "
+                    "FROM storedetails WHERE store_name ILIKE $1 LIMIT 1",
                     f"%{name}%",
                 )
+                hrs = ""
+                if row:
+                    hrs_rows = await conn.fetch(
+                        "SELECT day_of_week, open_time, close_time, last_order "
+                        "FROM store_hours WHERE store_id = $1",
+                        row["id"],
+                    )
+                    hrs = format_schedule_text(hrs_rows)
             if row:
                 details = row["details"] or {}
                 if isinstance(details, str):
                     details = json.loads(details or "{}")
                 fee = (details or {}).get("admission_fee", "")
-                hrs = row["open_hours"] or ""
                 if fee: facts.append(f"입장료/요금: {fee}")
                 if hrs: facts.append(f"운영시간: {hrs}")
                 if facts:
-                    src = {"source": "store_details",
+                    src = {"source": "storedetails",
                            "source_url": row["homepage"] or row["place_url"] or "",
                            "admission_fee": fee, "open_hours": hrs}
         except Exception as e:
-            print(f"[place_chat] store_details 조회 실패: {e}")
+            print(f"[place_chat] storedetails 조회 실패: {e}")
 
     if not facts:
         return "", {}

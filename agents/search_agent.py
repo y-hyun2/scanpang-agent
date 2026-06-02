@@ -196,28 +196,12 @@ async def _enrich_facilities_with_db_hours(facilities: list[dict]) -> list[dict]
     if not names:
         return facilities
     try:
-        from core.db import get_pool
-        pool = await get_pool()
-        async with pool.acquire() as conn:
-            rows = await conn.fetch(
-                """
-                SELECT store_name, phone, open_hours
-                FROM store_details
-                WHERE store_name = ANY($1::text[])
-                  AND COALESCE(open_hours, '') <> ''
-                """,
-                names,
-            )
+        # storedetails ⨝ store_hours(정규화 영업시간) → 포맷 텍스트 캐시
+        from tools.store_tools import hours_cache_by_names
+        cache = await hours_cache_by_names(names)
     except Exception as e:
-        print(f"[search_agent] DB 영업시간 캐시 조회 실패 (무시): {e}")
+        print(f"[search_agent] store_hours 영업시간 캐시 조회 실패 (무시): {e}")
         return facilities
-
-    cache: dict[str, list[dict]] = {}
-    for r in rows:
-        cache.setdefault(r["store_name"], []).append({
-            "phone":      r["phone"] or "",
-            "open_hours": r["open_hours"] or "",
-        })
 
     hits = 0
     for f in facilities:
@@ -288,7 +272,7 @@ async def _localize_facility_names(facilities: list[dict], category: str, langua
                 async with pool.acquire() as conn:
                     rows = await conn.fetch(
                         "SELECT store_name, COALESCE(translations::text, '{}') AS tl "
-                        "FROM store_details WHERE store_name = ANY($1::text[]) "
+                        "FROM storedetails WHERE store_name = ANY($1::text[]) "
                         "AND translations::text <> '{}'",
                         names,
                     )

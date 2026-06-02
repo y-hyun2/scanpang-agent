@@ -400,3 +400,39 @@ def _apply_translations_to_result(result: dict, language: str) -> None:
         result["raw_open_hours"] = t["open_hours"]
     if t.get("closed_days"):
         result["raw_closed_days"] = t["closed_days"]
+
+
+async def hours_cache_by_names(names: list[str]) -> dict[str, list[dict]]:
+    """매장명 → [{phone, open_hours}] — store_hours(정규화 영업시간) 기반.
+
+    storedetails ⨝ store_hours 로 매장별 구조화 영업시간을 사람이 읽는 문자열로
+    포맷한다. 동명 매장은 각각 한 항목으로 누적(전화로 구분 가능).
+    search_agent 의 영업시간 캐시 채우기에 사용.
+    """
+    from collections import defaultdict
+    from tools.open_hours_parser import format_schedule_text
+
+    uniq = [n for n in {nm for nm in names if nm}]
+    if not uniq:
+        return {}
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        rows = await conn.fetch(
+            "SELECT sd.id, sd.store_name, sd.phone, "
+            "       sh.day_of_week, sh.open_time, sh.close_time, sh.last_order "
+            "FROM storedetails sd JOIN store_hours sh ON sh.store_id = sd.id "
+            "WHERE sd.store_name = ANY($1::text[])",
+            uniq,
+        )
+    by_id: dict[str, list] = defaultdict(list)
+    id_meta: dict[str, tuple] = {}
+    for r in rows:
+        by_id[r["id"]].append(r)
+        id_meta[r["id"]] = (r["store_name"], r["phone"])
+    cache: dict[str, list[dict]] = defaultdict(list)
+    for sid, rs in by_id.items():
+        nm, phone = id_meta[sid]
+        text = format_schedule_text(rs)
+        if text:
+            cache[nm].append({"phone": phone or "", "open_hours": text})
+    return dict(cache)
