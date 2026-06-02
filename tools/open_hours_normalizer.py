@@ -21,7 +21,6 @@ store_hours 테이블 저장 규칙:
 from __future__ import annotations
 
 import json
-import os
 import re
 from datetime import time as dt_time
 from typing import Optional
@@ -97,6 +96,62 @@ def _looks_valid(schedule: dict) -> bool:
     return True
 
 
+async def normalize_open_hours(
+    open_hours: str,
+    closed_days: str = "",
+    model: str = "gpt-4o-mini",
+) -> Optional[dict]:
+    """자유 텍스트(open_hours[+closed_days]) → schedule dict 또는 None. (DB 저장 없음)
+
+    반환: {"weekly": {...}, "always_open": bool, "holiday_note": str}
+    DB 적재는 normalize_and_save 가, 평가는 이 함수를 직접 사용한다.
+    model 인자로 모델 교체/비교 가능.
+    """
+    oh = (open_hours or "").strip()
+    cd = (closed_days or "").strip()
+    if not oh and not cd:
+        return None
+
+    cache_key = f"{model}||{oh}||{cd}"
+    if cache_key in _CACHE:
+        return _CACHE[cache_key]
+
+    user_content = f"open_hours: {oh}\nclosed_days: {cd}" if cd else f"open_hours: {oh}"
+    try:
+        content = await call_llm(
+            user_id="",
+            purpose="open_hours_normalize",
+            messages=[
+                {"role": "system", "content": _NORMALIZE_SYSTEM},
+                {"role": "user",   "content": user_content},
+            ],
+            model=model,
+            record=False,
+            response_format={"type": "json_object"},
+            temperature=0,
+            max_tokens=500,
+        )
+        parsed = json.loads(content or "{}")
+    except Exception as e:
+        print(f"[open_hours_normalizer] LLM 실패: {type(e).__name__}: {e}")
+        return None
+
+    if not _looks_valid(parsed):
+        print(f"[open_hours_normalizer] 스키마 검증 실패: {user_content[:60]!r}")
+        return None
+
+    if not parsed.get("always_open"):
+        weekly = parsed.get("weekly", {})
+        for d in _DAYS:
+            weekly.setdefault(d, [])
+        parsed["weekly"] = weekly
+    else:
+        parsed["weekly"] = {}
+
+    _CACHE[cache_key] = parsed
+    return parsed
+
+
 async def normalize_and_save(
     store_id: str,
     open_hours: str,
@@ -115,51 +170,9 @@ async def normalize_and_save(
     Returns:
         holiday_note 문자열 (storedetails.holiday_note 에 저장용). 실패 시 None.
     """
-    oh = (open_hours or "").strip()
-    cd = (closed_days or "").strip()
-
-    if not oh and not cd:
+    schedule = await normalize_open_hours(open_hours, closed_days)
+    if schedule is None:
         return None
-
-    cache_key = f"{oh}||{cd}"
-    if cache_key in _CACHE:
-        schedule = _CACHE[cache_key]
-    else:
-        user_content = f"open_hours: {oh}\nclosed_days: {cd}" if cd else f"open_hours: {oh}"
-
-        try:
-            content = await call_llm(
-                user_id="",
-                purpose="open_hours_normalize",
-                messages=[
-                    {"role": "system", "content": _NORMALIZE_SYSTEM},
-                    {"role": "user",   "content": user_content},
-                ],
-                model="gpt-4o-mini",
-                record=False,
-                response_format={"type": "json_object"},
-                temperature=0,
-                max_tokens=500,
-            )
-            parsed = json.loads(content or "{}")
-        except Exception as e:
-            print(f"[open_hours_normalizer] LLM 실패 (store_id={store_id}): {type(e).__name__}: {e}")
-            return None
-
-        if not _looks_valid(parsed):
-            print(f"[open_hours_normalizer] 스키마 검증 실패 (store_id={store_id}): {user_content[:60]!r}")
-            return None
-
-        if not parsed.get("always_open"):
-            weekly = parsed.get("weekly", {})
-            for d in _DAYS:
-                weekly.setdefault(d, [])
-            parsed["weekly"] = weekly
-        else:
-            parsed["weekly"] = {}
-
-        _CACHE[cache_key] = parsed
-        schedule = parsed
 
     # ── store_hours 저장 ──────────────────────────────────────────────────────
     await conn.execute("DELETE FROM store_hours WHERE store_id = $1", store_id)
