@@ -48,7 +48,7 @@ _HOMEPAGE_FLOOR_SYSTEM_PROMPT = """\
 async def extract_floor_info_from_homepage(
     building_name: str,
     homepage_text: str,
-    model: str = "gpt-4o-mini",
+    model: str = "qwen/qwen3-235b-a22b-2507",  # 크로스벤더 평가: F1 0.971(>4o-mini 0.939) + 더 쌈. OpenRouter 경유
 ) -> list[dict]:
     """
     홈페이지 텍스트에서 LLM으로 층별 매장 목록을 추출한다.

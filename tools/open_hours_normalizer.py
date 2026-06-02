@@ -99,7 +99,7 @@ def _looks_valid(schedule: dict) -> bool:
 async def normalize_open_hours(
     open_hours: str,
     closed_days: str = "",
-    model: str = "gpt-4o-mini",
+    model: str = "qwen/qwen3-235b-a22b-2507",  # 크로스벤더 평가: Exact Match 100%(>4o-mini 96.2%) + 더 쌈. OpenRouter 경유
 ) -> Optional[dict]:
     """자유 텍스트(open_hours[+closed_days]) → schedule dict 또는 None. (DB 저장 없음)
 

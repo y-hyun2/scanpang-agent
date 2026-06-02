@@ -244,8 +244,8 @@ def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--dataset", default="eval/datasets/open_hours_golden.jsonl")
     parser.add_argument("--verbose", action="store_true")
-    parser.add_argument("--model", default="gpt-4o-mini",
-                        help="정규화 모델 (예: gpt-4o-mini, gpt-5.4-mini)")
+    parser.add_argument("--model", default="qwen/qwen3-235b-a22b-2507",
+                        help="정규화 모델 (프로덕션 기본 qwen3-235b; baseline은 --model gpt-4o-mini)")
     args = parser.parse_args()
     print(f"모델: {args.model}")
     asyncio.run(run_eval(args.dataset, args.verbose, args.model))
