@@ -120,23 +120,31 @@ def _decode_open_close(open_time: str, close_time: str) -> list[list[str]]:
     return []
 
 
-def _fmt_hhmm(s: str) -> str:
-    """'26:00' → '익일 02:00', 그 외는 그대로. 표시용."""
+_DAY_NAMES_EN = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
+
+
+def _fmt_hhmm(s: str, lang: str = "ko") -> str:
+    """'26:00' → '익일 02:00'(ko) / 'next day 02:00'(en), 그 외는 그대로. 표시용."""
     s = (s or "").strip()
     p = _parse_hhmm(s)
     if p is not None and p >= 24 * 60:
         h, m = divmod(p - 24 * 60, 60)
-        return f"익일 {h:02d}:{m:02d}"
+        prefix = "next day" if lang == "en" else "익일"
+        return f"{prefix} {h:02d}:{m:02d}"
     return s
 
 
-def format_schedule_text(rows) -> str:
+def format_schedule_text(rows, lang: str = "ko") -> str:
     """store_hours 행들 → 사람이 읽는 영업시간 문자열(표시·챗봇용).
 
     동일 영업시간 연속 요일은 묶는다.
-    예: '월~금 11:00-14:00, 17:00-18:30 / 토~일 휴무'
-        '월~일 17:00-익일 02:00 (L.O 익일 01:00)'
+    예(ko): '월~금 11:00-14:00, 17:00-18:30 / 토~일 휴무'
+    예(en): 'Mon-Fri 11:00-14:00, 17:00-18:30 / Sat-Sun Closed'
     """
+    day_names   = _DAY_NAMES_EN if lang == "en" else _DAY_NAMES
+    closed_word = "Closed"      if lang == "en" else "휴무"
+    range_sep   = "-"           if lang == "en" else "~"
+
     by_dow: dict[int, object] = {}
     for r in rows:
         dow = r["day_of_week"]
@@ -150,16 +158,20 @@ def format_schedule_text(rows) -> str:
     for dow in range(7):
         r = by_dow.get(dow)
         if r is None:
-            day_segs.append("휴무")
+            day_segs.append(closed_word)
             continue
         intervals = _decode_open_close(r["open_time"], r["close_time"])
-        seg = ", ".join(f"{_fmt_hhmm(s)}-{_fmt_hhmm(e)}" for s, e in intervals) or "휴무"
+        seg = ", ".join(
+            f"{_fmt_hhmm(s, lang)}-{_fmt_hhmm(e, lang)}" for s, e in intervals
+        ) or closed_word
         try:
             lo = r["last_order"]
         except (KeyError, IndexError):
             lo = None
         if lo:
-            lo_disp = ", ".join(_fmt_hhmm(x.strip()) for x in str(lo).split(",") if x.strip())
+            lo_disp = ", ".join(
+                _fmt_hhmm(x.strip(), lang) for x in str(lo).split(",") if x.strip()
+            )
             seg += f" (L.O {lo_disp})"
         day_segs.append(seg)
 
@@ -170,10 +182,10 @@ def format_schedule_text(rows) -> str:
         j = i
         while j + 1 < 7 and day_segs[j + 1] == day_segs[i]:
             j += 1
-        label = _DAY_NAMES[i] if i == j else f"{_DAY_NAMES[i]}~{_DAY_NAMES[j]}"
+        label = day_names[i] if i == j else f"{day_names[i]}{range_sep}{day_names[j]}"
         parts.append(f"{label} {day_segs[i]}")
         i = j + 1
-    return " / ".join(parts)
+    return "\n".join(parts)
 
 
 def schedule_from_store_hours(rows) -> dict:

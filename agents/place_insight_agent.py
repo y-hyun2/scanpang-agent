@@ -340,7 +340,7 @@ async def _extract_landmark_name(message: str, model: str) -> str:
         return ""
 
 
-async def _ground_place_facts(name: str) -> tuple[str, dict]:
+async def _ground_place_facts(name: str, lang: str = "ko") -> tuple[str, dict]:
     """TourAPI 우선, 없으면 store_details 에서 요금/시간/공식링크 확보.
 
     Returns: (LLM 주입용 검증데이터 블록, raw 소스 dict). 못 찾으면 ("", {}).
@@ -381,7 +381,7 @@ async def _ground_place_facts(name: str) -> tuple[str, dict]:
                         "FROM store_hours WHERE store_id = $1",
                         row["id"],
                     )
-                    hrs = format_schedule_text(hrs_rows)
+                    hrs = format_schedule_text(hrs_rows, lang=lang)
             if row:
                 details = row["details"] or {}
                 if isinstance(details, str):
@@ -470,7 +470,7 @@ async def run_place_chat_agent(
     if _FACT_RE.search(message or ""):
         name = (focus.get("name") if focus else "") or await _extract_landmark_name(message, model)
         if name:
-            grounded_block, source = await _ground_place_facts(name)
+            grounded_block, source = await _ground_place_facts(name, lang=language)
 
     system_prompt = f"{_PLACE_CHAT_SYSTEM} Always respond in {response_lang_label}."
     user_prompt   = (

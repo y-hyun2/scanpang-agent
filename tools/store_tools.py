@@ -123,20 +123,27 @@ async def get_store_detail(
             result = _row_to_dict(row)
             if language != "ko":
                 trans = result.get("translations") or {}
-                if not trans.get(language):
-                    _lat = float(result["lat"]) if result.get("lat") else _DEFAULT_LAT
-                    _lng = float(result["lng"]) if result.get("lng") else _DEFAULT_LNG
+                existing_lang = trans.get(language, {})
+                _lat = float(result["lat"]) if result.get("lat") else _DEFAULT_LAT
+                _lng = float(result["lng"]) if result.get("lng") else _DEFAULT_LNG
+                d = result.get("details") or {}
+                convs = d.get("conveniences") or [] if isinstance(d, dict) else []
+                _fields = {
+                    "name":         result.get("store_name", ""),
+                    "addr":         result.get("addr", ""),
+                    "open_hours":   result.get("raw_open_hours", ""),
+                    "closed_days":  result.get("raw_closed_days", ""),
+                    "conveniences": ", ".join(str(c) for c in convs if c),
+                }
+                _missing = {k: v for k, v in _fields.items()
+                            if not existing_lang.get(k) and v and str(v).strip()}
+                if _missing:
                     en_fields = await translate_fields(
-                        {
-                            "name":        result.get("store_name", ""),
-                            "addr":        result.get("addr", ""),
-                            "open_hours":  result.get("raw_open_hours", ""),
-                            "closed_days": result.get("raw_closed_days", ""),
-                        },
-                        lat=_lat, lng=_lng, lang=language,
+                        _missing, lat=_lat, lng=_lng, lang=language,
                     )
                     if en_fields:
-                        trans[language] = en_fields
+                        merged = {**existing_lang, **en_fields}
+                        trans[language] = merged
                         async with pool.acquire() as conn:
                             await conn.execute(
                                 "UPDATE storedetails SET translations=$1::jsonb WHERE id=$2",
@@ -269,9 +276,15 @@ async def get_store_detail(
             "translations":    {},
         }
         if language != "ko":
+            _convs = (details or {}).get("conveniences") or []
             en_fields = await translate_fields(
-                {"name": display_name, "addr": addr,
-                 "open_hours": open_hours, "closed_days": closed_days},
+                {
+                    "name":         display_name,
+                    "addr":         addr,
+                    "open_hours":   open_hours,
+                    "closed_days":  closed_days,
+                    "conveniences": ", ".join(str(c) for c in _convs if c),
+                },
                 lat=lat, lng=lng, lang=language,
             )
             result["translations"] = {language: en_fields} if en_fields else {}
@@ -281,9 +294,15 @@ async def get_store_detail(
     # ── ⑤ 번역 ───────────────────────────────────────────────────────────────
     translations: dict = {}
     if language != "ko":
+        _convs = (details or {}).get("conveniences") or []
         en_fields = await translate_fields(
-            {"name": display_name, "addr": addr,
-             "open_hours": open_hours, "closed_days": closed_days},
+            {
+                "name":         display_name,
+                "addr":         addr,
+                "open_hours":   open_hours,
+                "closed_days":  closed_days,
+                "conveniences": ", ".join(str(c) for c in _convs if c),
+            },
             lat=lat, lng=lng, lang=language,
         )
         if en_fields:
@@ -400,9 +419,14 @@ def _apply_translations_to_result(result: dict, language: str) -> None:
         result["raw_open_hours"] = t["open_hours"]
     if t.get("closed_days"):
         result["raw_closed_days"] = t["closed_days"]
+    if t.get("conveniences"):
+        d = result.get("details")
+        if isinstance(d, dict) and d.get("conveniences"):
+            convs_en = [c.strip() for c in t["conveniences"].split(",") if c.strip()]
+            result["details"] = {**d, "conveniences": convs_en}
 
 
-async def hours_cache_by_names(names: list[str]) -> dict[str, list[dict]]:
+async def hours_cache_by_names(names: list[str], lang: str = "ko") -> dict[str, list[dict]]:
     """매장명 → [{phone, open_hours}] — store_hours(정규화 영업시간) 기반.
 
     storedetails ⨝ store_hours 로 매장별 구조화 영업시간을 사람이 읽는 문자열로
@@ -432,7 +456,7 @@ async def hours_cache_by_names(names: list[str]) -> dict[str, list[dict]]:
     cache: dict[str, list[dict]] = defaultdict(list)
     for sid, rs in by_id.items():
         nm, phone = id_meta[sid]
-        text = format_schedule_text(rs)
+        text = format_schedule_text(rs, lang=lang)
         if text:
             cache[nm].append({"phone": phone or "", "open_hours": text})
     return dict(cache)
