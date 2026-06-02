@@ -69,6 +69,39 @@ async def _fetch_building(building_key: str) -> dict | None:
     return dict(row) if row else None
 
 
+def _merge_places(road: list[dict], jibun: list[dict]) -> list[dict]:
+    """
+    도로명·지번 'addressDetailPlace' 매장 리스트를 매장명 기준 dedupe 병합한다.
+
+    같은 매장이 양쪽에 다른 모습(층 표기 유무 등)으로 나올 수 있으므로
+    단순 first-wins가 아니라 정보가 풍부한 쪽을 keep한다.
+    충돌 시 우선순위:
+      1) 층 정보(floor) 있는 쪽
+      2) 둘 다 층 있으면 도로명 우선 (road를 먼저 넣어 자연히 우선권 부여)
+      3) category는 비어있지 않은 쪽으로 보강
+    """
+    def _key(p: dict) -> str:
+        return (p.get("name", "") or "").lower().replace(" ", "")
+
+    merged: dict[str, dict] = {}
+    for p in road + jibun:  # road 먼저 → 동률일 때 도로명 우선
+        k = _key(p)
+        if not k:
+            continue
+        cur = merged.get(k)
+        if cur is None:
+            merged[k] = p
+            continue
+        # 기존이 층 없고 새 게 층 있으면 새 걸로 교체 (category는 기존 우선 보존)
+        if not cur.get("floor") and p.get("floor"):
+            p["category"] = cur.get("category") or p.get("category", "")
+            merged[k] = p
+        elif not cur.get("category") and p.get("category"):
+            cur["category"] = p["category"]
+
+    return list(merged.values())
+
+
 def _naver_places_to_floor_info(places: list[dict]) -> list[dict]:
     """
     fetch_naver_address_places 결과를 floor_info 형태로 변환한다.
@@ -292,6 +325,8 @@ async def process_one_building(building_key: str) -> dict:
 
     # 주소 우선순위: Naver reverse geocode 결과를 1순위로 채택
     addr = naver_geo.get("addr", "")
+    # 지번주소: '이 주소의 장소'를 도로명과 union 하기 위해 함께 보관 (§2.8)
+    addr_jibun = naver_geo.get("addr_jibun", "")
 
     # Naver reverse geocode 가 행정구역(읍/면/동) 단어 빠진 짧은 주소를 줄 때가
     # 있음 (예: '경기도 용인시 처인구 외대로 6' — 모현읍 누락 → Naver
@@ -395,14 +430,28 @@ async def process_one_building(building_key: str) -> dict:
     # ── 2.8) 네이버 "이 주소의 장소" 수집 ───────────────────────────────────
     # 1순위: Naver Map 내부 API(`addressDetailPlace`) — UI에 표시되는 전체 매장
     #        리스트(보통 50~100+개) 수집. Local Search OpenAPI의 5~15개 cap 우회.
+    #        도로명/지번 중 한쪽에만 등록된 매장이 있어(명동길26: 지번에만 7개,
+    #        개양빌딩: 도로명에만 20개) 둘 다 호출해 _merge_places로 union 한다.
     # 2순위: Local Search OpenAPI에 주소로 검색 (내부 API 실패 시 fallback).
     # 3순위: Local Search OpenAPI에 건물명으로 검색.
     naver_raw: list[dict] = []
-    if addr:
-        try:
-            naver_raw = await fetch_naver_map_places(addr)
-        except Exception as e:
-            print(f"[pipeline] fetch_naver_map_places 실패: {e}")
+    if addr or addr_jibun:
+        road_places: list[dict] = []
+        jibun_places: list[dict] = []
+        if addr:
+            try:
+                road_places = await fetch_naver_map_places(addr)
+            except Exception as e:
+                print(f"[pipeline] fetch_naver_map_places(도로명) 실패: {e}")
+        if addr_jibun:
+            try:
+                jibun_places = await fetch_naver_map_places(addr_jibun)
+            except Exception as e:
+                print(f"[pipeline] fetch_naver_map_places(지번) 실패: {e}")
+        naver_raw = _merge_places(road_places, jibun_places)
+        if road_places or jibun_places:
+            print(f"[pipeline] 이 주소의 장소 union: 도로명 {len(road_places)} + "
+                  f"지번 {len(jibun_places)} → 병합 {len(naver_raw)}개")
 
     if not naver_raw:
         for _query in [q for q in (addr, bld_nm) if q]:

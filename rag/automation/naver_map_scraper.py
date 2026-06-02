@@ -158,6 +158,102 @@ def _get_detail_open_hours(apollo: dict) -> str:
     return _format_weekly_hours(nbh)
 
 
+# Playwright + stealth 로 Naver Place 상세 페이지를 렌더링해 전체 주간 영업시간을
+# 긁어온다. 2025년 Naver SPA 전환으로 SSR Apollo state 에서 영업시간이 사라졌고,
+# 일반 헤드리스 브라우저는 봇 차단(ncpt.naver.com)에 걸린다. playwright-stealth 로
+# 우회 후 영업시간 토글(.gKP9i)을 클릭하면 요일별 스케줄(.w9QyJ)이 펼쳐진다.
+_NAVER_PLACE_UA = (
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+    "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
+)
+
+
+async def fetch_business_hours_playwright(place_id: str) -> str:
+    """
+    place_id 로 Naver Place 상세 페이지를 stealth 브라우저로 열어
+    전체 주간 영업시간 텍스트를 반환한다. (raw 텍스트 — 정규화는 별도 단계)
+
+    반환 예:
+      "화 14:00 - 24:00 / 수 14:00 - 24:00 / ... / 월 14:00 - 24:00"
+      브레이크: "화 11:30 - 23:00, 15:00 - 17:00 브레이크타임 / ..."
+      휴무:     "... / 토 휴무 / ..."
+    실패 시 빈 문자열.
+    """
+    if not place_id:
+        return ""
+
+    try:
+        from playwright.async_api import async_playwright
+        from playwright_stealth import Stealth
+    except ImportError:
+        print("[naver_hours] playwright / playwright-stealth 미설치")
+        return ""
+
+    url = f"https://pcmap.place.naver.com/place/{place_id}/home"
+    try:
+        async with async_playwright() as p:
+            browser = await p.chromium.launch(headless=True)
+            try:
+                ctx = await browser.new_context(locale="ko-KR", user_agent=_NAVER_PLACE_UA)
+                page = await ctx.new_page()
+                await Stealth().apply_stealth_async(page)
+                await page.goto(url, wait_until="networkidle", timeout=25_000)
+                await page.wait_for_timeout(1_500)
+
+                # 봇 차단 페이지로 리다이렉트됐는지 확인
+                if "ncpt" in page.url:
+                    print(f"[naver_hours] 봇 차단 감지 (place_id={place_id})")
+                    return ""
+
+                # 영업시간 토글(.gKP9i) 클릭해 요일별 스케줄 펼치기
+                await page.evaluate(
+                    "() => { const b = document.querySelector('.gKP9i'); if (b) b.click(); }"
+                )
+                await page.wait_for_timeout(1_200)
+
+                # .w9QyJ 안 .i8cJw(요일) + .H3ua4(시간) 파싱.
+                # 라스트오더 라인은 제외, 브레이크타임·휴무는 유지.
+                hours = await page.evaluate(r"""
+                    () => {
+                        // 요일별(월~일) 외에 '매일/평일/주말/공휴일' 집계 라벨도 허용.
+                        // 이 라벨로만 등록된 매장(예: 포장마차)이 통째로 누락돼
+                        // 라스트오더 요약 텍스트로 폴백되는 것을 막는다.
+                        const days = ['월','화','수','목','금','토','일',
+                                      '매일','평일','주말','공휴일'];
+                        const out = [];
+                        document.querySelectorAll('.w9QyJ').forEach(w => {
+                            const dayEl = w.querySelector('.i8cJw');
+                            if (!dayEl) return;
+                            const day = dayEl.innerText.trim();
+                            if (!days.includes(day)) return;
+                            const hoursEl = w.querySelector('.H3ua4');
+                            // H3ua4 없으면 휴무 가능성 — w9QyJ 전체 텍스트에서 day 제외 부분 확인
+                            let val;
+                            if (hoursEl) {
+                                // 라스트오더 라인도 raw에 보존한다(raw = source of truth).
+                                // 영업구간 제외 처리는 정규화(open_hours_normalizer) 단계에서.
+                                const lines = (hoursEl.innerText || '')
+                                    .split('\n')
+                                    .map(s => s.trim())
+                                    .filter(s => s);
+                                val = lines.join(', ');
+                            } else {
+                                const full = (w.innerText || '').replace(day, '').trim();
+                                val = full.includes('휴무') ? '휴무' : full;
+                            }
+                            if (val) out.push(day + ' ' + val);
+                        });
+                        return out.join(' / ');
+                    }
+                """)
+                return hours or ""
+            finally:
+                await browser.close()
+    except Exception as e:
+        print(f"[naver_hours] fetch 실패 (place_id={place_id}): {type(e).__name__}: {e}")
+        return ""
+
+
 def _normalize_item(item: dict) -> dict | None:
     name = item.get("name", "") or item.get("display", "")
     categories = item.get("category", []) or []
@@ -259,9 +355,19 @@ def _match_list_item(
         if expected_addr:
             norm_exp = _clean_address(expected_addr).replace("특별시", "").replace("광역시", "").strip()
             norm_got = _clean_address(addr).replace("특별시", "").replace("광역시", "").strip()
-            addr_score = 100 if norm_exp and norm_exp in norm_got else 0
+            # Naver 목록 아이템의 roadAddress는 '명동4길 12'처럼 시·구 prefix가
+            # 빠질 때가 많다(반대로 들어올 때도 있음). 그래서 시·구 prefix 포함 여부로
+            # 비교하면 정답인데도 거절된다. '{도로명} {번호}' core(끝 두 토큰)로
+            # 비교해 prefix 유무에 영향받지 않게 한다.
+            exp_core = " ".join(norm_exp.split()[-2:])
+            got_core = " ".join(norm_got.split()[-2:])
+            addr_match = bool(exp_core and got_core and exp_core == got_core)
+            # expected_addr가 주어졌는데 지역 불일치면 하드 거절
+            if not addr_match:
+                continue
+            addr_score = 100
 
-        total = max(name_score, addr_score)
+        total = name_score if expected_addr else max(name_score, addr_score)
         if total > best_score:
             best_score = total
             best = item
@@ -353,17 +459,22 @@ scrape_address_places = fetch_address_places
 
 async def reverse_geocode(lat: float, lng: float) -> dict:
     """
-    좌표 → 도로명주소·건물명 변환 (Naver Map 내부 API).
+    좌표 → 도로명주소·지번주소·건물명 변환 (Naver Map 내부 API).
 
     Args:
         lat, lng: WGS84 좌표
     Returns:
-        {"addr": str, "bld_nm": str}
-        - addr: "서울특별시 중구 명동4길 35" 형태 (실패 시 빈 문자열)
-        - bld_nm: Naver가 알고 있는 공식 건물명 (없으면 빈 문자열)
+        {"addr": str, "addr_jibun": str, "bld_nm": str}
+        - addr:       도로명 "서울특별시 중구 명동4길 35" (실패 시 빈 문자열)
+        - addr_jibun: 지번  "서울특별시 중구 명동2가 50-14" (없으면 빈 문자열)
+        - bld_nm:     Naver가 알고 있는 공식 건물명 (없으면 빈 문자열)
+
+    addressDetailPlace('이 주소의 장소')는 도로명/지번 중 한쪽에만 등록된 매장이
+    있어 둘 다 받아 union 하기 위함. pipeline에서 양쪽 호출 후 _merge_places로 병합.
     """
+    empty = {"addr": "", "addr_jibun": "", "bld_nm": ""}
     if not lat or not lng:
-        return {"addr": "", "bld_nm": ""}
+        return empty
 
     try:
         async with httpx.AsyncClient(timeout=10, headers=_HEADERS) as client:
@@ -378,12 +489,30 @@ async def reverse_geocode(lat: float, lng: float) -> dict:
             data = resp.json()
     except Exception as e:
         print(f"[naver_map_scraper] reverse_geocode 실패 ({lat},{lng}): {e}")
-        return {"addr": "", "bld_nm": ""}
+        return empty
 
     results = data.get("results") or []
+
+    # ── 지번주소 (orders=addr) ──────────────────────────────────────────────
+    # region.area3 = 동/읍/면(예: 명동2가), land.number1[-number2] = 번지
+    addr_jibun = ""
+    jibun = next((r for r in results if r.get("name") == "addr"), None)
+    if jibun:
+        jregion = jibun.get("region") or {}
+        ja1 = (jregion.get("area1") or {}).get("name", "")
+        ja2 = (jregion.get("area2") or {}).get("name", "")
+        ja3 = (jregion.get("area3") or {}).get("name", "")  # 동/읍/면
+        jland = jibun.get("land") or {}
+        jn1 = jland.get("number1", "")
+        jn2 = jland.get("number2", "")
+        if ja1 and ja2 and ja3 and jn1:
+            jnum = f"{jn1}-{jn2}" if jn2 else jn1
+            addr_jibun = f"{ja1} {ja2} {ja3} {jnum}"
+
+    # ── 도로명주소 (orders=roadaddr) + 건물명 ────────────────────────────────
     road = next((r for r in results if r.get("name") == "roadaddr"), None)
     if not road:
-        return {"addr": "", "bld_nm": ""}
+        return {"addr": "", "addr_jibun": addr_jibun, "bld_nm": ""}
 
     region = road.get("region") or {}
     area1  = (region.get("area1") or {}).get("name", "")  # 서울특별시
@@ -394,7 +523,7 @@ async def reverse_geocode(lat: float, lng: float) -> dict:
     number2   = land.get("number2", "")        # 부번 (있을 때만)
 
     if not (area1 and area2 and road_name and number1):
-        return {"addr": "", "bld_nm": ""}
+        return {"addr": "", "addr_jibun": addr_jibun, "bld_nm": ""}
 
     num = f"{number1}-{number2}" if number2 else number1
     addr = f"{area1} {area2} {road_name} {num}"
@@ -407,7 +536,7 @@ async def reverse_geocode(lat: float, lng: float) -> dict:
             bld_nm = a["value"]
             break
 
-    return {"addr": addr, "bld_nm": bld_nm}
+    return {"addr": addr, "addr_jibun": addr_jibun, "bld_nm": bld_nm}
 
 
 async def fetch_place_detail(
@@ -473,10 +602,14 @@ async def fetch_place_detail(
             resp2 = await client.get(detail_url)
             apollo_detail = _parse_apollo_state(resp2.text)
 
-            # 영업시간: structured_hours=True면 상세 페이지의 전체 주간 스케줄 추출
-            # 아니면 목록 아이템의 newBusinessHours.description (현재 상태 텍스트)
+            # 영업시간: structured_hours=True면 전체 주간 스케줄 추출.
+            #  1순위: Apollo state (구버전 — 현재는 대부분 사라짐)
+            #  2순위: Playwright+stealth 로 페이지 렌더링 후 토글 펼쳐 스크랩
+            #  3순위: 목록 아이템 newBusinessHours.description (요약 텍스트 폴백)
             if structured_hours:
                 open_hours = _get_detail_open_hours(apollo_detail)
+                if not open_hours:
+                    open_hours = await fetch_business_hours_playwright(place_id)
                 if not open_hours:
                     nbh_raw = matched.get("newBusinessHours")
                     nbh = _resolve_apollo(apollo_list, nbh_raw) if nbh_raw else {}

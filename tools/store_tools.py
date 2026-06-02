@@ -18,7 +18,6 @@ from core.db import get_pool
 from tools.place_tools import check_kakao_open_status
 from tools.category_classifier import classify_category
 from tools.details_fetchers import fetch_by_category
-from tools.open_hours_normalizer import normalize_and_save
 from tools.translation import translate_fields, apply_lang
 
 
@@ -86,6 +85,7 @@ async def get_store_detail(
     lng: float | None = None,
     language: str = "ko",
     progress_cb=None,
+    floor_category: str = "",
 ) -> dict:
     """
     Args:
@@ -169,17 +169,27 @@ async def get_store_detail(
                     "FROM building WHERE building_key = $1",
                     place_id,
                 )
-        lat = float(coord["lat"]) if coord and coord["lat"] is not None else _DEFAULT_LAT
-        lng = float(coord["lng"]) if coord and coord["lng"] is not None else _DEFAULT_LNG
+        if not coord or coord["lat"] is None or coord["lng"] is None:
+            # 명동 기본값 폴백 금지 — 좌표 없는 매장을 엉뚱한 위치로 검색하지 않는다.
+            raise ValueError(f"좌표 없음 — placeinfo/building 미등록: {place_id!r}")
+        lat = float(coord["lat"])
+        lng = float(coord["lng"])
     else:
         lat, lng = float(lat), float(lng)
 
     await _progress(50, "Kakao 매장 정보 조회 중...")
     # ── ③ Kakao Local 1차 ────────────────────────────────────────────────────
     kakao = await check_kakao_open_status(store_name, lat, lng) or {}
-    category_name = kakao.get("category", "") or ""
+    # 표시용 category: floor_info 우선("분식 > 종합분식" → "종합분식"), 없으면 Kakao.
+    floor_cat_disp = floor_category.split(">")[-1].strip() if floor_category else ""
+    category_name = floor_cat_disp or kakao.get("category", "") or ""
     category_full = kakao.get("category_full", "") or category_name
-    category_key  = classify_category(category_full, store_name)
+    # floor_info에 category가 있으면 분류 1순위로 사용한다.
+    # Kakao 키워드(dapi) 검색은 영차떡볶이처럼 인덱스에 없는 매장을 놓쳐
+    # category_full이 비고 'other'로 떨어지므로, 출처가 확실한 floor_info를 우선.
+    category_key = classify_category(floor_category or category_full, store_name)
+    if category_key == "other" and floor_category and category_full:
+        category_key = classify_category(category_full, store_name)
     print(f"[store_tools] {store_name!r} → category_key={category_key!r}")
 
     await _progress(70, "상세 데이터 수집 중...")
@@ -209,7 +219,7 @@ async def get_store_detail(
     phone       = fetched.get("phone")      or kakao.get("phone", "")
     addr        = fetched.get("addr")       or kakao.get("addr", "")
     if not category_name:
-        category_name = fetched.get("category", "") or ""
+        category_name = fetched.get("category", "") or floor_category or ""
     raw_homepage = fetched.get("homepage", "") or ""
     if _is_social_url(raw_homepage):
         raw_homepage = ""
@@ -335,14 +345,10 @@ async def get_store_detail(
                 translations,
             )
 
-            # store_hours 저장 (subway는 별도 schedule 포맷이라 스킵)
-            if open_hours and category_key not in ("subway", "subway_station"):
-                holiday_note = await normalize_and_save(store_id, open_hours, closed_days, conn)
-                if holiday_note:
-                    await conn.execute(
-                        "UPDATE storedetails SET holiday_note = $1 WHERE id = $2",
-                        holiday_note, store_id,
-                    )
+            # 영업시간 정규화(store_hours 생성)는 시딩과 분리.
+            # raw_open_hours 만 저장하고, 별도 배치(scripts/normalize_store_hours.py)가
+            # 나중에 LLM 정규화 → store_hours 테이블을 채운다.
+            # 이유: 스크래핑(느림/취약)과 정규화(재실행 필요)를 decouple.
 
     result = {
         "id":              store_id or f"{place_id}__{store_name}",

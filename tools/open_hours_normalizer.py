@@ -5,24 +5,31 @@ open_hours + closed_days 자유 텍스트 → LLM 정규화 → store_hours 테�
 LLM 출력 스키마:
     {
         "weekly": {
-            "mon": [["09:00", "22:00"]],
-            "tue": [["09:00", "13:00"], ["14:00", "22:00"]],  # 브레이크타임
+            "mon": [["11:00", "15:00"], ["16:00", "20:00"]],  # 브레이크 → 2구간
+            "tue": [["11:00", "20:00"]],
+            "fri": [["17:00", "26:00"]],                       # 자정 넘김 → 24+ (26:00)
             "sun": []                                           # 빈 배열 = 휴무
+        },
+        "last_order": {                                         # 구간별 라스트오더(없으면 [])
+            "mon": ["14:00", "19:00"],
+            "fri": ["25:00"]                                    # 익일 01:00 → 25:00
         },
         "always_open": false,   # 24/7이면 true
         "holiday_note": "명절 당일 휴무"  # 비정기 휴무 안내 (없으면 "")
     }
 
-store_hours 테이블 저장 규칙:
-    - 요일별 구간마다 1 row (store_id, day_of_week, open_time, close_time)
-    - 휴무일(빈 배열)은 row 없음
-    - always_open은 모든 요일에 00:00-24:00 으로 저장
+store_hours 테이블 저장 규칙 (하루 1 row, 컬럼 전부 TEXT):
+    - 단일 구간: open_time="11:00", close_time="20:00"
+    - 브레이크 2구간: open_time="11:00-15:00", close_time="16:00-20:00"  (사이 갭=브레이크)
+    - 자정 넘김: close_time="26:00" 처럼 24+ 텍스트
+    - last_order: 구간별 콤마 나열 "14:00, 19:00" (없으면 NULL)
+    - 휴무일(빈 배열): row 없음
+    - always_open: 모든 요일 open="00:00", close="24:00"
 """
 from __future__ import annotations
 
 import json
 import re
-from datetime import time as dt_time
 from typing import Optional
 
 from dotenv import load_dotenv
@@ -38,6 +45,19 @@ _DAY_INDEX = {d: i for i, d in enumerate(_DAYS)}
 _CACHE: dict[str, dict] = {}
 
 
+def _encode_open_close(intervals: list) -> tuple[str, str]:
+    """영업 구간 리스트 → (open_time, close_time) 텍스트.
+
+    단일 구간:    ("11:00", "20:00")
+    2구간 이상:   첫 구간 → open_time, 마지막 구간 → close_time, 각각 "시작-끝".
+                 (브레이크는 두 구간 사이 갭으로 표현. 3구간 이상이면 중간은 버림)
+    """
+    if len(intervals) == 1:
+        return intervals[0][0], intervals[0][1]
+    first, last = intervals[0], intervals[-1]
+    return f"{first[0]}-{first[1]}", f"{last[0]}-{last[1]}"
+
+
 _NORMALIZE_SYSTEM = """\
 당신은 영업시간 텍스트를 구조화된 JSON 스케줄로 변환합니다.
 
@@ -46,7 +66,9 @@ _NORMALIZE_SYSTEM = """\
 규칙:
 1. 입력 텍스트에 명시된 내용만 사용. 학습된 지식 사용 금지.
 2. 시간은 항상 24시간 "HH:MM" 형식. (예: "오후 10시" → "22:00", "오전 9시반" → "09:30")
-3. 휴게시간/브레이크가 있으면 같은 요일에 두 구간으로 분리. (예: [["11:30","15:00"], ["17:00","22:00"]])
+3. 휴게시간/브레이크가 있으면 같은 요일을 두 구간으로 분리하고 브레이크 시간대 자체는 제외.
+   예: "11:00 - 18:30, 14:00 - 17:00 브레이크타임" (영업 11:00~18:30, 브레이크 14:00~17:00)
+       → [["11:00","14:00"], ["17:00","18:30"]]  (브레이크 14:00~17:00은 두 구간 사이 갭)
 4. 휴무일은 빈 배열 []. closed_days에 명시된 요일도 빈 배열로 처리.
 5. "매일"·"연중무휴"는 모든 요일에 동일 적용.
 6. 24시간 영업 매장은 always_open=true 로 표시하고 weekly 는 빈 객체.
@@ -55,6 +77,11 @@ _NORMALIZE_SYSTEM = """\
 9. holiday_note: 명절·공휴일·선거일 등 비정기 휴무 안내 텍스트만 추출. 없으면 빈 문자열.
    (예: "석가탄신일·추석·설날 당일 휴무", "공휴일 휴무")
    정기 요일 휴무(예: "매주 일요일 휴무")는 holiday_note에 넣지 말고 weekly에 반영.
+10. last_order: 입력에 "라스트오더"/"주문마감"/"L.O"로 **명시된** 시각만 추출.
+    - 명시 없으면 반드시 빈 배열 []. 영업 마감시간을 라스트오더로 대체/추정 금지(절대 지어내지 말 것).
+    - weekly 구간 순서대로 배열. 라스트오더 시각은 weekly 영업구간에 포함하지 말 것.
+    - 자정을 넘긴 시각은 24+로 표기. 예: 영업이 17:00~다음날 02:00(=26:00)이고
+      "01:00 라스트오더"면, 그 01:00은 다음날이므로 25:00으로 적는다.
 
 출력 형식 (JSON only, 다른 설명 없이):
 {
@@ -66,6 +93,10 @@ _NORMALIZE_SYSTEM = """\
     "fri": [["09:00","22:00"]],
     "sat": [["09:00","22:00"]],
     "sun": []
+  },
+  "last_order": {
+    "mon": ["21:30"], "tue": ["21:30"], "wed": ["21:30"],
+    "thu": ["21:30"], "fri": ["21:30"], "sat": ["21:30"], "sun": []
   },
   "always_open": false,
   "holiday_note": ""
@@ -174,32 +205,39 @@ async def normalize_and_save(
     if schedule is None:
         return None
 
-    # ── store_hours 저장 ──────────────────────────────────────────────────────
+    oh = (open_hours or "").strip()  # 라스트오더 키워드 가드용
+
+    # ── store_hours 저장 (하루 1 row, 컬럼 전부 TEXT) ─────────────────────────
     await conn.execute("DELETE FROM store_hours WHERE store_id = $1", store_id)
 
-    rows = []
+    rows: list[tuple] = []
     if schedule.get("always_open"):
         for dow in range(7):
-            rows.append((store_id, dow, "00:00", "24:00"))
+            rows.append((store_id, dow, "00:00", "24:00", None))
     else:
-        for day_name, ranges in schedule.get("weekly", {}).items():
-            dow = _DAY_INDEX.get(day_name)
-            if dow is None:
-                continue
-            for r in ranges:
-                if len(r) == 2:
-                    rows.append((store_id, dow, r[0], r[1]))
+        weekly = schedule.get("weekly", {})
+        # LLM이 라스트오더를 지어내는 것 방지 — raw에 LO 키워드가 있을 때만 채택.
+        _has_lo = any(k in oh.lower() for k in
+                      ("라스트오더", "라스트 오더", "주문마감", "주문 마감", "l.o", "lo "))
+        lo_map = (schedule.get("last_order", {}) or {}) if _has_lo else {}
+        for day_name, dow in _DAY_INDEX.items():
+            intervals = [iv for iv in (weekly.get(day_name) or [])
+                         if isinstance(iv, list) and len(iv) == 2]
+            if not intervals:
+                continue  # 휴무 → row 없음
+            open_t, close_t = _encode_open_close(intervals)
+            los = [str(x).strip() for x in (lo_map.get(day_name) or []) if str(x).strip()]
+            last_order = ", ".join(los) or None
+            rows.append((store_id, dow, open_t, close_t, last_order))
 
     if rows:
-        def _t(s: str) -> dt_time:
-            h, m = map(int, s.split(":"))
-            return dt_time(h % 24, m)
-
-        time_rows = [(sid, dow, _t(ot), _t(ct)) for sid, dow, ot, ct in rows]
         await conn.executemany(
-            "INSERT INTO store_hours (store_id, day_of_week, open_time, close_time) "
-            "VALUES ($1, $2, $3, $4) ON CONFLICT DO NOTHING",
-            time_rows,
+            "INSERT INTO store_hours (store_id, day_of_week, open_time, close_time, last_order) "
+            "VALUES ($1, $2, $3, $4, $5) "
+            "ON CONFLICT (store_id, day_of_week) DO UPDATE SET "
+            "open_time = EXCLUDED.open_time, close_time = EXCLUDED.close_time, "
+            "last_order = EXCLUDED.last_order",
+            rows,
         )
 
     return schedule.get("holiday_note") or None

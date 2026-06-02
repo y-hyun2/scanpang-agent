@@ -192,6 +192,13 @@ def run_pipeline(lat=CENTER_LAT, lng=CENTER_LNG, radius_m=RADIUS_M):
     conn   = _connect(db_url)
     cursor = conn.cursor()
 
+    # 수기로 제외(삭제)한 건물은 다시 적재하지 않는다.
+    # building 테이블의 기존 행은 ON CONFLICT DO NOTHING이 보호하지만, 하드 삭제분은
+    # 충돌이 안 나 되살아나므로 building_exclusion에 기록된 key를 미리 걸러낸다.
+    cursor.execute("SELECT building_key FROM building_exclusion")
+    excluded_keys = {row[0] for row in cursor.fetchall()}
+    print(f"  제외 목록(building_exclusion): {len(excluded_keys)}개 — 적재 시 스킵")
+
     insert_query = """
         INSERT INTO building (
             building_key,
@@ -216,6 +223,7 @@ def run_pipeline(lat=CENTER_LAT, lng=CENTER_LNG, radius_m=RADIUS_M):
     success_count    = 0
     skipped_no_key   = 0
     skipped_no_geom  = 0
+    skipped_excluded = 0
 
     for feature in features:
         props    = feature.get("properties", {})
@@ -232,6 +240,10 @@ def run_pipeline(lat=CENTER_LAT, lng=CENTER_LNG, radius_m=RADIUS_M):
         building_key = bd_mgt_sn or ufid
         if not building_key:
             skipped_no_key += 1
+            continue
+
+        if building_key in excluded_keys:
+            skipped_excluded += 1
             continue
 
         poly = shape(geometry)
@@ -300,6 +312,8 @@ def run_pipeline(lat=CENTER_LAT, lng=CENTER_LNG, radius_m=RADIUS_M):
     conn.close()
 
     print(f"\n작업 완료. 총 {success_count}개 적재 성공.")
+    if skipped_excluded:
+        print(f"  - building_exclusion에 등록되어 스킵: {skipped_excluded}개")
     if skipped_no_key:
         print(f"  - bd_mgt_sn·ufid 둘 다 없어 스킵: {skipped_no_key}개")
     if skipped_no_geom:
