@@ -9,6 +9,20 @@ from schemas.navigation import NavRequest, RouteRequest
 
 load_dotenv()
 
+
+def _haversine_m(lat1, lng1, lat2, lng2):
+    """두 좌표 간 거리(m). 계산 불가 시 None."""
+    from math import radians, sin, cos, atan2, sqrt
+    try:
+        R = 6371000
+        dlat = radians(float(lat2) - float(lat1))
+        dlng = radians(float(lng2) - float(lng1))
+        a = sin(dlat/2)**2 + cos(radians(float(lat1))) * cos(radians(float(lat2))) * sin(dlng/2)**2
+        return R * 2 * atan2(sqrt(a), sqrt(1-a))
+    except Exception:
+        return None
+
+
 # ── Step 0: 의도 파악 + 키워드 추출 ───────────────────────────────────────────
 INTENT_PROMPT = """Extract navigation intent from the user's message. Return valid JSON only, no explanation.
 
@@ -38,6 +52,10 @@ SELECT_POI_PROMPT = """The user is looking for: "{keyword}"
 Current location: lat={lat}, lng={lng}
 
 Choose the single best matching POI from the list below.
+Selection rule:
+- Prefer the POI whose name matches the keyword most exactly (the main place itself, not a parking lot/annex/station).
+- When several POIs match the name similarly, choose the CLOSEST one (smallest distance).
+Each line is "index. name | address | distance".
 Return only the index number (0-based integer), nothing else.
 
 POI list:
@@ -152,9 +170,11 @@ async def run_route_search(req: NavRequest, user_id: str = "", language_override
 
     if intent_type == "specific_place" and len(pois) > 1:
         # LLM이 가장 적합한 POI 선택
-        poi_list_str = "\n".join(
-            f"{i}. {p['name']} | {p['address']}" for i, p in enumerate(pois)
-        )
+        def _poi_line(i, p):
+            d = _haversine_m(req.lat, req.lng, p.get("pnsLat"), p.get("pnsLon"))
+            dist = f" | {int(d)}m" if d is not None else ""
+            return f"{i}. {p['name']} | {p['address']}{dist}"
+        poi_list_str = "\n".join(_poi_line(i, p) for i, p in enumerate(pois))
         select_content = await call_llm(
             user_id=user_id,
             purpose="nav_poi_select",
