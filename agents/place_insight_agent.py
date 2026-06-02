@@ -1,3 +1,5 @@
+import json
+import re
 from datetime import datetime, timezone
 
 from dotenv import load_dotenv
@@ -6,6 +8,7 @@ from core.db import get_pool
 from schemas.place import PlaceRequest
 from tools.building_raycast import fetch_building_by_key
 from tools.llm_client import call_llm
+from tools.tour_api_client import fetch_tour_info
 
 load_dotenv()
 
@@ -304,6 +307,87 @@ _PLACE_CHAT_SYSTEM = (
 )
 
 
+# 입장료·요금·운영시간 등 "사실 수치"를 묻는 질의 감지 → 출처 기반 grounding 트리거
+_FACT_RE = re.compile(
+    r"입장료|관람료|이용료|요금|가격|얼마|운영\s*시간|영업\s*시간|개장|폐장|몇\s*시|휴무|"
+    r"fee|price|admission|cost|ticket|hour|opening|close",
+    re.I,
+)
+
+
+async def _extract_landmark_name(message: str, model: str) -> str:
+    """사실 질의에서 장소/랜드마크 고유명사 1개만 추출 (TourAPI 검색용 클린 키워드)."""
+    try:
+        content = await call_llm(
+            user_id="", purpose="place_name_extract", model=model, record=False,
+            response_format={"type": "json_object"}, temperature=0, max_tokens=40,
+            messages=[
+                {"role": "system", "content":
+                 '사용자 문장에서 장소/랜드마크 고유명사 1개만 추출. '
+                 '{"place_name": "<이름 또는 빈문자열>"} JSON으로만 답하라.'},
+                {"role": "user", "content": message},
+            ],
+        )
+        return (json.loads(content or "{}").get("place_name") or "").strip()
+    except Exception:
+        return ""
+
+
+async def _ground_place_facts(name: str) -> tuple[str, dict]:
+    """TourAPI 우선, 없으면 store_details 에서 요금/시간/공식링크 확보.
+
+    Returns: (LLM 주입용 검증데이터 블록, raw 소스 dict). 못 찾으면 ("", {}).
+    """
+    facts: list[str] = []
+    src: dict = {}
+
+    # 1) TourAPI (관광 랜드마크 1순위 출처)
+    try:
+        info = await fetch_tour_info(name)
+    except Exception as e:
+        print(f"[place_chat] TourAPI 실패: {e}")
+        info = {}
+    if info:
+        if info.get("admission_fee"): facts.append(f"입장료/요금: {info['admission_fee']}")
+        if info.get("open_hours"):    facts.append(f"운영시간: {info['open_hours']}")
+        if info.get("closed_days"):   facts.append(f"휴무: {info['closed_days']}")
+        if facts:
+            src = {"source": "TourAPI", "source_url": info.get("homepage") or "",
+                   "admission_fee": info.get("admission_fee", ""),
+                   "open_hours": info.get("open_hours", "")}
+
+    # 2) store_details fallback
+    if not facts:
+        try:
+            pool = await get_pool()
+            async with pool.acquire() as conn:
+                row = await conn.fetchrow(
+                    "SELECT details, homepage, place_url, open_hours "
+                    "FROM store_details WHERE store_name ILIKE $1 LIMIT 1",
+                    f"%{name}%",
+                )
+            if row:
+                details = row["details"] or {}
+                if isinstance(details, str):
+                    details = json.loads(details or "{}")
+                fee = (details or {}).get("admission_fee", "")
+                hrs = row["open_hours"] or ""
+                if fee: facts.append(f"입장료/요금: {fee}")
+                if hrs: facts.append(f"운영시간: {hrs}")
+                if facts:
+                    src = {"source": "store_details",
+                           "source_url": row["homepage"] or row["place_url"] or "",
+                           "admission_fee": fee, "open_hours": hrs}
+        except Exception as e:
+            print(f"[place_chat] store_details 조회 실패: {e}")
+
+    if not facts:
+        return "", {}
+    block = ("검증된 데이터 (아래 수치만 사용하라 — 요금/시간 등은 절대 임의로 만들지 말 것):\n"
+             + "\n".join(facts) + "\n\n")
+    return block, src
+
+
 async def run_place_chat_agent(
     message: str,
     lat: float,
@@ -320,8 +404,17 @@ async def run_place_chat_agent(
     lang_map = {"ko": "Korean", "en": "English", "ar": "Arabic", "ja": "Japanese", "zh": "Chinese"}
     response_lang_label = lang_map.get(language, language)
 
+    # 사실 수치(요금/시간) 질의면 출처(TourAPI→store_details)에서 검증 데이터 확보 → 주입
+    grounded_block, source = "", {}
+    if _FACT_RE.search(message or ""):
+        name = await _extract_landmark_name(message, model)
+        if name:
+            grounded_block, source = await _ground_place_facts(name)
+
     system_prompt = f"{_PLACE_CHAT_SYSTEM} Always respond in {response_lang_label}."
-    user_prompt   = f"User location: lat={lat}, lng={lng}\nUser question: {message}"
+    user_prompt   = (
+        f"{grounded_block}User location: lat={lat}, lng={lng}\nUser question: {message}"
+    )
 
     try:
         speech = await call_llm(
@@ -345,7 +438,7 @@ async def run_place_chat_agent(
         }
         speech = fallback.get(language, fallback["en"])
 
-    return {"speech": speech, "raw": {}}
+    return {"speech": speech, "raw": source}
 
 
 def _partial_response(name: str, ufid: str = "") -> dict:
