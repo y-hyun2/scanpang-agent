@@ -92,6 +92,11 @@ async def llm_generate_docent(context: str, language: str, user_id: str = "", mo
         "You are a friendly AR tour guide for foreign visitors in Seoul. "
         "Respond in 2-3 short sentences suitable for text-to-speech. "
         f"Always respond in {response_lang_label}. "
+        "Use the provided building data for specifics (floors, hours, halal info). "
+        "For well-known landmarks, you MAY add brief interesting background "
+        "(history, cultural significance) from your general knowledge to enrich the narration. "
+        "But do NOT invent specifics that are not provided — especially exact admission "
+        "fees, prices, or opening hours. If a specific number is not given, do not state one. "
         "If halal_info is provided, always mention it. "
         "Be warm, concise, and helpful for a solo traveler."
     )
