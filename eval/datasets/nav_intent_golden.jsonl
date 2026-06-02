@@ -1,0 +1,22 @@
+{"id": "nint_sp_01", "message": "명동성당 어떻게 가?", "expected_keyword": "명동대성당", "expected_intent": "specific_place", "expected_language": "ko"}
+{"id": "nint_sp_02", "message": "남대문 가는 길 알려줘", "expected_keyword": "숭례문", "expected_intent": "specific_place", "expected_language": "ko"}
+{"id": "nint_sp_03", "message": "동대문 어떻게 가?", "expected_keyword": "흥인지문", "expected_intent": "specific_place", "expected_language": "ko"}
+{"id": "nint_sp_04", "message": "63빌딩 가자", "expected_keyword": "63스퀘어", "expected_intent": "specific_place", "expected_language": "ko"}
+{"id": "nint_sp_05", "message": "경복궁 가는 법", "expected_keyword": "경복궁", "expected_intent": "specific_place", "expected_language": "ko"}
+{"id": "nint_sp_06", "message": "스타벅스 명동점 어떻게 가?", "expected_keyword": "스타벅스 명동점", "expected_intent": "specific_place", "expected_language": "ko"}
+{"id": "nint_sp_07", "message": "캄풍쿠 어떻게 가?", "expected_keyword": "캄풍쿠", "expected_intent": "specific_place", "expected_language": "ko"}
+{"id": "nint_sp_08", "message": "올리브영 가는 길", "expected_keyword": "올리브영", "expected_intent": "specific_place", "expected_language": "ko"}
+{"id": "nint_sp_09", "message": "롯데월드 가고 싶어", "expected_keyword": "롯데월드", "expected_intent": "specific_place", "expected_language": "ko"}
+{"id": "nint_sp_10", "message": "남산서울타워 어떻게 가?", "expected_keyword": "남산서울타워", "expected_intent": "specific_place", "expected_language": "ko"}
+{"id": "nint_sp_11", "message": "How to get to Myeongdong Cathedral?", "expected_keyword": "명동대성당", "expected_intent": "specific_place", "expected_language": "en"}
+{"id": "nint_sp_12", "message": "Take me to Gyeongbokgung", "expected_keyword": "경복궁", "expected_intent": "specific_place", "expected_language": "en"}
+{"id": "nint_sp_13", "message": "How do I get to Kampungku?", "expected_keyword": "Kampungku", "expected_intent": "specific_place", "expected_language": "en"}
+{"id": "nint_cat_01", "message": "주변 할랄 식당 알려줘", "expected_keyword": "할랄 식당", "expected_intent": "category_search", "expected_language": "ko"}
+{"id": "nint_cat_02", "message": "근처 편의점 어디야?", "expected_keyword": "편의점", "expected_intent": "category_search", "expected_language": "ko"}
+{"id": "nint_cat_03", "message": "가까운 카페 가자", "expected_keyword": "카페", "expected_intent": "category_search", "expected_language": "ko"}
+{"id": "nint_cat_04", "message": "주변 약국 찾아줘", "expected_keyword": "약국", "expected_intent": "category_search", "expected_language": "ko"}
+{"id": "nint_cat_05", "message": "여기서 제일 가까운 지하철역", "expected_keyword": "지하철역", "expected_intent": "category_search", "expected_language": "ko"}
+{"id": "nint_cat_06", "message": "근처 ATM 가는 길", "expected_keyword": "ATM", "expected_intent": "category_search", "expected_language": "ko"}
+{"id": "nint_cat_07", "message": "مطعم حلال قريب", "expected_keyword": "할랄 식당", "expected_intent": "category_search", "expected_language": "ar"}
+{"id": "nint_cat_08", "message": "Find a halal restaurant nearby", "expected_keyword": "할랄 식당", "expected_intent": "category_search", "expected_language": "en"}
+{"id": "nint_cat_09", "message": "근처 환전소 어디 있어?", "expected_keyword": "환전소", "expected_intent": "category_search", "expected_language": "ko"}
