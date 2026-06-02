@@ -248,7 +248,10 @@ async def _get_halal_speech(case: dict, model: str = "gpt-4o") -> tuple[str, str
         direction = data["direction"]
         context = f"Qibla direction: {direction:.1f}° (Northwest)\nLanguage: {language}"
 
-    speech = await _generate_speech(data, category, language, model=model)
+    speech = await _generate_speech(
+        data, category, language, model=model,
+        now=case.get("current_time_hint", "") if category == "prayer_time" else "",
+    )
     return context, speech
 
 

@@ -32,25 +32,44 @@ load_dotenv()
 
 async def _generate_speech(
     data: dict, category: str, language: str, user_id: str = "", model: str = "gpt-5.4-mini",
+    now: str = "",
 ) -> str:
-    """카테고리별 데이터를 기반으로 자연어 음성 생성."""
+    """카테고리별 데이터를 기반으로 자연어 음성 생성.
+
+    now: "HH:MM" 형식의 현재시각 override (평가/테스트용). 빈 값이면 실제 KST.
+    """
     lang_map = {"ko": "Korean", "en": "English", "ar": "Arabic", "ja": "Japanese", "zh": "Chinese"}
     lang_label = lang_map.get(language, "English")
 
     kst = timezone(timedelta(hours=9))
-    current_time = datetime.now(kst).strftime("%H:%M")
+    current_time = now or datetime.now(kst).strftime("%H:%M")
 
     if category == "prayer_time":
+        # 다음 예배는 코드로 계산한다 (LLM 시간 비교는 불안정).
+        def _to_min(t: str) -> int:
+            h, m = t.split(":"); return int(h) * 60 + int(m)
+        cur_min = _to_min(current_time)
+        order = [("Fajr", "fajr"), ("Dhuhr", "dhuhr"), ("Asr", "asr"),
+                 ("Maghrib", "maghrib"), ("Isha", "isha")]
+        valid = [(n, data.get(k, "")) for n, k in order if data.get(k) and ":" in str(data.get(k))]
+        upcoming = [(n, t) for n, t in valid if _to_min(t) > cur_min]
+        if upcoming:
+            next_name, next_time = upcoming[0]
+            remaining = upcoming[1:]
+        elif valid:                       # 오늘 예배 모두 지남 → 내일 Fajr
+            next_name, next_time = valid[0]
+            remaining = []
+        else:
+            next_name, next_time = "?", "?"
+            remaining = []
+        remaining_str = ", ".join(f"{n} {t}" for n, t in remaining) or "none remaining today"
         context = f"""Current time in Seoul (KST): {current_time}
-Prayer times today:
-- Fajr: {data.get('fajr', '?')}
-- Dhuhr: {data.get('dhuhr', '?')}
-- Asr: {data.get('asr', '?')}
-- Maghrib: {data.get('maghrib', '?')}
-- Isha: {data.get('isha', '?')}
+NEXT prayer: {next_name} at {next_time}
+Remaining prayers today after that: {remaining_str}
+All prayer times today: Fajr {data.get('fajr','?')}, Dhuhr {data.get('dhuhr','?')}, Asr {data.get('asr','?')}, Maghrib {data.get('maghrib','?')}, Isha {data.get('isha','?')}
 Hijri date: {data.get('hijri_date', '?')}
 
-Announce the NEXT upcoming prayer first, then briefly mention the remaining prayers."""
+State the NEXT prayer ({next_name} {next_time}) first, then briefly mention the remaining ones. Do NOT recompute which prayer is next — use the NEXT prayer given above."""
 
     elif category == "qibla":
         direction = data.get("direction", 0)
