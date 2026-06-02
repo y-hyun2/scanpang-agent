@@ -293,6 +293,16 @@ Output JSON only:
 """
 
 
+def _strip_md(s: str) -> str:
+    """방법 A: 실제 TTS 입력은 마크다운이 strip된 텍스트 → Judge도 strip 후 평가."""
+    s = re.sub(r"\*\*(.*?)\*\*", r"\1", s)
+    s = re.sub(r"\*(.*?)\*", r"\1", s)
+    s = re.sub(r"`(.*?)`", r"\1", s)
+    s = re.sub(r"(?m)^#+\s*", "", s)
+    s = re.sub(r"\[(.*?)\]\(.*?\)", r"\1", s)
+    return s.strip()
+
+
 async def _judge(context: str, speech: str, language: str, judge_model: str = "gpt-5.2") -> dict:
     user_content = f"[CONTEXT GIVEN TO SYSTEM]\n{context}\n\n[SYSTEM RESPONSE]\n{speech}\n\n[REQUESTED LANGUAGE] {language}"
     try:
@@ -413,7 +423,7 @@ async def run_eval(verbose: bool, model: str = "gpt-4o", judge_model: str = "gpt
             results.append({**case, "speech": "", "context": "", "scores": None, "format": {}})
             continue
 
-        scores = await _judge(context, speech, lang, judge_model)
+        scores = await _judge(context, _strip_md(speech), lang, judge_model)
         fmt    = _format_check(speech, lang)
 
         results.append({
