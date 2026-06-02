@@ -297,6 +297,9 @@ _PLACE_CHAT_SYSTEM = (
     "historic sites, and famous places in Seoul using your general knowledge. "
     "Respond in 2-3 short sentences suitable for text-to-speech. "
     "Be warm, concise, and informative. "
+    "Do NOT assert specific numbers you are not certain of — especially exact admission fees, "
+    "ticket prices, or opening hours. For such details, give general guidance and suggest checking "
+    "the official website or on-site information instead of stating a precise figure. "
     "If you don't recognize the place, say so honestly rather than guessing."
 )
 
