@@ -303,14 +303,24 @@ def _strip_md(s: str) -> str:
     return s.strip()
 
 
-async def _judge(context: str, speech: str, language: str, judge_model: str = "gpt-5.2") -> dict:
+# docent/place_chat 처럼 '일반지식 허용' 컴포넌트용 — groundedness를 Factual Accuracy로 대체.
+# (context-only가 아니라 "가짜 구체사실(요금/시간/숫자)만 감점", 정확한 일반지식은 OK)
+_JUDGE_SYSTEM_FACTUAL = _JUDGE_SYSTEM.replace(
+    "1. groundedness (1-5): Response stays within the given context data. No invented facts.\n   5=only uses given data, 1=multiple invented facts",
+    "1. groundedness (1-5): FACTUAL ACCURACY — penalize ONLY fabricated specific facts "
+    "(fake prices/fees/hours/numbers). Accurate general knowledge about well-known landmarks "
+    "is fine and must NOT be penalized.\n   5=no fabricated specifics, 1=multiple fabricated specifics",
+)
+
+
+async def _judge(context: str, speech: str, language: str, judge_model: str = "gpt-5.2", factual: bool = False) -> dict:
     user_content = f"[CONTEXT GIVEN TO SYSTEM]\n{context}\n\n[SYSTEM RESPONSE]\n{speech}\n\n[REQUESTED LANGUAGE] {language}"
     try:
         content = await call_llm(
             user_id="",
             purpose="speech_judge",
             messages=[
-                {"role": "system", "content": _JUDGE_SYSTEM},
+                {"role": "system", "content": _JUDGE_SYSTEM_FACTUAL if factual else _JUDGE_SYSTEM},
                 {"role": "user",   "content": user_content},
             ],
             model=judge_model,
@@ -423,7 +433,7 @@ async def run_eval(verbose: bool, model: str = "gpt-4o", judge_model: str = "gpt
             results.append({**case, "speech": "", "context": "", "scores": None, "format": {}})
             continue
 
-        scores = await _judge(context, _strip_md(speech), lang, judge_model)
+        scores = await _judge(context, _strip_md(speech), lang, judge_model, factual=(comp == "place_chat"))
         fmt    = _format_check(speech, lang)
 
         results.append({

@@ -95,6 +95,8 @@ async def llm_generate_docent(context: str, language: str, user_id: str = "", mo
         "Use the provided building data for specifics (floors, hours, halal info). "
         "For well-known landmarks, you MAY add brief interesting background "
         "(history, cultural significance) from your general knowledge to enrich the narration. "
+        "If the place is NOT a well-known landmark, do not add background knowledge — "
+        "describe only from the provided data. "
         "But do NOT invent specifics that are not provided — especially exact admission "
         "fees, prices, or opening hours. If a specific number is not given, do not state one. "
         "If halal_info is provided, always mention it. "

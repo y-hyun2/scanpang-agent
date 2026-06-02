@@ -117,20 +117,21 @@ async def _navspeech(case, model):
     return ctx, speech
 
 
-GROUPS = [("docent", DOCENT_CASES, _docent),
-          ("nav_guide", NAVGUIDE_CASES, _navguide),
-          ("nav_speech", NAVSPEECH_CASES, _navspeech)]
+# (name, cases, generator, factual) — factual=True면 groundedness 대신 Factual Accuracy로 채점
+GROUPS = [("docent", DOCENT_CASES, _docent, True),
+          ("nav_guide", NAVGUIDE_CASES, _navguide, False),
+          ("nav_speech", NAVSPEECH_CASES, _navspeech, False)]
 
 
 async def run(model: str, judge_model: str) -> None:
     print(f"후보 모델: {model}  |  Judge: {judge_model}\n")
     overall = {}
-    for name, cases, gen in GROUPS:
+    for name, cases, gen, factual in GROUPS:
         scores = []
         for c in cases:
             try:
                 ctx, speech = await gen(c, model)
-                sc = await _judge(ctx, _strip_md(speech), c["language"], judge_model)
+                sc = await _judge(ctx, _strip_md(speech), c["language"], judge_model, factual=factual)
                 vals = [sc.get(k, 0) for k in
                         ["groundedness", "completeness", "language_match", "tts_naturalness", "conciseness"]]
                 ov = sum(vals) / len(vals)
