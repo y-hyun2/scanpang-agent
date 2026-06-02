@@ -84,7 +84,7 @@ async def _fetch_place_info(building_key: str) -> dict:
 
 # ── LLM: docent 해설 생성 ──────────────────────────────────────────────────────
 
-async def llm_generate_docent(context: str, language: str, user_id: str = "") -> str:
+async def llm_generate_docent(context: str, language: str, user_id: str = "", model: str = "gpt-5.4-mini") -> str:
     lang_map = {"ko": "Korean", "en": "English", "ar": "Arabic", "ja": "Japanese", "zh": "Chinese"}
     response_lang_label = lang_map.get(language, language)
 
@@ -99,7 +99,7 @@ async def llm_generate_docent(context: str, language: str, user_id: str = "") ->
     return await call_llm(
         user_id=user_id,
         purpose="docent",
-        model="gpt-5.4-mini",
+        model=model,
         messages=[
             {"role": "system", "content": system_prompt},
             {"role": "user",   "content": context},

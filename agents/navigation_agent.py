@@ -301,7 +301,7 @@ async def run_route_agent(req: RouteRequest, user_id: str = "") -> dict:
                 total_time_min=route["total_time_min"],
             )},
         ],
-        model="gpt-5.4-mini",
+        model="qwen/qwen3-235b-a22b-2507",  # 자유생성 평가: 4.13>5.4-mini 3.53 + 10~45배 저렴(가장 비싼 호출)
         temperature=0,
     )
     try:
@@ -380,6 +380,7 @@ async def run_nav_guide_agent(
     nav_context: dict | None,
     language: str = "ko",
     user_id: str = "",
+    model: str = "gpt-5.4-mini",
 ) -> dict:
     """길안내 중 어시스턴트 — nav_context + 사용자 발화 → 짧은 응답.
     nav_context 없으면 안내 메시지 1줄 반환 (LLM 호출 X)."""
@@ -425,7 +426,7 @@ async def run_nav_guide_agent(
                 {"role": "system", "content": system},
                 {"role": "user", "content": message},
             ],
-            model="gpt-5.4-mini",
+            model=model,
             temperature=0,
         )
         return {"speech": speech, "raw": ctx}
