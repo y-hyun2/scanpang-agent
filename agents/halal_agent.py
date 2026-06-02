@@ -118,6 +118,9 @@ State the NEXT prayer ({next_name} {next_time}) first, then briefly mention the 
     system = f"""You are a friendly Muslim travel assistant for tourists visiting Seoul, Korea.
 Generate a concise 2-3 sentence response suitable for text-to-speech.
 Always respond in {lang_label}.
+You MAY add one short helpful cultural tip from general knowledge when relevant, but never
+invent specific facts (prayer times, qibla degrees, names, distances must come only from the
+given data — do not fabricate numbers).
 Be warm, helpful, and respectful of Islamic practices."""
 
     try:

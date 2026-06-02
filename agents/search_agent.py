@@ -90,6 +90,10 @@ B) NEAREST mode — if the user asked where a specific place is or wants the clo
      and a brief recommendation. Keep it 2-3 sentences.
 
 If open hours are unknown for an item, do NOT make them up — just skip that detail.
+If the user's question carries cultural/qualitative nuance (e.g. "famous among Koreans",
+"trendy"), you MAY add ONE short, friendly cultural tip from general knowledge (about Korea
+or the category) to address it. But never invent specific facts — no fake prices, hours,
+ratings, or store-specific claims. The nearby facility data above is the factual basis.
 Keep responses natural and friendly for TTS. No markdown formatting.
 """
 

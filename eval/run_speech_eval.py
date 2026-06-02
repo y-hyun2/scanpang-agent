@@ -433,7 +433,8 @@ async def run_eval(verbose: bool, model: str = "gpt-4o", judge_model: str = "gpt
             results.append({**case, "speech": "", "context": "", "scores": None, "format": {}})
             continue
 
-        scores = await _judge(context, _strip_md(speech), lang, judge_model, factual=(comp == "place_chat"))
+        scores = await _judge(context, _strip_md(speech), lang, judge_model,
+                              factual=(comp in ("place_chat", "search_agent", "halal_agent")))
         fmt    = _format_check(speech, lang)
 
         results.append({
