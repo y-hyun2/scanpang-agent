@@ -443,6 +443,19 @@ async def user_preferences_get(user_id: str):
     )
 
 
+@app.delete("/user/{user_id}/preferences", status_code=204)
+async def user_preferences_delete(user_id: str):
+    """회원탈퇴 시 user_preferences 행 삭제."""
+    print(f"[withdrawal] DELETE user_id={user_id}")
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        result = await conn.execute(
+            "DELETE FROM user_preferences WHERE user_id = $1::uuid",
+            user_id,
+        )
+    print(f"[withdrawal] DELETE result={result}")
+
+
 @app.put("/user/preferences/{user_id}/saved-places")
 async def user_saved_places_update(user_id: str, req: SavedPlacesUpdateRequest):
     """SavedPlacesStore 변경 시 호출. 전체 list 교체 (delta sync 가 아닌 full replace)."""
