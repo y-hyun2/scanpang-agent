@@ -23,6 +23,57 @@ def _haversine_m(lat1, lng1, lat2, lng2):
         return None
 
 
+# 목적지가 아닌 부속시설(주차장/사제관 등) — '가장 가까운 곳'에서 제외
+_NON_DEST_RE = re.compile(r"주차장|주차타워|주차|사제관|관리사무소|관리동|발렛")
+
+
+def select_best_poi(pois: list, user_lat, user_lng, keyword: str = "") -> int:
+    """후보 POI 중 최적 1개의 index를 코드로 선택 (LLM 불필요).
+
+    규칙: ① 부속시설(주차장 등) 제외 → ② 키워드와 정확 이름매칭 우선 →
+          ③ 그 중 실제 거리 최근접. 각 후보는 distance_m 또는 pnsLat/pnsLon 보유.
+    """
+    if not pois:
+        return 0
+
+    def _norm(s: str) -> str:
+        return "".join((s or "").split()).lower()
+
+    def _dist(i: int) -> float:
+        p = pois[i]
+        if p.get("distance_m") is not None:
+            try:
+                return float(p["distance_m"])
+            except (TypeError, ValueError):
+                pass
+        d = _haversine_m(user_lat, user_lng, p.get("pnsLat"), p.get("pnsLon"))
+        return d if d is not None else float("inf")
+
+    kw = _norm(keyword)
+    # ① 부속시설 제외 (전부 부속이면 원본 유지)
+    pool = [i for i, p in enumerate(pois) if not _NON_DEST_RE.search(p.get("name", ""))]
+    if not pool:
+        pool = list(range(len(pois)))
+    # ② 키워드 관련성: 정확 이름매칭 > 이름에 키워드 포함(브랜드/지점) > 부분유사(별칭)
+    exact = [i for i in pool if _norm(pois[i].get("name", "")) == kw]
+    contains = [i for i in pool if kw and (kw in _norm(pois[i].get("name", "")) or _norm(pois[i].get("name", "")) in kw)]
+    if exact:
+        cand = exact
+    elif contains:
+        cand = contains
+    elif kw:
+        # 별칭/부분유사: 키워드와 공유 글자 수가 최대인 후보 (예: 남산서울타워↔N서울타워)
+        def _overlap(i: int) -> int:
+            nm = _norm(pois[i].get("name", ""))
+            return sum(1 for ch in set(kw) if ch in nm)
+        best = max((_overlap(i) for i in pool), default=0)
+        cand = [i for i in pool if _overlap(i) == best] if best >= 2 else pool
+    else:
+        cand = pool
+    # ③ 그 중 최근접
+    return min(cand, key=_dist)
+
+
 # ── Step 0: 의도 파악 + 키워드 추출 ───────────────────────────────────────────
 INTENT_PROMPT = """Extract navigation intent from the user's message. Return valid JSON only, no explanation.
 
@@ -47,20 +98,7 @@ Examples:
 - "مطعم حلال قريب" → {"keyword": "할랄 식당", "intent": "category_search", "language": "ar"}
 """
 
-# ── Step 1 (specific_place): LLM이 추천 POI 1개 선택 ─────────────────────────
-SELECT_POI_PROMPT = """The user is looking for: "{keyword}"
-Current location: lat={lat}, lng={lng}
-
-Choose the single best matching POI from the list below.
-Selection rule:
-- Prefer the POI whose name matches the keyword most exactly (the main place itself, not a parking lot/annex/station).
-- When several POIs match the name similarly, choose the CLOSEST one (smallest distance).
-Each line is "index. name | address | distance".
-Return only the index number (0-based integer), nothing else.
-
-POI list:
-{poi_list}
-"""
+# ── Step 1 (specific_place): 후보 POI 1개 선택은 select_best_poi()로 코드 처리 ──
 
 # ── Step 2: 경로 턴포인트별 TTS 안내 문구 생성 ────────────────────────────────
 SPEECH_PROMPT = """Generate short TTS navigation instructions for each turn point.
@@ -169,28 +207,8 @@ async def run_route_search(req: NavRequest, user_id: str = "", language_override
     recommended_idx = 0
 
     if intent_type == "specific_place" and len(pois) > 1:
-        # LLM이 가장 적합한 POI 선택
-        def _poi_line(i, p):
-            d = _haversine_m(req.lat, req.lng, p.get("pnsLat"), p.get("pnsLon"))
-            dist = f" | {int(d)}m" if d is not None else ""
-            return f"{i}. {p['name']} | {p['address']}{dist}"
-        poi_list_str = "\n".join(_poi_line(i, p) for i, p in enumerate(pois))
-        select_content = await call_llm(
-            user_id=user_id,
-            purpose="nav_poi_select",
-            messages=[
-                {"role": "user", "content": SELECT_POI_PROMPT.format(
-                    keyword=keyword, lat=req.lat, lng=req.lng, poi_list=poi_list_str,
-                )},
-            ],
-            model="gpt-5.4-mini",
-            temperature=0,
-        )
-        try:
-            recommended_idx = int(select_content)
-            recommended_idx = max(0, min(recommended_idx, len(pois) - 1))
-        except ValueError:
-            recommended_idx = 0
+        # 거리+이름매칭+부속(주차장 등)필터로 코드 선택 (LLM 불필요 → 정확·무료·빠름)
+        recommended_idx = select_best_poi(pois, req.lat, req.lng, keyword)
     # category_search: 거리순 첫 번째(가장 가까운 곳)를 recommended로 표시
 
     candidates = [

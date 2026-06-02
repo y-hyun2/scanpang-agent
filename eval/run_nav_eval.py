@@ -25,7 +25,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 from tools.llm_client import call_llm
-from agents.navigation_agent import INTENT_PROMPT, SELECT_POI_PROMPT
+from agents.navigation_agent import INTENT_PROMPT, select_best_poi
 
 
 def _norm(s: str) -> str:
@@ -91,30 +91,14 @@ async def eval_intent(path: str, model: str, verbose: bool) -> None:
 
 # ── #7 POI 선택 ───────────────────────────────────────────────────────────────
 
-async def eval_poi(path: str, model: str, verbose: bool) -> None:
+def eval_poi(path: str, verbose: bool) -> None:
+    """POI 선택은 코드 랭킹(select_best_poi) — 모델 무관, 결정적."""
     cases = [json.loads(l) for l in open(path, encoding="utf-8") if l.strip()]
     ok = 0
     wrong = []
 
     for c in cases:
-        poi_list = "\n".join(
-            f"{i}. {p['name']} | {p['address']}"
-            + (f" | {p['distance_m']}m" if p.get("distance_m") is not None else "")
-            for i, p in enumerate(c["candidates"])
-        )
-        try:
-            content = await call_llm(
-                user_id="", purpose="nav_poi_select", model=model, record=False,
-                temperature=0,
-                messages=[{"role": "user", "content": SELECT_POI_PROMPT.format(
-                    keyword=c["keyword"], lat=c["lat"], lng=c["lng"], poi_list=poi_list)}],
-            )
-            m = re.search(r"\d+", content)
-            pred = int(m.group()) if m else -1
-        except Exception as e:
-            pred = -1
-            if verbose:
-                print(f"  ERR [{c['id']}]: {e}")
+        pred = select_best_poi(c["candidates"], c["lat"], c["lng"], c["keyword"])
         exp = c["expected_index"]
         if pred == exp:
             ok += 1
@@ -122,7 +106,7 @@ async def eval_poi(path: str, model: str, verbose: bool) -> None:
             wrong.append((c["id"], c["keyword"], pred, exp, c.get("note", "")))
 
     n = len(cases)
-    print(f"\n=== #7 POI 선택 (모델: {model}, n={n}) ===")
+    print(f"\n=== #7 POI 선택 (코드 랭킹, n={n}) ===")
     print(f"  Accuracy (top-1): {ok/n*100:.1f}%  ({ok}/{n})")
     if verbose and wrong:
         print(f"\n  [틀린/불일치 케이스 {len(wrong)}]")
@@ -141,7 +125,7 @@ def main() -> None:
 
     async def run():
         await eval_intent(args.intent_dataset, args.model, args.verbose)
-        await eval_poi(args.poi_dataset, args.model, args.verbose)
+        eval_poi(args.poi_dataset, args.verbose)
 
     asyncio.run(run())
 
