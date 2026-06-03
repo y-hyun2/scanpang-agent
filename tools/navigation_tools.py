@@ -198,10 +198,15 @@ async def get_pedestrian_route(
     body["endX"] = str(end_lng)
     body["endY"] = str(end_lat)
 
-    headers = {"appKey": TMAP_KEY, "Content-Type": "application/json"}
-    async with httpx.AsyncClient() as client:
+    # appKey 는 반드시 쿼리파라미터로 전달한다. TMAP 게이트웨이가 보행자 경로
+    # 엔드포인트에서 appKey 헤더를 더 이상 인정하지 않아(403 INVALID_API_KEY),
+    # POI 검색과 동일하게 query param 으로 보내야 통과한다.
+    headers = {"Content-Type": "application/json"}
+    params = {"version": 1, "appKey": TMAP_KEY}
+    async with httpx.AsyncClient(timeout=8.0) as client:
         resp = await client.post(
             "https://apis.openapi.sk.com/tmap/routes/pedestrian",
+            params=params,
             json=body,
             headers=headers,
         )
