@@ -187,16 +187,15 @@ async def get_store_detail(
     await _progress(50, "Kakao 매장 정보 조회 중...")
     # ── ③ Kakao Local 1차 ────────────────────────────────────────────────────
     kakao = await check_kakao_open_status(store_name, lat, lng) or {}
-    # 표시용 category: floor_info 우선("분식 > 종합분식" → "종합분식"), 없으면 Kakao.
+    # 표시용 category: 카카오 우선, 카카오에 없으면 floor_info leaf("분식 > 종합분식" → "종합분식")
     floor_cat_disp = floor_category.split(">")[-1].strip() if floor_category else ""
-    category_name = floor_cat_disp or kakao.get("category", "") or ""
+    category_name = kakao.get("category", "") or floor_cat_disp or ""
     category_full = kakao.get("category_full", "") or category_name
-    # floor_info에 category가 있으면 분류 1순위로 사용한다.
-    # Kakao 키워드(dapi) 검색은 영차떡볶이처럼 인덱스에 없는 매장을 놓쳐
-    # category_full이 비고 'other'로 떨어지므로, 출처가 확실한 floor_info를 우선.
-    category_key = classify_category(floor_category or category_full, store_name)
-    if category_key == "other" and floor_category and category_full:
-        category_key = classify_category(category_full, store_name)
+    # 분류도 카카오 우선 → 카카오가 비거나 'other'면 floor_info 로 폴백.
+    # (카카오 dapi 가 영차떡볶이처럼 인덱스에 없는 매장을 놓치는 경우만 floor_info 보강)
+    category_key = classify_category(category_full, store_name)
+    if category_key == "other" and floor_category:
+        category_key = classify_category(floor_category, store_name)
     print(f"[store_tools] {store_name!r} → category_key={category_key!r}")
 
     await _progress(70, "상세 데이터 수집 중...")
