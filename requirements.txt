@@ -1,11 +1,13 @@
 fastapi
 uvicorn[standard]
 openai
+anthropic
+google-genai
 python-dotenv
 httpx
 requests
-langchain-openai
 langgraph>=0.2.0
+typing_extensions
 pydantic
 shapely
 redis>=5.0.0
@@ -16,5 +18,5 @@ playwright
 h3>=4.1
 cachetools>=5.5
 PyJWT[crypto]>=2.8.0
-aiofiles
 playwright-stealth
+pytest
