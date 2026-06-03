@@ -70,7 +70,7 @@ async def get_buildings_chunk(
             bd_mgt_sn,
             COALESCE(NULLIF(height, 0), estimated_height) AS render_height,
             h3_index_10,
-            ST_AsGeoJSON(geom) AS geom_json,
+            ST_AsGeoJSON(ST_Multi(geom)) AS geom_json,
             ST_Y(ST_Centroid(geom)) AS center_lat,
             ST_X(ST_Centroid(geom)) AS center_lng
         FROM building
