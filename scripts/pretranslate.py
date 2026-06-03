@@ -3,7 +3,7 @@ scripts/pretranslate.py
 모든 테이블의 영어 번역을 미리 생성해 translations JSONB에 저장한다.
 
 대상 테이블:
-  store_details, place_info, vegan_restaurants, accommodation_places,
+  storedetails, placeinfo, vegan_restaurants, accommodation_places,
   tourist_places, public_restrooms, halal_restaurants, prayer_rooms,
   subway_exits (station_name+line 기준 그룹핑)
 
