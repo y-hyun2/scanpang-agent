@@ -24,7 +24,7 @@ from tools.convenience_tools import (
     public_restroom_search,
     seoul_locker_search,
 )
-from tools.halal_tools import halal_restaurant_search
+from tools.halal_tools import halal_restaurant_by_name, halal_restaurant_search
 from tools.llm_client import call_llm
 from tools.open_hours_parser import is_open_now_combined
 
@@ -89,6 +89,13 @@ B) NEAREST mode — if the user asked where a specific place is or wants the clo
    → Focus on the closest one. Mention name, distance, open hours (if available),
      and a brief recommendation. Keep it 2-3 sentences.
 
+C) MENU mode — if the user asked what a place serves / its menu ("부산집 메뉴 뭐 있어?",
+   "what's on the menu", "뭐 팔아?"):
+   → Focus on the matching place (usually the first item). State its name and list the
+     menu items provided in the "Menu:" field naturally. Mention open hours if available.
+   → Only use menu items explicitly given in the data. If no menu is provided, say you
+     don't have its menu and give the name/distance instead — never invent dishes.
+
 If open hours are unknown for an item, do NOT make them up — just skip that detail.
 If the user's question carries cultural/qualitative nuance (e.g. "famous among Koreans",
 "trendy"), you MAY add ONE short, friendly cultural tip from general knowledge (about Korea
@@ -145,6 +152,7 @@ async def _generate_speech(
     # 만 강조. SPEECH_PROMPT 의 룰에 따라 LLM 이 사용자 질문 의도 분기.
     hours_label = "Open hours" if language == "en" else "영업시간"
     phone_label = "Phone" if language == "en" else "전화"
+    menu_label = "Menu" if language == "en" else "메뉴"
     items = []
     for i, f in enumerate(facilities[:5]):
         line = f"{i+1}. {f['name']} ({f['distance_m']:.0f}m)"
@@ -152,6 +160,9 @@ async def _generate_speech(
             line += f" — {hours_label}: {f['open_hours']}"
         if f.get("phone"):
             line += f" — {phone_label}: {f['phone']}"
+        menu = (f.get("extra") or {}).get("menu_examples") or []
+        if menu:
+            line += f" — {menu_label}: {', '.join(str(m) for m in menu[:8])}"
         items.append(line)
     facilities_block = "\n".join(items)
 
@@ -288,6 +299,32 @@ async def _localize_facility_names(facilities: list[dict], category: str, langua
         print(f"[search_agent] 시설명 번역 적용 실패 (무시): {e}")
 
 
+def _normalize_halal_rows(halal_rows: list[dict], language: str) -> list[dict]:
+    """halal_restaurants 결과(풍부한 필드) → Facility 표준 키로 normalize.
+    halal_type/cuisine_type/menu_examples 등은 extra 에 보존 — speech 와 카드에서 활용."""
+    return [
+        {
+            "name":       ((r.get("name_en") or r.get("name_ko")) if language == "en"
+                           else (r.get("name_ko") or r.get("name_en"))) or "할랄 식당",
+            "distance_m": r.get("distance_m", 0),
+            "lat":        r.get("lat"),
+            "lng":        r.get("lng"),
+            "address":    r.get("address", ""),
+            "phone":      r.get("phone", ""),
+            "open_hours": r.get("opening_hours", ""),
+            "extra": {
+                "halal_type":             r.get("halal_type", ""),
+                "muslim_cooks_available": r.get("muslim_cooks_available"),
+                "no_alcohol_sales":       r.get("no_alcohol_sales"),
+                "cuisine_type":           r.get("cuisine_type", []),
+                "menu_examples":          r.get("menu_examples", []),
+                "restaurant_id":          r.get("restaurant_id", ""),
+            },
+        }
+        for r in halal_rows
+    ]
+
+
 async def run_search_agent(req: ConvenienceRequest, user_id: str = "") -> ConvenienceResponse:
     # Step 1: category + 브랜드 키워드 결정
     # message 안에 특정 상호명(스타벅스/올리브영 등) 이 있으면 brand_keyword 에 담겨오고
@@ -319,7 +356,20 @@ async def run_search_agent(req: ConvenienceRequest, user_id: str = "") -> Conven
     # 단 restroom/locker/prayer_room/halal_restaurant 처럼 전용 데이터소스를 쓰는
     # 카테고리는 키워드 검색으로 대체할 수 없으니 그대로 전용 경로 유지.
     _KAKAO_ROUTABLE = set(CATEGORY_CONFIG.keys()) | {"exchange"}
-    if brand_keyword and category in _KAKAO_ROUTABLE:
+
+    # Step 3.0: 식당류 상호명 질의("부산집 메뉴 뭐 있어?")는 먼저 halal_restaurants 를
+    # 이름으로 조회한다. 우리 DB 에 있는 매장이면 Kakao 보다 풍부하고 메뉴(menu_examples)도
+    # 함께 잡힌다. 매칭 없으면 아래 일반 경로로 fall-through.
+    _HALAL_NAME_CATEGORIES = {"restaurant", "halal_restaurant", "cafe"}
+    halal_named = []
+    if brand_keyword and category in _HALAL_NAME_CATEGORIES:
+        halal_named = await halal_restaurant_by_name(brand_keyword, req.lat, req.lng)
+
+    if halal_named:
+        category = "halal_restaurant"
+        raw = _normalize_halal_rows(halal_named, language)
+        print(f"[search_agent] 할랄 상호명 검색: {brand_keyword!r} → {len(raw)}건")
+    elif brand_keyword and category in _KAKAO_ROUTABLE:
         raw = await kakao_keyword_search(brand_keyword, req.lat, req.lng, radius)
         print(f"[search_agent] 브랜드 키워드 검색: {brand_keyword!r} (category={category})")
     elif category in CATEGORY_CONFIG:
@@ -333,30 +383,8 @@ async def run_search_agent(req: ConvenienceRequest, user_id: str = "") -> Conven
     elif category == "prayer_room":
         raw = await prayer_room_search(req.lat, req.lng, radius)
     elif category == "halal_restaurant":
-        # halal_restaurant_search 는 풍부한 필드(halal_type, cuisine_type 등) 반환 —
-        # Facility 표준 키로 normalize 하고 나머진 extra 에 보존.
         halal_rows = await halal_restaurant_search(req.lat, req.lng, radius)
-        raw = [
-            {
-                "name":       ((r.get("name_en") or r.get("name_ko")) if language == "en"
-                               else (r.get("name_ko") or r.get("name_en"))) or "할랄 식당",
-                "distance_m": r.get("distance_m", 0),
-                "lat":        r.get("lat"),
-                "lng":        r.get("lng"),
-                "address":    r.get("address", ""),
-                "phone":      r.get("phone", ""),
-                "open_hours": r.get("opening_hours", ""),
-                "extra": {
-                    "halal_type":             r.get("halal_type", ""),
-                    "muslim_cooks_available": r.get("muslim_cooks_available"),
-                    "no_alcohol_sales":       r.get("no_alcohol_sales"),
-                    "cuisine_type":           r.get("cuisine_type", []),
-                    "menu_examples":          r.get("menu_examples", []),
-                    "restaurant_id":          r.get("restaurant_id", ""),
-                },
-            }
-            for r in halal_rows
-        ]
+        raw = _normalize_halal_rows(halal_rows, language)
     else:
         raw = []
 

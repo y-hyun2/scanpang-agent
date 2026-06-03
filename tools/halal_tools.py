@@ -163,6 +163,52 @@ async def halal_restaurant_search(
             float(lat), float(lng), type_filter,
         )
 
+    return _process_halal_rows(rows)
+
+
+# ── 할랄 식당 상호명 검색 (메뉴 질의용) ──────────────────────────────────────
+
+async def halal_restaurant_by_name(name: str, lat: float, lng: float) -> list:
+    """
+    상호명(부분 일치)으로 halal_restaurants 조회 — "부산집 메뉴 뭐 있어?" 같은
+    특정 매장 질의용. 거리 정렬과 동일한 필드(menu_examples 포함)를 반환해
+    위치 기반 검색 결과와 동일 형식으로 다룬다.
+
+    매칭: name_ko/name_en 부분 일치(ILIKE). 정확 일치를 먼저, 그다음 거리순.
+    lat/lng 는 거리 계산용(없으면 0).
+    """
+    from core.db import get_pool
+    kw = (name or "").strip()
+    if not kw:
+        return []
+
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        rows = await conn.fetch(
+            """
+            SELECT restaurant_id, name_ko, name_en, halal_type,
+                   muslim_cooks_available, no_alcohol_sales,
+                   cuisine_type::text AS cuisine_type,
+                   menu_examples::text AS menu_examples,
+                   short_description_ko, address, phone,
+                   opening_hours::text AS opening_hours,
+                   break_time::text AS break_time,
+                   last_order::text AS last_order,
+                   lat, lng,
+                   ST_Distance(geom, ST_SetSRID(ST_MakePoint($3, $2), 4326)::geography) AS dist
+            FROM halal_restaurants
+            WHERE name_ko ILIKE '%' || $1 || '%' OR name_en ILIKE '%' || $1 || '%'
+            ORDER BY (LOWER(name_ko) = LOWER($1) OR LOWER(name_en) = LOWER($1)) DESC, dist
+            LIMIT 10
+            """,
+            kw, float(lat), float(lng),
+        )
+
+    return _process_halal_rows(rows)
+
+
+def _process_halal_rows(rows: list) -> list:
+    """halal_restaurants 행 리스트 → 표준 dict 리스트 (거리/이름검색 공용)."""
     results = []
     kst = timezone(timedelta(hours=9))
     today_idx = datetime.now(kst).weekday()
