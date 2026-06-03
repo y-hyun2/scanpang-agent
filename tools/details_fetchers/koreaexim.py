@@ -19,6 +19,8 @@ from typing import Optional
 
 import httpx
 
+from tools.details_fetchers._reverse_geocode import reverse_geocode
+
 _API_URL    = "https://oapi.koreaexim.go.kr/site/program/financial/exchangeJSON"
 _CACHE_PATH = os.path.join(
     os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
@@ -119,6 +121,12 @@ async def fetch(
     if not raw:
         return {}
 
+    # 한국수출입은행 API는 환율만 주고 주소를 안 준다. kakao_scraper/naver_place 가
+    # 못 잡은 매장(잘 안 색인되는 ATM·키오스크 등)은 storedetails 에 addr 빈 채로 쌓이므로
+    # 좌표로 역지오코딩해 보강한다. dispatcher 의 addr 머지 규칙상 kakao/naver 가 더 긴
+    # 풀 주소를 잡으면 그쪽이 우선되고, 비어있을 때만 이 주소가 채워진다.
+    addr = await reverse_geocode(lat, lng)
+
     # 주요 통화 우선, 없으면 전체 반환
     by_ccy = {r.get("cur_unit", ""): r for r in raw if r.get("result") == 1}
     primary = [by_ccy[c] for c in _MAJOR_CURRENCIES if c in by_ccy]
@@ -138,7 +146,7 @@ async def fetch(
 
     return {
         "phone":       "",
-        "addr":        "",
+        "addr":        addr,
         "homepage":    "",
         "open_hours":  "",
         "image_urls":  [],
