@@ -219,6 +219,16 @@ def _process_halal_rows(rows: list) -> list:
             (m.get("name_en") or m.get("name_ko") or "") if isinstance(m, dict) else str(m)
             for m in menu
         ]
+        # 가격(price_krw) 포함 상세 메뉴 — speech 에서 "메뉴(가격)" 안내용.
+        # 기존 menu_examples(list[str], schemas.halal 호환)는 그대로 둔다.
+        menu_detailed = [
+            {
+                "name_ko":   m.get("name_ko") or "",
+                "name_en":   m.get("name_en") or "",
+                "price_krw": m.get("price_krw"),
+            }
+            for m in menu if isinstance(m, dict)
+        ]
         oh_raw = json.loads(r["opening_hours"]) if r["opening_hours"] else {}
         if isinstance(oh_raw, dict):
             oh_str = oh_raw.get(days[today_idx], "") or "정보 없음"
@@ -235,6 +245,7 @@ def _process_halal_rows(rows: list) -> list:
             "no_alcohol_sales":       r["no_alcohol_sales"],
             "cuisine_type":  json.loads(r["cuisine_type"]) if r["cuisine_type"] else [],
             "menu_examples": menu_names,
+            "menu_detailed": menu_detailed,
             "short_description_ko": r["short_description_ko"] or "",
             "distance_m":    round(r["dist"], 1),
             "lat":           float(r["lat"]) if r["lat"] is not None else None,

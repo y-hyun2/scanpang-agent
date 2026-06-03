@@ -91,10 +91,15 @@ B) NEAREST mode — if the user asked where a specific place is or wants the clo
 
 C) MENU mode — if the user asked what a place serves / its menu ("부산집 메뉴 뭐 있어?",
    "what's on the menu", "뭐 팔아?"):
-   → Focus on the matching place (usually the first item). State its name and list the
-     menu items provided in the "Menu:" field naturally. Mention open hours if available.
-   → Only use menu items explicitly given in the data. If no menu is provided, say you
-     don't have its menu and give the name/distance instead — never invent dishes.
+   → Focus on the matching place (usually the first item). Introduce its name, then walk
+     through the menu items from the "Menu:" field in a warm, conversational way — include
+     the price shown in parentheses for each dish when given. Weave in the "About:" blurb
+     if present, and feel free to add ONE short, friendly note from your general knowledge
+     about the dish or cuisine (e.g. what 충무김밥 is, what it tastes like) so it doesn't
+     read like a dry list. Mention open hours if available.
+   → Prices, dish names, and hours must come ONLY from the provided data — never invent or
+     alter a price/dish. Your general knowledge may add color/context, not new facts.
+     If no menu is provided, say you don't have its menu and give the name/distance instead.
 
 If open hours are unknown for an item, do NOT make them up — just skip that detail.
 If the user's question carries cultural/qualitative nuance (e.g. "famous among Koreans",
@@ -130,6 +135,26 @@ async def _extract_category_and_language(message: str, user_id: str = "", model:
     return category, language, brand_keyword
 
 
+def _format_menu(extra: dict, language: str) -> str:
+    """extra → "메뉴명(가격)" 콤마 문자열. 가격(menu_detailed) 있으면 가격 포함,
+    없으면 menu_examples(이름만) 사용. 최대 8개."""
+    detailed = extra.get("menu_detailed") or []
+    if detailed:
+        parts = []
+        for m in detailed[:8]:
+            nm = (m.get("name_en") or m.get("name_ko")) if language == "en" \
+                else (m.get("name_ko") or m.get("name_en"))
+            nm = nm or ""
+            price = m.get("price_krw")
+            if price:
+                nm += f" ({price:,} KRW)" if language == "en" else f"({price:,}원)"
+            if nm:
+                parts.append(nm)
+        return ", ".join(parts)
+    names = extra.get("menu_examples") or []
+    return ", ".join(str(m) for m in names[:8])
+
+
 async def _generate_speech(
     facilities: list[dict],
     category: str,
@@ -153,6 +178,7 @@ async def _generate_speech(
     hours_label = "Open hours" if language == "en" else "영업시간"
     phone_label = "Phone" if language == "en" else "전화"
     menu_label = "Menu" if language == "en" else "메뉴"
+    desc_label = "About" if language == "en" else "소개"
     items = []
     for i, f in enumerate(facilities[:5]):
         line = f"{i+1}. {f['name']} ({f['distance_m']:.0f}m)"
@@ -160,9 +186,12 @@ async def _generate_speech(
             line += f" — {hours_label}: {f['open_hours']}"
         if f.get("phone"):
             line += f" — {phone_label}: {f['phone']}"
-        menu = (f.get("extra") or {}).get("menu_examples") or []
-        if menu:
-            line += f" — {menu_label}: {', '.join(str(m) for m in menu[:8])}"
+        extra = f.get("extra") or {}
+        menu_str = _format_menu(extra, language)
+        if menu_str:
+            line += f" — {menu_label}: {menu_str}"
+        if extra.get("description"):
+            line += f" — {desc_label}: {extra['description']}"
         items.append(line)
     facilities_block = "\n".join(items)
 
@@ -183,7 +212,7 @@ async def _generate_speech(
             {"role": "system", "content": SPEECH_PROMPT},
             {"role": "user", "content": context},
         ],
-        max_tokens=220,
+        max_tokens=320,
     )
 
 
@@ -318,6 +347,8 @@ def _normalize_halal_rows(halal_rows: list[dict], language: str) -> list[dict]:
                 "no_alcohol_sales":       r.get("no_alcohol_sales"),
                 "cuisine_type":           r.get("cuisine_type", []),
                 "menu_examples":          r.get("menu_examples", []),
+                "menu_detailed":          r.get("menu_detailed", []),
+                "description":            r.get("short_description_ko", ""),
                 "restaurant_id":          r.get("restaurant_id", ""),
             },
         }
