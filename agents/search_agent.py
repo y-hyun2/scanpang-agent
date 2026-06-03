@@ -176,7 +176,7 @@ async def _generate_speech(
     )
 
 
-async def _enrich_facilities_with_db_hours(facilities: list[dict]) -> list[dict]:
+async def _enrich_facilities_with_db_hours(facilities: list[dict], lang: str = "ko") -> list[dict]:
     """
     store_details DB 에서 매장명/전화 매칭으로 캐시된 open_hours 를 보강.
 
@@ -198,7 +198,7 @@ async def _enrich_facilities_with_db_hours(facilities: list[dict]) -> list[dict]
     try:
         # storedetails ⨝ store_hours(정규화 영업시간) → 포맷 텍스트 캐시
         from tools.store_tools import hours_cache_by_names
-        cache = await hours_cache_by_names(names)
+        cache = await hours_cache_by_names(names, lang=lang)
     except Exception as e:
         print(f"[search_agent] store_hours 영업시간 캐시 조회 실패 (무시): {e}")
         return facilities
@@ -364,7 +364,7 @@ async def run_search_agent(req: ConvenienceRequest, user_id: str = "") -> Conven
     raw_sorted = sorted(raw, key=lambda x: x["distance_m"])[:5]
 
     # Step 4.5: Kakao Local API 는 open_hours 를 안 줘서 store_details DB 캐시에서 보강
-    raw_sorted = await _enrich_facilities_with_db_hours(raw_sorted)
+    raw_sorted = await _enrich_facilities_with_db_hours(raw_sorted, lang=language)
 
     # Step 4.55: 영어 등 비-한국어 모드면 캐시된 번역으로 시설명 교체 (speech 생성 전).
     # 안내 문구·Guide 버튼 모두 영문명으로 나오게. 캐시 없는 시설은 한국어 유지.

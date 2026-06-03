@@ -29,6 +29,7 @@ load_dotenv()
 
 from core.db import close_pool, get_pool
 from tools.open_hours_normalizer import normalize_and_save
+from tools.translation import _deepl_translate
 
 
 async def fetch_targets(skip_existing: bool, limit: int | None) -> list[dict]:
@@ -93,6 +94,28 @@ async def run(skip_existing: bool, limit: int | None) -> None:
             else:
                 empty += 1
                 print(f"[{i}/{total}] {store_id} △ 구간 없음 (raw={oh[:40]!r})")
+
+            # raw_closed_days → DeepL → translations["en"]["closed_days"]
+            if cd:
+                async with pool.acquire() as conn:
+                    already_val = await conn.fetchval(
+                        "SELECT translations->'en'->>'closed_days' FROM storedetails WHERE id = $1",
+                        store_id,
+                    )
+                if not already_val:
+                    cd_en = await _deepl_translate(cd)
+                    if cd_en:
+                        async with pool.acquire() as conn:
+                            await conn.execute(
+                                """UPDATE storedetails
+                                   SET translations = jsonb_set(
+                                       COALESCE(translations, '{}'),
+                                       '{en,closed_days}',
+                                       to_jsonb($1::text)
+                                   )
+                                   WHERE id = $2""",
+                                cd_en, store_id,
+                            )
         except Exception as e:
             error += 1
             print(f"[{i}/{total}] {store_id} ✗ {type(e).__name__}: {e}")
