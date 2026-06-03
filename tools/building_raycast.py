@@ -13,17 +13,22 @@ async def fetch_building_by_key(building_key: str) -> Optional[dict]:
     """
     building_key 로 building 테이블 lookup.
     building_key = COALESCE(bd_mgt_sn, ufid)
+    클라이언트가 ufid 를 넘길 수도 있으므로 OR ufid = $1 로 폴백.
     """
     if not building_key:
         return None
 
-    pool = await get_pool()
-    async with pool.acquire() as conn:
-        row = await conn.fetchrow(
-            "SELECT building_key, ufid, bld_nm, center_lat, center_lng, bd_mgt_sn "
-            "FROM building WHERE building_key = $1",
-            building_key,
-        )
+    try:
+        pool = await get_pool()
+        async with pool.acquire() as conn:
+            row = await conn.fetchrow(
+                "SELECT building_key, ufid, bld_nm, center_lat, center_lng, bd_mgt_sn "
+                "FROM building WHERE building_key = $1 OR ufid = $1",
+                building_key,
+            )
+    except Exception as e:
+        print(f"[BuildingLookup] DB 오류 (무시): {e}")
+        return None
 
     if not row:
         print(f"[BuildingLookup] 매칭 실패: building_key={building_key}")
