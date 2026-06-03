@@ -29,6 +29,7 @@ from schemas.user import (
 from tools.open_hours_parser import (
     is_open_now_combined as _is_open_now_combined,
     schedule_from_store_hours as _schedule_from_store_hours,
+    format_schedule_text as _format_schedule_text,
 )
 from tools.translation import translate_fields
 import asyncio
@@ -243,30 +244,19 @@ async def place_query_stream(req: PlaceRequest, user_id: str = Depends(get_curre
     progress 이벤트로 실제 처리 단계별 진행률을 push 하고, 완료 시 complete 이벤트로 결과 전달.
     """
     async def generate():
+        # HTTP 200을 즉시 확정 — 이후 예외는 모두 SSE error 이벤트로 전달됨
+        yield _sse_chunk("progress", {"progress": 1, "message": "시작 중..."})
         try:
-            import asyncio
-            queue: asyncio.Queue = asyncio.Queue()
+            events: list[tuple[int, str]] = []
 
             async def cb(pct: int, msg: str):
-                await queue.put((pct, msg))
+                events.append((pct, msg))
 
-            async def run():
-                try:
-                    result = await run_place_insight_agent(req, progress_cb=cb, user_id=user_id)
-                    return result
-                finally:
-                    await queue.put(None)  # 예외 발생 시에도 sentinel 보장
+            result = await run_place_insight_agent(req, progress_cb=cb, user_id=user_id)
 
-            task = asyncio.ensure_future(run())
-
-            while True:
-                item = await queue.get()
-                if item is None:
-                    break
-                pct, msg = item
+            for pct, msg in events:
                 yield _sse_chunk("progress", {"progress": pct, "message": msg})
 
-            result = await task
             yield _sse_chunk("complete", {"result": result})
         except Exception as e:
             yield _sse_chunk("error", str(e))
@@ -441,6 +431,19 @@ async def user_preferences_get(user_id: str):
         search_history=_parse_jsonb_list(row["search_history"]),
         recently_viewed_places=_parse_jsonb_list(row["recently_viewed_places"]),
     )
+
+
+@app.delete("/user/{user_id}/preferences", status_code=204)
+async def user_preferences_delete(user_id: str):
+    """회원탈퇴 시 user_preferences 행 삭제."""
+    print(f"[withdrawal] DELETE user_id={user_id}")
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        result = await conn.execute(
+            "DELETE FROM user_preferences WHERE user_id = $1::uuid",
+            user_id,
+        )
+    print(f"[withdrawal] DELETE result={result}")
 
 
 @app.put("/user/preferences/{user_id}/saved-places")
@@ -1794,22 +1797,43 @@ async def place_detail(req: PlaceDetailRequest):
     if not isinstance(raw_trans, dict):
         raw_trans = {}
     t = raw_trans.get(req.language, {})
-    # 번역 캐시 없으면 트리거 — 어느 경로로 진입해도 최초 1회만 실행.
+    # 번역 캐시가 없거나 필드가 빠진 경우 트리거 — _ensure_translations 내부에서 누락 필드만 번역.
     # no_translate 면 DeepL 호출 스킵: 캐시된 번역만 쓰고 없으면 원본 반환.
-    if req.language != "ko" and not t and not req.no_translate \
+    if req.language != "ko" and not req.no_translate \
             and row["lat"] is not None and row["lng"] is not None:
-        t = await _ensure_translations(
-            pool, "storedetails", "id", row["id"],
-            {
-                "name":        row["store_name"] or "",
-                "addr":        row["addr"] or "",
-                "open_hours":  row["open_hours"] or "",
-                "closed_days": row["closed_days"] or "",
-                "category":    row["category"] or "",
-            },
-            lat=float(row["lat"]), lng=float(row["lng"]),
-            language=req.language, existing=raw_trans,
+        _convs = details.get("conveniences") or [] if isinstance(details, dict) else []
+        _trans_fields = {
+            "name":         row["store_name"] or "",
+            "addr":         row["addr"] or "",
+            "open_hours":   row["open_hours"] or "",
+            "closed_days":  row["closed_days"] or "",
+            "category":     row["category"] or "",
+            "conveniences": ", ".join(str(c) for c in _convs if c),
+        }
+        if any(not t.get(k) and v and str(v).strip() for k, v in _trans_fields.items()):
+            t = await _ensure_translations(
+                pool, "storedetails", "id", row["id"],
+                _trans_fields,
+                lat=float(row["lat"]), lng=float(row["lng"]),
+                language=req.language, existing=raw_trans,
+            )
+    if t.get("conveniences") and isinstance(details, dict) and details.get("conveniences"):
+        convs_en = [c.strip() for c in t["conveniences"].split(",") if c.strip()]
+        details = {**details, "conveniences": convs_en}
+
+    # store_hours 기반 구조화 영업시간 — 언어에 맞는 요일명으로 포맷.
+    # DeepL 번역 시 "월~금"이 개별 요일로 풀리는 문제를 방지.
+    async with pool.acquire() as conn:
+        _sh_rows = await conn.fetch(
+            "SELECT day_of_week, open_time, close_time, last_order "
+            "FROM store_hours WHERE store_id = $1",
+            row["id"],
         )
+    _open_hours_display = (
+        _format_schedule_text(_sh_rows, lang=req.language) if _sh_rows
+        else t.get("open_hours") or row["open_hours"]
+    )
+
     return PlaceDetailResponse(
         id=row["id"],
         store_name=t.get("name") or row["store_name"],
@@ -1824,11 +1848,11 @@ async def place_detail(req: PlaceDetailRequest):
         floor=row["floor"],
         homepage=row["homepage"],
         place_url=row["place_url"],
-        open_hours=t.get("open_hours") or row["open_hours"],
+        open_hours=_open_hours_display,
         closed_days=t.get("closed_days") or row["closed_days"],
         is_open_now=_is_open_now_combined(
             row["open_hours"],
-            await _schedule_for_store(row["id"]) or details.get("schedule"),
+            _schedule_from_store_hours(_sh_rows) if _sh_rows else (details.get("schedule")),
         ),
         image_urls=image_urls,
         details=details,

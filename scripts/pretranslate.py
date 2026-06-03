@@ -34,18 +34,26 @@ from tools.translation import translate_fields, _deepl_translate
 # name_en_col: 이미 영문명 컬럼이 있으면 API 호출 없이 복사
 TABLE_CONFIGS = [
     {
-        "table": "store_details",
+        "table": "storedetails",
         "pk": "id",
         "name_col": "store_name",
         "addr_col": "addr",
-        "extra": {"category": "category"},
+        "extra": {
+            "category": "category",
+        },
     },
     {
-        "table": "place_info",
-        "pk": "ufid",
+        "table": "placeinfo",
+        "pk": "building_key",
         "name_col": "name_ko",
         "addr_col": "addr",
-        "extra": {"category": "category"},
+        "extra": {
+            "category":      "category",
+            "open_hours":    "open_hours",
+            "closed_days":   "closed_days",
+            "parking_info":  "parking_info",
+            "admission_fee": "admission_fee",
+        },
     },
     {
         "table": "vegan_restaurants",
