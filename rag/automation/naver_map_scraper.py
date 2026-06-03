@@ -48,10 +48,17 @@ _UA = (
 )
 
 # fetch_address_places / reverse_geocode — JSON API 호출용
+# Naver 게이트웨이(nfront)가 2026년부터 sec-fetch-* 류 브라우저 헤더가 없는
+# 요청을 본문 없는 400으로 거부한다. 주소와 무관하게 미니멀 헤더는 전부 막히므로
+# 실제 브라우저가 보내는 fetch 메타데이터 헤더를 함께 보낸다.
 _HEADERS = {
     "User-Agent": _UA,
     "Referer": "https://map.naver.com/",
     "Accept":  "application/json, text/plain, */*",
+    "Accept-Language": "ko-KR,ko;q=0.9",
+    "sec-fetch-site": "same-origin",
+    "sec-fetch-mode": "cors",
+    "sec-fetch-dest": "empty",
 }
 
 # fetch_place_detail — HTML 페이지 요청용 (Accept: application/json 제외)
