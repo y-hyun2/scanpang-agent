@@ -137,6 +137,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;display:
     <div class="mtab"        onclick="setMode('cluster')"  id="tab-cluster">🟡 중복</div>
     <div class="mtab"        onclick="setMode('edit')"     id="tab-edit">✏️ 편집</div>
     <div class="mtab"        onclick="setMode('add')"      id="tab-add">➕ 추가</div>
+    <div class="mtab"        onclick="setMode('multidelete')" id="tab-multidelete">🗑 다중삭제</div>
     <div class="mtab"        onclick="setMode('exclusion')" id="tab-exclusion">🚫 제외</div>
   </div>
 
@@ -239,6 +240,20 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;display:
       </div>
       <button class="btn btn-primary" style="width:100%;margin-top:6px" id="btn-save-new" onclick="saveNew()" disabled>저장</button>
     </div>
+  </div>
+
+  <!-- 다중 삭제 -->
+  <div class="mode-panel" id="panel-multidelete">
+    <div style="padding:8px 10px;border-bottom:1px solid #1a4a80">
+      <div style="font-size:11px;color:#aaa;margin-bottom:6px">
+        지도에서 건물을 클릭해 선택/해제하세요. 선택한 건물을 한 번에 삭제합니다.
+      </div>
+      <div style="display:flex;gap:6px">
+        <button class="btn btn-danger btn-sm" id="btn-multidel" onclick="deleteMultiSelected()" disabled>선택 0개 삭제</button>
+        <button class="btn btn-secondary btn-sm" onclick="clearMultiSelect()">선택 비우기</button>
+      </div>
+    </div>
+    <div id="multidelete-list" style="flex:1;overflow-y:auto"></div>
   </div>
 
   <!-- 제외 목록 (수기 삭제 기록) -->
@@ -361,6 +376,8 @@ function showStatus(msg,perm=false){
 // 모드 전환
 // ══════════════════════════════════════════════════════════
 function setMode(m){
+  // 다중삭제 모드를 벗어나면 선택/하이라이트 정리
+  if(currentMode==='multidelete' && m!=='multidelete') clearMultiSelect()
   currentMode=m
   document.querySelectorAll('.mtab').forEach(t=>t.classList.remove('active'))
   document.querySelectorAll('.mode-panel').forEach(p=>p.classList.remove('active'))
@@ -373,6 +390,7 @@ function setMode(m){
   if(m==='edit') showStatus('건물 폴리곤을 클릭해 선택하세요')
   if(m==='add')  showStatus('주소 검색 후 폴리곤을 그리세요')
   if(m==='exclusion') loadExclusion()
+  if(m==='multidelete'){ renderMultiSelectList(); showStatus('지도에서 건물을 클릭해 선택/해제하세요') }
 }
 
 // ══════════════════════════════════════════════════════════
@@ -420,6 +438,85 @@ async function removeExclusion(key){
 }
 
 // ══════════════════════════════════════════════════════════
+// 다중 삭제
+// ══════════════════════════════════════════════════════════
+let multiSelected = new Set()
+
+function normalStyle(f){const h=f.properties.render_height,c=hc(h);return{color:c,weight:1.2,fillColor:c,fillOpacity:.5,opacity:.9}}
+function selStyle(){return{color:'#ff2bd6',weight:3,fillColor:'#ff2bd6',fillOpacity:.5,opacity:1}}
+function mainStyle(f){return multiSelected.has(f.properties.building_key)?selStyle():normalStyle(f)}
+
+function _layerByKey(key){
+  let found=null
+  if(geoLayer)geoLayer.eachLayer(l=>{if(l.feature?.properties?.building_key===key)found=l})
+  return found
+}
+
+function toggleMultiSelect(f, layer){
+  const key=f.properties.building_key
+  if(!key){alert('building_key 없는 건물은 삭제 대상이 아닙니다.');return}
+  if(multiSelected.has(key)){multiSelected.delete(key);layer.setStyle(normalStyle(f))}
+  else{multiSelected.add(key);layer.setStyle(selStyle())}
+  renderMultiSelectList()
+}
+
+function removeFromMultiSelect(key){
+  multiSelected.delete(key)
+  const l=_layerByKey(key); if(l&&l.feature)l.setStyle(normalStyle(l.feature))
+  renderMultiSelectList()
+}
+
+function clearMultiSelect(){
+  multiSelected.forEach(key=>{const l=_layerByKey(key);if(l&&l.feature)l.setStyle(normalStyle(l.feature))})
+  multiSelected.clear()
+  renderMultiSelectList()
+}
+
+function flyToKey(key){const f=allFeatures.find(x=>x.properties.building_key===key);if(f)flyToFeature(f)}
+
+function renderMultiSelectList(){
+  const n=multiSelected.size
+  const btn=document.getElementById('btn-multidel')
+  if(btn){btn.textContent=`선택 ${n}개 삭제`;btn.disabled=n===0}
+  const list=document.getElementById('multidelete-list'); if(!list)return
+  list.innerHTML=''
+  if(!n){list.innerHTML='<div style="padding:16px;color:#666;font-size:12px;text-align:center">지도에서 건물을 클릭해 선택하세요</div>';return}
+  multiSelected.forEach(key=>{
+    const f=allFeatures.find(x=>x.properties.building_key===key)
+    const nm=f?.properties.bld_nm||'(이름없음)'
+    const div=document.createElement('div')
+    div.style.cssText='padding:7px 10px;border-bottom:1px solid #16335c;font-size:11px;display:flex;justify-content:space-between;align-items:center;gap:6px'
+    div.innerHTML=`<div style="min-width:0;cursor:pointer" onclick="flyToKey('${esc(key)}')">
+        <div style="color:#eee;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(nm)}</div>
+        <div style="color:#666;font-size:10px">${esc(key)}</div>
+      </div>
+      <button class="btn btn-secondary btn-sm" style="flex:none" onclick="removeFromMultiSelect('${esc(key)}')">빼기</button>`
+    list.appendChild(div)
+  })
+}
+
+async function deleteMultiSelected(){
+  const keys=[...multiSelected]
+  if(!keys.length)return
+  if(!confirm(`선택한 ${keys.length}개 건물을 정말 삭제할까요?\n(building_exclusion에 기록되어 재수집 시 제외됩니다)`))return
+  const btn=document.getElementById('btn-multidel'); btn.disabled=true; btn.textContent='삭제 중…'
+  try{
+    const r=await fetch(`${apiBase()}/inspect/buildings/delete`,{
+      method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({keys})
+    })
+    if(!r.ok){const e=await r.json().catch(()=>({}));alert('삭제 실패: '+(e.detail||r.statusText));btn.disabled=false;return}
+    const d=await r.json()
+    const delSet=new Set(keys)
+    allFeatures=allFeatures.filter(f=>!delSet.has(f.properties.building_key))
+    multiSelected.clear()
+    renderMainLayer(); renderBuildingList(); renderMultiSelectList()
+    document.getElementById('st-total').textContent=allFeatures.length.toLocaleString()
+    showStatus(`✓ ${d.deleted}개 삭제됨`)
+  }catch(e){alert('오류: '+e.message);btn.disabled=false}
+}
+
+// ══════════════════════════════════════════════════════════
 // 전체 불러오기
 // ══════════════════════════════════════════════════════════
 async function loadAll(fitBounds=false){
@@ -448,11 +545,12 @@ async function loadAll(fitBounds=false){
 function renderMainLayer(){
   if(geoLayer){map.removeLayer(geoLayer);geoLayer=null}
   geoLayer=L.geoJSON({type:'FeatureCollection',features:allFeatures},{
-    style:f=>{const h=f.properties.render_height,c=hc(h);return{color:c,weight:1.2,fillColor:c,fillOpacity:.5,opacity:.9}},
+    style:mainStyle,
     onEachFeature:(f,layer)=>{
       layer.bindPopup(()=>makePopup(f.properties),{maxWidth:300})
       layer.on('click',()=>{
         if(currentMode==='edit')selectForEdit(f,layer)
+        else if(currentMode==='multidelete')toggleMultiSelect(f,layer)
         else highlightItem(f.properties.building_key)
       })
     }

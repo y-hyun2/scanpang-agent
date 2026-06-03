@@ -276,6 +276,40 @@ async def delete_building(building_key: str):
     return {"deleted": building_key}
 
 
+class BulkDeleteRequest(BaseModel):
+    keys: List[str]
+
+
+@router.post("/buildings/delete")
+async def bulk_delete_buildings(req: BulkDeleteRequest):
+    """여러 building_key를 한 트랜잭션으로 삭제 + building_exclusion에 기록."""
+    if not req.keys:
+        raise HTTPException(400, "삭제할 building_key 목록이 비어있습니다.")
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        async with conn.transaction():
+            await conn.execute(
+                "DELETE FROM store_hours WHERE store_id IN "
+                "(SELECT id FROM storedetails WHERE place_id = ANY($1::text[]))", req.keys
+            )
+            await conn.execute("DELETE FROM storedetails WHERE place_id = ANY($1::text[])", req.keys)
+            await conn.execute("DELETE FROM placeinfo WHERE building_key = ANY($1::text[])", req.keys)
+            # 재수집 시 되살아나지 않도록 제외 목록 기록 (삭제 직전, bld_nm 보존)
+            await conn.execute(
+                """
+                INSERT INTO building_exclusion (building_key, bld_nm, reason)
+                SELECT building_key, bld_nm, '점검기 다중 삭제'
+                FROM building WHERE building_key = ANY($1::text[])
+                ON CONFLICT (building_key) DO NOTHING
+                """,
+                req.keys,
+            )
+            result = await conn.execute(
+                "DELETE FROM building WHERE building_key = ANY($1::text[])", req.keys
+            )
+    return {"deleted": int(result.split()[-1]), "requested": len(req.keys)}
+
+
 # ── 폴리곤 수정 ───────────────────────────────────────────────────────────────
 
 class UpdateBuildingRequest(BaseModel):
