@@ -83,6 +83,12 @@ NAVSPEECH_CASES = [
         {"index": 0, "pointType": "SP", "turnType": 200, "description": "출발", "nearPoiName": "", "intersectionName": "", "facilityType": "", "segment_distance_m": 0},
         {"index": 1, "pointType": "GP", "turnType": 127, "description": "계단 이용", "nearPoiName": "", "intersectionName": "", "facilityType": "127", "segment_distance_m": 50},
         {"index": 2, "pointType": "EP", "turnType": 201, "description": "도착", "nearPoiName": "", "intersectionName": "", "facilityType": "", "segment_distance_m": 150}]},
+    {"id": "navspeech_uturn_ko", "language": "ko", "destination": "롯데백화점", "total_distance_m": 480, "total_time_min": 7,
+     "turn_points": [
+        {"index": 0, "pointType": "SP", "turnType": 200, "description": "출발", "nearPoiName": "", "intersectionName": "", "facilityType": "", "segment_distance_m": 0},
+        {"index": 1, "pointType": "GP", "turnType": 11, "description": "직진", "nearPoiName": "명동예술극장", "intersectionName": "", "facilityType": "", "segment_distance_m": 180},
+        {"index": 2, "pointType": "GP", "turnType": 14, "description": "유턴", "nearPoiName": "", "intersectionName": "을지로입구 교차로", "facilityType": "", "segment_distance_m": 150},
+        {"index": 3, "pointType": "EP", "turnType": 201, "description": "도착", "nearPoiName": "롯데백화점 본점", "intersectionName": "", "facilityType": "", "segment_distance_m": 150}]},
 ]
 
 

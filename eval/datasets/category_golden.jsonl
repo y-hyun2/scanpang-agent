@@ -28,3 +28,51 @@
 {"id": "cat_28", "message": "GS25 어디", "expected_category": "convenience_store", "expected_language": "ko", "expected_brand": "GS25"}
 {"id": "cat_29", "message": "근처 박물관 있어?", "expected_category": "cultural", "expected_language": "ko", "expected_brand": ""}
 {"id": "cat_30", "message": "라멘집 추천", "expected_category": "restaurant", "expected_language": "ko", "expected_brand": "라멘"}
+{"id": "cat_31", "message": "커피 마실 데 어디 있어?", "expected_category": "cafe", "expected_language": "ko", "expected_brand": ""}
+{"id": "cat_32", "message": "이 근처 약국 있나요?", "expected_category": "pharmacy", "expected_language": "ko", "expected_brand": ""}
+{"id": "cat_33", "message": "약 사야 하는데 약국 어디로 가?", "expected_category": "pharmacy", "expected_language": "ko", "expected_brand": ""}
+{"id": "cat_34", "message": "가까운 약국 알려줘", "expected_category": "pharmacy", "expected_language": "ko", "expected_brand": ""}
+{"id": "cat_35", "message": "현금 뽑을 데 어디 있어?", "expected_category": "atm", "expected_language": "ko", "expected_brand": ""}
+{"id": "cat_36", "message": "현금인출기 어디 있나요", "expected_category": "atm", "expected_language": "ko", "expected_brand": ""}
+{"id": "cat_37", "message": "돈 인출하려는데 ATM 어디", "expected_category": "atm", "expected_language": "ko", "expected_brand": ""}
+{"id": "cat_38", "message": "근처 편의점 알려줘", "expected_category": "convenience_store", "expected_language": "ko", "expected_brand": ""}
+{"id": "cat_39", "message": "이 주변에 편의점 있어?", "expected_category": "convenience_store", "expected_language": "ko", "expected_brand": ""}
+{"id": "cat_40", "message": "쇼핑할 데 어디 있어?", "expected_category": "shopping", "expected_language": "ko", "expected_brand": ""}
+{"id": "cat_41", "message": "다이소 어디 있어?", "expected_category": "shopping", "expected_language": "ko", "expected_brand": "다이소"}
+{"id": "cat_42", "message": "화장품 사러 가고 싶은데 어디", "expected_category": "shopping", "expected_language": "ko", "expected_brand": ""}
+{"id": "cat_43", "message": "공중화장실 어디 있어?", "expected_category": "restroom", "expected_language": "ko", "expected_brand": ""}
+{"id": "cat_44", "message": "화장실 급한데 가까운 데 어디", "expected_category": "restroom", "expected_language": "ko", "expected_brand": ""}
+{"id": "cat_45", "message": "근처 화장실 좀 알려줘", "expected_category": "restroom", "expected_language": "ko", "expected_brand": ""}
+{"id": "cat_46", "message": "돈 바꾸는 곳 어디야?", "expected_category": "exchange", "expected_language": "ko", "expected_brand": ""}
+{"id": "cat_47", "message": "환전 어디서 할 수 있어?", "expected_category": "exchange", "expected_language": "ko", "expected_brand": ""}
+{"id": "cat_48", "message": "달러 환전하는 데 알려줘", "expected_category": "exchange", "expected_language": "ko", "expected_brand": ""}
+{"id": "cat_49", "message": "가까운 지하철역 어디", "expected_category": "subway", "expected_language": "ko", "expected_brand": ""}
+{"id": "cat_50", "message": "전철역 어디로 가?", "expected_category": "subway", "expected_language": "ko", "expected_brand": ""}
+{"id": "cat_51", "message": "지하철 타려면 어디로 가야 해?", "expected_category": "subway", "expected_language": "ko", "expected_brand": ""}
+{"id": "cat_52", "message": "주차할 데 어디 있어?", "expected_category": "parking", "expected_language": "ko", "expected_brand": ""}
+{"id": "cat_53", "message": "근처 주차장 알려줘", "expected_category": "parking", "expected_language": "ko", "expected_brand": ""}
+{"id": "cat_54", "message": "차 댈 곳 어디 있나요", "expected_category": "parking", "expected_language": "ko", "expected_brand": ""}
+{"id": "cat_55", "message": "병원 어디 있어?", "expected_category": "hospital", "expected_language": "ko", "expected_brand": ""}
+{"id": "cat_56", "message": "가까운 병원 알려줘", "expected_category": "hospital", "expected_language": "ko", "expected_brand": ""}
+{"id": "cat_57", "message": "몸이 안 좋은데 근처 병원 어디", "expected_category": "hospital", "expected_language": "ko", "expected_brand": ""}
+{"id": "cat_58", "message": "은행 가야 하는데 어디 있어?", "expected_category": "bank", "expected_language": "ko", "expected_brand": ""}
+{"id": "cat_59", "message": "가까운 은행 알려줘", "expected_category": "bank", "expected_language": "ko", "expected_brand": ""}
+{"id": "cat_60", "message": "신한은행 어디 있어?", "expected_category": "bank", "expected_language": "ko", "expected_brand": "신한은행"}
+{"id": "cat_61", "message": "물품보관함 어디 있어?", "expected_category": "locker", "expected_language": "ko", "expected_brand": ""}
+{"id": "cat_62", "message": "코인락커 있는 데 어디", "expected_category": "locker", "expected_language": "ko", "expected_brand": ""}
+{"id": "cat_63", "message": "짐 맡길 데 어디 있어?", "expected_category": "locker", "expected_language": "ko", "expected_brand": ""}
+{"id": "cat_64", "message": "할랄 음식점 어디 있어?", "expected_category": "halal_restaurant", "expected_language": "ko", "expected_brand": ""}
+{"id": "cat_65", "message": "무슬림 친화 식당 추천해줘", "expected_category": "halal_restaurant", "expected_language": "ko", "expected_brand": ""}
+{"id": "cat_66", "message": "예배실 어디 있어?", "expected_category": "prayer_room", "expected_language": "ko", "expected_brand": ""}
+{"id": "cat_67", "message": "기도할 공간 있어?", "expected_category": "prayer_room", "expected_language": "ko", "expected_brand": ""}
+{"id": "cat_68", "message": "무슬림 기도하는 곳 어디", "expected_category": "prayer_room", "expected_language": "ko", "expected_brand": ""}
+{"id": "cat_69", "message": "숙소 어디 있어?", "expected_category": "accommodation", "expected_language": "ko", "expected_brand": ""}
+{"id": "cat_70", "message": "근처 게스트하우스 추천", "expected_category": "accommodation", "expected_language": "ko", "expected_brand": ""}
+{"id": "cat_71", "message": "잘 데 어디 있어?", "expected_category": "accommodation", "expected_language": "ko", "expected_brand": ""}
+{"id": "cat_72", "message": "미술관 어디 있어?", "expected_category": "cultural", "expected_language": "ko", "expected_brand": ""}
+{"id": "cat_73", "message": "전시회 볼 데 어디", "expected_category": "cultural", "expected_language": "ko", "expected_brand": ""}
+{"id": "cat_74", "message": "근처 문화시설 추천", "expected_category": "cultural", "expected_language": "ko", "expected_brand": ""}
+{"id": "cat_75", "message": "근처 관광지 추천해줘", "expected_category": "tourist", "expected_language": "ko", "expected_brand": ""}
+{"id": "cat_76", "message": "여기 볼거리 뭐 있어?", "expected_category": "tourist", "expected_language": "ko", "expected_brand": ""}
+{"id": "cat_77", "message": "가볼 만한 명소 알려줘", "expected_category": "tourist", "expected_language": "ko", "expected_brand": ""}
+{"id": "cat_78", "message": "근처 관광 명소 어디 있어?", "expected_category": "tourist", "expected_language": "ko", "expected_brand": ""}

@@ -55,6 +55,10 @@ Given a user message, return THREE things as JSON:
 
 Use "halal_restaurant" category for halal/muslim food queries. Use "prayer_room"
 for prayer rooms / musalla / 기도실.
+Use "cultural" for museums, art galleries, exhibitions and cultural facilities
+(박물관, 미술관, 전시, 공연장, 문화시설). Use "tourist" for sightseeing spots,
+landmarks and attractions (관광지, 명소, 볼거리, 가볼 만한 곳). A museum/gallery is
+"cultural", NOT "tourist".
 
 Return JSON only:
 {{"category": "<one of the above>", "language": "<ko|en|ar|ja|zh>", "brand_keyword": "<specific name or empty>"}}
@@ -70,6 +74,10 @@ Examples:
 - "Find Starbucks" → {{"category": "cafe", "language": "en", "brand_keyword": "Starbucks"}}
 - "베이커리 추천" → {{"category": "cafe", "language": "ko", "brand_keyword": "베이커리"}}
 - "할랄 식당" → {{"category": "halal_restaurant", "language": "ko", "brand_keyword": ""}}
+- "근처 박물관 있어?" → {{"category": "cultural", "language": "ko", "brand_keyword": ""}}
+- "미술관 어디" → {{"category": "cultural", "language": "ko", "brand_keyword": ""}}
+- "근처 관광지 추천" → {{"category": "tourist", "language": "ko", "brand_keyword": ""}}
+- "가볼 만한 명소 알려줘" → {{"category": "tourist", "language": "ko", "brand_keyword": ""}}
 
 If uncertain, default category to "convenience_store", language to "ko", brand_keyword to "".
 """

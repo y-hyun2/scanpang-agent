@@ -93,6 +93,32 @@ SEARCH_CASES = [
         "language": "ko",
         "facilities": [],
     },
+    {
+        # LIST 모드 — 여러 곳 나열(탐색적 의도). 결과 3곳 이상.
+        "id": "search_list_ko",
+        "component": "search_agent",
+        "category": "restaurant",
+        "language": "ko",
+        "facilities": [
+            {"name": "명동교자 본점", "distance_m": 90, "address": "서울 중구 명동10길",
+             "open_hours": "10:30-21:00", "extra": {}},
+            {"name": "유키스시", "distance_m": 160, "address": "서울 중구 명동",
+             "open_hours": "11:00-22:00", "extra": {}},
+            {"name": "백제정육식당", "distance_m": 230, "address": "서울 중구 명동",
+             "open_hours": "11:30-23:00", "extra": {}},
+        ],
+    },
+    {
+        # NEAREST 모드 — 가장 가까운 1곳 안내(위치 찾기 의도). 결과 1곳.
+        "id": "search_nearest_ko",
+        "component": "search_agent",
+        "category": "convenience_store",
+        "language": "ko",
+        "facilities": [
+            {"name": "GS25 명동점", "distance_m": 35, "address": "서울 중구 명동",
+             "open_hours": "24시간", "extra": {}},
+        ],
+    },
 ]
 
 HALAL_CASES = [
